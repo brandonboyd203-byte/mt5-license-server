@@ -28,6 +28,7 @@
             <select id="eaName" required>
                 <option value="BigBeluga">BigBeluga</option>
                 <option value="AdvancedScalper">Advanced Scalper</option>
+                <option value="AdvancedScalper2">Advanced Scalper 2.0</option>
             </select>
             <input type="datetime-local" id="expiryDate" placeholder="Expiry Date (optional)">
             <input type="text" id="allowedBrokers" placeholder="Allowed Brokers (comma-separated, optional)">
@@ -48,7 +49,7 @@
     </div>
     
     <script>
-        const SERVER_URL = window.prompt('Enter your license server URL:', 'https://your-server.railway.app') || 'http://localhost:3001';
+        const SERVER_URL = 'https://mt5-license-server-production.up.railway.app';
         
         document.getElementById('addLicenseForm').addEventListener('submit', async (e) => {
             e.preventDefault();
