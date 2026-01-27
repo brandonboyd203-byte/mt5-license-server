@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MT5 License Server - Admin Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        input, select, textarea { width: 100%; padding: 8px; margin: 5px 0; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .license-item { padding: 10px; margin: 5px 0; background: #f5f5f5; border-radius: 3px; }
+        .active { border-left: 4px solid green; }
+        .inactive { border-left: 4px solid red; }
+        .expired { border-left: 4px solid orange; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h1>MT5 License Server - Admin Panel</h1>
+    
+    <div class="section">
+        <h2>Add New License</h2>
+        <form id="addLicenseForm">
+            <input type="text" id="accountNumber" placeholder="Account Number" required>
+            <input type="text" id="userName" placeholder="User Name" required>
+            <select id="eaName" required>
+                <option value="BigBeluga">BigBeluga</option>
+                <option value="AdvancedScalper">Advanced Scalper</option>
+            </select>
+            <input type="datetime-local" id="expiryDate" placeholder="Expiry Date (optional)">
+            <input type="text" id="allowedBrokers" placeholder="Allowed Brokers (comma-separated, optional)">
+            <input type="text" id="licenseKey" placeholder="License Key (optional)">
+            <button type="submit">Add License</button>
+        </form>
+    </div>
+    
+    <div class="section">
+        <h2>All Licenses</h2>
+        <button onclick="loadLicenses()">Refresh</button>
+        <div id="licensesList"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Statistics</h2>
+        <div id="stats"></div>
+    </div>
+    
+    <script>
+        const SERVER_URL = window.prompt('Enter your license server URL:', 'https://your-server.railway.app') || 'http://localhost:3001';
+        
+        document.getElementById('addLicenseForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const expiryDate = document.getElementById('expiryDate').value;
+            const allowedBrokers = document.getElementById('allowedBrokers').value.split(',').map(b => b.trim()).filter(b => b);
+            
+            const data = {
+                accountNumber: document.getElementById('accountNumber').value,
+                userName: document.getElementById('userName').value,
+                eaName: document.getElementById('eaName').value,
+                expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
+                allowedBrokers: allowedBrokers.length > 0 ? allowedBrokers : null,
+                licenseKey: document.getElementById('licenseKey').value || null
+            };
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/admin/licenses`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('License added successfully!');
+                    document.getElementById('addLicenseForm').reset();
+                    loadLicenses();
+                } else {
+                    alert('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+        
+        async function loadLicenses() {
+            try {
+                const response = await fetch(`${SERVER_URL}/admin/licenses`);
+                const data = await response.json();
+                
+                const list = document.getElementById('licensesList');
+                list.innerHTML = '<table><tr><th>ID</th><th>Account</th><th>User</th><th>EA</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>';
+                
+                data.licenses.forEach(license => {
+                    const expiry = license.expiryDate ? new Date(license.expiryDate).toLocaleDateString() : 'No expiry';
+                    const isExpired = license.expiryDate && new Date(license.expiryDate) < new Date();
+                    const status = !license.isActive ? 'Inactive' : isExpired ? 'Expired' : 'Active';
+                    const rowClass = !license.isActive ? 'inactive' : isExpired ? 'expired' : 'active';
+                    
+                    list.innerHTML += `
+                        <tr class="${rowClass}">
+                            <td>${license.id.substring(0, 8)}...</td>
+                            <td>${license.accountNumber}</td>
+                            <td>${license.userName}</td>
+                            <td>${license.eaName}</td>
+                            <td>${expiry}</td>
+                            <td>${status}</td>
+                            <td>
+                                <button onclick="deactivateLicense('${license.id}')">Deactivate</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                
+                list.innerHTML += '</table>';
+            } catch (error) {
+                document.getElementById('licensesList').innerHTML = '<p>Error loading licenses: ' + error.message + '</p>';
+            }
+        }
+        
+        async function deactivateLicense(id) {
+            if (!confirm('Deactivate this license?')) return;
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/admin/licenses/${id}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('License deactivated!');
+                    loadLicenses();
+                } else {
+                    alert('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch(`${SERVER_URL}/admin/stats`);
+                const stats = await response.json();
+                
+                document.getElementById('stats').innerHTML = `
+                    <p><strong>Total Licenses:</strong> ${stats.total}</p>
+                    <p><strong>Active:</strong> ${stats.active}</p>
+                    <p><strong>Expired:</strong> ${stats.expired}</p>
+                    <h3>By EA:</h3>
+                    <ul>
+                        ${Object.entries(stats.byEA).map(([ea, data]) => 
+                            `<li><strong>${ea}:</strong> ${data.active} active / ${data.total} total</li>`
+                        ).join('')}
+                    </ul>
+                `;
+            } catch (error) {
+                document.getElementById('stats').innerHTML = '<p>Error loading stats: ' + error.message + '</p>';
+            }
+        }
+        
+        // Load on page load
+        loadLicenses();
+        loadStats();
+        setInterval(loadLicenses, 30000); // Refresh every 30 seconds
+        setInterval(loadStats, 60000); // Refresh stats every minute
+    </script>
+</body>
+</html>
