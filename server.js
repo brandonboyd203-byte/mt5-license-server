@@ -17,7 +17,16 @@ const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+// Parse JSON - handle both with and without Content-Type header
+app.use(express.json({ 
+    type: ['application/json', 'text/plain', 'text/json', '*/*'],
+    strict: false 
+}));
+
+// Serve admin.html
+app.get('/admin.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
 
 //+------------------------------------------------------------------+
 //| Load Licenses from File                                          |
@@ -138,14 +147,46 @@ app.get('/health', (req, res) => {
 // Validate license
 app.post('/validate', async (req, res) => {
     try {
-        const { accountNumber, broker, licenseKey, eaName } = req.body;
+        // Parse body - handle both JSON and raw Buffer from MQL5
+        let body = req.body;
+        if (Buffer.isBuffer(body)) {
+            try {
+                body = JSON.parse(body.toString('utf8'));
+            } catch (e) {
+                console.error('Failed to parse body:', e);
+                return res.status(400).json({
+                    valid: false,
+                    error: 'Invalid JSON',
+                    message: 'Could not parse request body as JSON'
+                });
+            }
+        } else if (typeof body === 'string') {
+            try {
+                body = JSON.parse(body);
+            } catch (e) {
+                // Already parsed or invalid
+            }
+        }
+        
+        // Log incoming request for debugging
+        console.log(`[${new Date().toISOString()}] /validate request received:`, {
+            headers: req.headers,
+            body: body,
+            contentType: req.headers['content-type'],
+            bodyType: typeof req.body
+        });
+        
+        const { accountNumber, broker, licenseKey, eaName } = body;
         
         // Validate required fields
         if (!accountNumber || !broker || !eaName) {
+            console.error('Missing required fields:', { accountNumber, broker, eaName, body: body, rawBody: req.body });
             return res.status(400).json({
                 valid: false,
                 error: 'Missing required fields',
-                message: 'accountNumber, broker, and eaName are required'
+                message: 'accountNumber, broker, and eaName are required',
+                received: { accountNumber, broker, eaName, licenseKey },
+                debug: { bodyType: typeof body, bodyKeys: body ? Object.keys(body) : 'null' }
             });
         }
         
