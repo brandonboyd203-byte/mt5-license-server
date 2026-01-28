@@ -109,12 +109,36 @@
       }
 
       .logo-mark {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        background: radial-gradient(circle at 30% 30%, var(--gold), var(--gold-dark));
-        box-shadow: 0 8px 18px rgba(251, 191, 36, 0.35);
-        border: 1px solid rgba(251, 191, 36, 0.4);
+        position: relative;
+        width: 34px;
+        height: 24px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+        box-shadow: 0 10px 20px rgba(251, 191, 36, 0.25);
+        border: 1px solid rgba(251, 191, 36, 0.45);
+        overflow: hidden;
+      }
+
+      .logo-mark::before,
+      .logo-mark::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        border-radius: 4px;
+      }
+
+      .logo-mark::before {
+        top: 4px;
+        height: 8px;
+        background: linear-gradient(135deg, #fde68a, var(--gold));
+        opacity: 0.95;
+      }
+
+      .logo-mark::after {
+        bottom: 4px;
+        height: 6px;
+        background: rgba(12, 18, 30, 0.2);
       }
 
       .nav-links {
@@ -217,6 +241,27 @@
       .card p {
         color: var(--muted);
         margin: 0;
+      }
+
+      label {
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #1f2937;
+        background: #0f172a;
+        color: var(--ink);
+      }
+
+      .form-grid {
+        display: grid;
+        gap: 14px;
       }
 
       .pill {
@@ -329,6 +374,7 @@
             <a href="#bots">Bots</a>
             <a href="#copy-trading">Copy Trading</a>
             <a href="#pricing">Pricing</a>
+            <a href="#checkout">Checkout</a>
             <a href="#faq">FAQ</a>
             <a href="#contact">Contact</a>
           </div>
@@ -365,8 +411,8 @@
               <span>Yes - per account</span>
             </div>
             <div class="metric">
-              <span>Supported brokers</span>
-              <span>MT4 / MT5</span>
+              <span>Supported platform</span>
+              <span>MT5 only</span>
             </div>
             <p class="muted">
               Need a custom integration? We can connect to your existing license
@@ -422,49 +468,60 @@
       <section id="copy-trading">
         <div class="container two-col">
           <div>
-            <h2>Copy trading service</h2>
+            <h2>Copier service (MT5 only)</h2>
             <p class="section-intro">
               Let subscribers copy your live trades while you stay in control of
-              risk, max exposure, and drawdown limits. Provide a clear track record
-              with verified stats and onboarding support.
+              risk, max exposure, and drawdown limits. The copier service is
+              dedicated to MT5 accounts only.
             </p>
             <div class="grid" style="margin-top: 18px;">
               <div class="card">
-                <strong>Transparent performance</strong>
-                <p>Monthly reporting, equity curves, and trade audits for clients.</p>
+                <strong>MT5-only copier</strong>
+                <p>Built for MT5 accounts with gold-focused execution.</p>
               </div>
               <div class="card">
-                <strong>Risk guardrails</strong>
-                <p>Global drawdown caps, per-account limits, and auto stopouts.</p>
+                <strong>Broker setup help</strong>
+                <p>We help clients with broker setup, sizing, and onboarding.</p>
               </div>
               <div class="card">
-                <strong>Hands-off onboarding</strong>
-                <p>We guide users through broker setup, allocation, and sizing.</p>
+                <strong>Access control</strong>
+                <p>We approve and manage who can access the copier.</p>
               </div>
             </div>
           </div>
           <div class="panel">
-            <h3>Copy trading tiers</h3>
+            <h3>Copier service tiers</h3>
             <p class="muted">
-              Choose a plan that fits your audience. Custom pricing available for
-              fund-sized accounts.
+              Two account sizes with a 200% gain minimum target or money-back
+              guarantee if the target is not met. Terms apply.
             </p>
             <div class="grid" style="margin-top: 16px;">
-              <div class="metric">
-                <span>Starter (1 strategy)</span>
-                <span>From $49/mo</span>
+              <div class="card" style="background: #0f172a; border-color: #1e293b;">
+                <strong>Small accounts</strong>
+                <p class="muted">$250 to $4000 balance</p>
+                <p class="price">$250 <span class="muted">/ month</span></p>
+                <ul class="feature-list">
+                  <li>MT5 copier access</li>
+                  <li>200% minimum gain target</li>
+                  <li>Money-back guarantee if target not met</li>
+                </ul>
               </div>
-              <div class="metric">
-                <span>Growth (multi-strategy)</span>
-                <span>From $99/mo</span>
-              </div>
-              <div class="metric">
-                <span>Pro (managed onboarding)</span>
-                <span>From $249/mo</span>
+              <div class="card" style="background: #0f172a; border-color: #1e293b;">
+                <strong>Large accounts</strong>
+                <p class="muted">$5000+ balance</p>
+                <p class="price">$500 <span class="muted">/ month</span></p>
+                <ul class="feature-list">
+                  <li>MT5 copier access</li>
+                  <li>200% minimum gain target</li>
+                  <li>Money-back guarantee if target not met</li>
+                </ul>
               </div>
             </div>
-            <a class="btn btn-primary" style="margin-top: 20px;" href="#contact">
-              Schedule onboarding
+            <p class="muted" style="margin-top: 12px;">
+              Copier infrastructure fee: $12 USD per account / month.
+            </p>
+            <a class="btn btn-primary" style="margin-top: 20px;" href="#checkout">
+              Start copier service
             </a>
           </div>
         </div>
@@ -522,13 +579,85 @@
             </div>
             <div class="card">
               <h3>FXGOLDTRADERPLUGSMC</h3>
-              <p class="price">$4000</p>
+              <p class="price">$5000</p>
               <ul class="feature-list">
                 <li>Smart Money Concepts order blocks + FVGs</li>
                 <li>License name: FXGOLDTRADERSMC</li>
                 <li>Multi-timeframe swing entries</li>
               </ul>
             </div>
+          </div>
+          <div class="panel" style="margin-top: 26px;">
+            <div class="two-col">
+              <div>
+                <h3>Crypto-only payments</h3>
+                <p class="muted">
+                  All bot licenses and copier tiers are paid in crypto only
+                  (USDT, BTC, or ETH).
+                </p>
+              </div>
+              <a class="btn btn-primary" href="#checkout">Go to checkout</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="checkout">
+        <div class="container two-col">
+          <div>
+            <h2>Crypto checkout</h2>
+            <p class="section-intro">
+              Complete your order with a crypto invoice. We will confirm your
+              plan, send the wallet address, and activate your MT5 access.
+            </p>
+            <ul class="feature-list" style="margin-top: 18px;">
+              <li>Crypto payments only (USDT, BTC, ETH)</li>
+              <li>MT5-only support for all bots and copier tiers</li>
+              <li>Access is approved and managed by GOLDMINE</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Request a crypto invoice</h3>
+            <form id="checkoutForm" class="form-grid">
+              <div>
+                <label for="checkoutName">Full name</label>
+                <input id="checkoutName" name="name" type="text" required />
+              </div>
+              <div>
+                <label for="checkoutEmail">Email</label>
+                <input id="checkoutEmail" name="email" type="email" required />
+              </div>
+              <div>
+                <label for="checkoutPlan">Choose a plan</label>
+                <select id="checkoutPlan" name="plan" required>
+                  <option value="">Select one</option>
+                  <option value="Advanced Scalper 1 - $2000">Advanced Scalper 1 - $2000</option>
+                  <option value="Advanced Scalper 2.0 - $3000">Advanced Scalper 2.0 - $3000</option>
+                  <option value="FXGOLDTRADERPLUGSMC - $5000">FXGOLDTRADERPLUGSMC - $5000</option>
+                  <option value="Copier Small - $250/mo">Copier Small - $250/mo</option>
+                  <option value="Copier Large - $500/mo">Copier Large - $500/mo</option>
+                  <option value="Copier Server Fee - $12/account">Copier Server Fee - $12/account</option>
+                </select>
+              </div>
+              <div>
+                <label for="checkoutAccount">Account size (optional)</label>
+                <input id="checkoutAccount" name="account" type="text" placeholder="$250 - $4000 or $5000+" />
+              </div>
+              <div>
+                <label for="checkoutContact">Telegram or WhatsApp</label>
+                <input id="checkoutContact" name="contact" type="text" placeholder="@goldtraderplug or +61..." />
+              </div>
+              <div>
+                <label for="checkoutPayment">Payment method</label>
+                <select id="checkoutPayment" name="payment" required>
+                  <option value="Crypto (USDT/BTC/ETH)">Crypto (USDT/BTC/ETH)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" type="submit">Request crypto invoice</button>
+            </form>
+            <p class="muted" style="margin-top: 12px;">
+              We respond within 24 hours with your invoice and wallet address.
+            </p>
           </div>
         </div>
       </section>
@@ -565,25 +694,22 @@
           <h2>Frequently asked questions</h2>
           <div class="grid" style="margin-top: 20px;">
             <details>
-              <summary>Can I sell bots and copy trades together?</summary>
+              <summary>Can I resell the bots?</summary>
               <p class="muted">
-                Yes. You can offer standalone bot licenses, a copy trading service,
-                or both. We keep each product separate with its own billing and
-                onboarding flow.
+                No. Bot licenses are for personal use only and cannot be resold or
+                redistributed.
               </p>
             </details>
             <details>
               <summary>Do you help with broker setup?</summary>
               <p class="muted">
-                We provide step-by-step broker onboarding, trade sizing guidance,
-                and risk configuration for each subscriber.
+                Yes. We help with broker setup, MT5 onboarding, and account sizing.
               </p>
             </details>
             <details>
-              <summary>Can I manage who has access?</summary>
+              <summary>Who controls access to the bots and copier?</summary>
               <p class="muted">
-                Yes. You control license duration, account limits, and broker
-                restrictions from a single dashboard.
+                GOLDMINE approves and manages access. You decide who is allowed in.
               </p>
             </details>
           </div>
@@ -642,5 +768,25 @@
         <p>GOLDMINE. All rights reserved.</p>
       </div>
     </footer>
+    <script>
+      const checkoutForm = document.getElementById("checkoutForm");
+      if (checkoutForm) {
+        checkoutForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const formData = new FormData(checkoutForm);
+          const details = [
+            `Name: ${formData.get("name")}`,
+            `Email: ${formData.get("email")}`,
+            `Plan: ${formData.get("plan")}`,
+            `Account size: ${formData.get("account") || "n/a"}`,
+            `Contact: ${formData.get("contact") || "n/a"}`,
+            `Payment: ${formData.get("payment")}`,
+          ].join("\n");
+          const subject = encodeURIComponent("GOLDMINE crypto checkout request");
+          const body = encodeURIComponent(details);
+          window.location.href = `mailto:fxgoldtraderplug@gmail.com?subject=${subject}&body=${body}`;
+        });
+      }
+    </script>
   </body>
 </html>
