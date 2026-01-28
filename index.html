@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atlas Bot Lab | Bots + Copy Trading</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0b0f1a;
+        --panel: #111827;
+        --card: #151f32;
+        --ink: #e5e7eb;
+        --muted: #9ca3af;
+        --accent: #22c55e;
+        --accent-dark: #16a34a;
+        --border: #1f2937;
+        --shadow: 0 18px 45px rgba(6, 10, 24, 0.45);
+        --radius: 18px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        line-height: 1.6;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      img {
+        max-width: 100%;
+        display: block;
+      }
+
+      .container {
+        width: min(1120px, 92%);
+        margin: 0 auto;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--accent);
+        padding: 6px 14px;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        letter-spacing: 0.3px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 22px;
+        border-radius: 999px;
+        font-weight: 600;
+        border: 1px solid transparent;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #0b0f1a;
+        box-shadow: 0 12px 30px rgba(34, 197, 94, 0.3);
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 40px rgba(34, 197, 94, 0.35);
+      }
+
+      .btn-outline {
+        border-color: rgba(229, 231, 235, 0.35);
+        color: var(--ink);
+      }
+
+      header {
+        padding: 28px 0 12px;
+      }
+
+      nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .logo {
+        font-weight: 700;
+        font-size: 1.2rem;
+        letter-spacing: 0.4px;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 22px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+
+      .hero {
+        padding: 80px 0 70px;
+        background: radial-gradient(circle at top, rgba(34, 197, 94, 0.15), transparent 55%);
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 38px;
+        align-items: center;
+      }
+
+      .hero h1 {
+        font-size: clamp(2.6rem, 3.6vw, 3.4rem);
+        line-height: 1.1;
+        margin: 18px 0 18px;
+      }
+
+      .hero p {
+        color: var(--muted);
+        font-size: 1.05rem;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 26px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 26px;
+        box-shadow: var(--shadow);
+      }
+
+      .hero-card {
+        display: grid;
+        gap: 18px;
+      }
+
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        font-size: 0.95rem;
+      }
+
+      section {
+        padding: 70px 0;
+      }
+
+      h2 {
+        font-size: clamp(1.8rem, 2.6vw, 2.4rem);
+        margin: 0 0 16px;
+      }
+
+      .section-intro {
+        color: var(--muted);
+        max-width: 680px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 20px;
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .card h3 {
+        margin: 0;
+      }
+
+      .card p {
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .feature-list {
+        padding: 0;
+        margin: 0;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+        color: var(--muted);
+      }
+
+      .feature-list li::before {
+        content: "+";
+        color: var(--accent);
+        margin-right: 8px;
+      }
+
+      .two-col {
+        display: grid;
+        gap: 30px;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        align-items: center;
+      }
+
+      .pricing-card {
+        background: linear-gradient(180deg, rgba(34, 197, 94, 0.16), transparent 70%);
+        border: 1px solid rgba(34, 197, 94, 0.35);
+      }
+
+      .price {
+        font-size: 2rem;
+        font-weight: 700;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .steps {
+        counter-reset: steps;
+      }
+
+      .steps .card {
+        position: relative;
+      }
+
+      .steps .card::before {
+        counter-increment: steps;
+        content: counter(steps, decimal-leading-zero);
+        position: absolute;
+        top: 18px;
+        right: 20px;
+        font-weight: 700;
+        color: rgba(34, 197, 94, 0.25);
+      }
+
+      details {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px 18px;
+      }
+
+      details summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .cta {
+        background: linear-gradient(120deg, rgba(34, 197, 94, 0.15), rgba(59, 130, 246, 0.12));
+        border-radius: var(--radius);
+        padding: 38px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+
+      footer {
+        padding: 40px 0 60px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 900px) {
+        .nav-links {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <nav>
+          <div class="logo">Atlas Bot Lab</div>
+          <div class="nav-links">
+            <a href="#bots">Bots</a>
+            <a href="#copy-trading">Copy Trading</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#faq">FAQ</a>
+            <a href="#contact">Contact</a>
+          </div>
+          <a class="btn btn-outline" href="#contact">Book a demo</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div>
+            <span class="badge">Bots + Copy Trading</span>
+            <h1>Automated trading systems built for disciplined execution.</h1>
+            <p>
+              Sell your bots with confidence and offer investors a transparent copy
+              trading program. We provide risk controls, onboarding support, and
+              real-time monitoring so your strategy stays consistent across accounts.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="#pricing">View plans</a>
+              <a class="btn btn-outline" href="#bots">Explore bots</a>
+            </div>
+          </div>
+          <div class="panel hero-card">
+            <strong>Live service snapshot</strong>
+            <div class="metric">
+              <span>Signals delivered</span>
+              <span>99.2% uptime</span>
+            </div>
+            <div class="metric">
+              <span>Risk controls enabled</span>
+              <span>Yes - per account</span>
+            </div>
+            <div class="metric">
+              <span>Supported brokers</span>
+              <span>MT4 / MT5</span>
+            </div>
+            <p class="muted">
+              Need a custom integration? We can connect to your existing license
+              server or dashboard.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="bots">
+        <div class="container">
+          <h2>Bot marketplace</h2>
+          <p class="section-intro">
+            Launch your automated strategies with clear licensing and simple
+            onboarding. Each bot plan includes version control, account limits, and
+            transparent reporting.
+          </p>
+          <div class="grid grid-3" style="margin-top: 26px;">
+            <div class="card">
+              <span class="pill">Flagship</span>
+              <h3>Trend Rider Pro</h3>
+              <p>Multi-timeframe trend bot with adaptive stops and news filters.</p>
+              <ul class="feature-list">
+                <li>Fixed risk per trade</li>
+                <li>Session filters and volatility guard</li>
+                <li>Daily summary and trade journal</li>
+              </ul>
+            </div>
+            <div class="card">
+              <span class="pill">Scalping</span>
+              <h3>Pulse Scalper</h3>
+              <p>Fast execution bot for liquid pairs with spread protection.</p>
+              <ul class="feature-list">
+                <li>Broker-aware spread checks</li>
+                <li>Loss cap and max trades per session</li>
+                <li>Auto pause during news events</li>
+              </ul>
+            </div>
+            <div class="card">
+              <span class="pill">Swing</span>
+              <h3>Atlas Swing</h3>
+              <p>Position trader built for weekly setups and stable drawdowns.</p>
+              <ul class="feature-list">
+                <li>Scaling entries with risk tiers</li>
+                <li>Hedging mode and trailing exits</li>
+                <li>Weekly performance insights</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="copy-trading">
+        <div class="container two-col">
+          <div>
+            <h2>Copy trading service</h2>
+            <p class="section-intro">
+              Let subscribers copy your live trades while you stay in control of
+              risk, max exposure, and drawdown limits. Provide a clear track record
+              with verified stats and onboarding support.
+            </p>
+            <div class="grid" style="margin-top: 18px;">
+              <div class="card">
+                <strong>Transparent performance</strong>
+                <p>Monthly reporting, equity curves, and trade audits for clients.</p>
+              </div>
+              <div class="card">
+                <strong>Risk guardrails</strong>
+                <p>Global drawdown caps, per-account limits, and auto stopouts.</p>
+              </div>
+              <div class="card">
+                <strong>Hands-off onboarding</strong>
+                <p>We guide users through broker setup, allocation, and sizing.</p>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Copy trading tiers</h3>
+            <p class="muted">
+              Choose a plan that fits your audience. Custom pricing available for
+              fund-sized accounts.
+            </p>
+            <div class="grid" style="margin-top: 16px;">
+              <div class="metric">
+                <span>Starter (1 strategy)</span>
+                <span>From $49/mo</span>
+              </div>
+              <div class="metric">
+                <span>Growth (multi-strategy)</span>
+                <span>From $99/mo</span>
+              </div>
+              <div class="metric">
+                <span>Pro (managed onboarding)</span>
+                <span>From $249/mo</span>
+              </div>
+            </div>
+            <a class="btn btn-primary" style="margin-top: 20px;" href="#contact">
+              Schedule onboarding
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section id="how">
+        <div class="container">
+          <h2>How it works</h2>
+          <p class="section-intro">
+            We keep your process clean and compliant with clear agreements and
+            automated license control.
+          </p>
+          <div class="grid grid-3 steps" style="margin-top: 24px;">
+            <div class="card">
+              <h3>1. Strategy intake</h3>
+              <p>We review your bot logic, risk rules, and preferred brokers.</p>
+            </div>
+            <div class="card">
+              <h3>2. Licensing setup</h3>
+              <p>Define account limits, trial periods, and subscription billing.</p>
+            </div>
+            <div class="card">
+              <h3>3. Launch and scale</h3>
+              <p>Onboard subscribers and copy-traders with clear performance data.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing">
+        <div class="container">
+          <h2>Bot licensing plans</h2>
+          <p class="section-intro">
+            Offer one-time or subscription licenses with flexible account limits.
+            All plans include license management and basic analytics.
+          </p>
+          <div class="grid grid-3" style="margin-top: 26px;">
+            <div class="card">
+              <h3>Starter</h3>
+              <p class="price">$79<span class="muted">/mo</span></p>
+              <ul class="feature-list">
+                <li>Up to 10 client accounts</li>
+                <li>1 bot strategy</li>
+                <li>Email support</li>
+              </ul>
+            </div>
+            <div class="card pricing-card">
+              <h3>Growth</h3>
+              <p class="price">$179<span class="muted">/mo</span></p>
+              <ul class="feature-list">
+                <li>Up to 50 client accounts</li>
+                <li>3 bot strategies</li>
+                <li>Copy trading dashboard</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Enterprise</h3>
+              <p class="price">Custom</p>
+              <ul class="feature-list">
+                <li>Unlimited accounts and bots</li>
+                <li>Dedicated onboarding manager</li>
+                <li>Custom compliance reporting</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container two-col">
+          <div>
+            <h2>Performance with accountability</h2>
+            <p class="section-intro">
+              We focus on controlled execution rather than hype. Share real results,
+              track risk, and keep clients informed with weekly reporting.
+            </p>
+            <ul class="feature-list" style="margin-top: 18px;">
+              <li>Equity curve reporting and trade logs</li>
+              <li>Drawdown alerts and auto pause triggers</li>
+              <li>Dedicated Telegram or email updates</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>What you get</h3>
+            <p class="muted">Everything needed to deliver a premium client experience.</p>
+            <ul class="feature-list">
+              <li>License gating for bot sales</li>
+              <li>Copy trading allocations and controls</li>
+              <li>Team dashboard with audit trail</li>
+              <li>Brand-ready client portal</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq">
+        <div class="container">
+          <h2>Frequently asked questions</h2>
+          <div class="grid" style="margin-top: 20px;">
+            <details>
+              <summary>Can I sell bots and copy trades together?</summary>
+              <p class="muted">
+                Yes. You can offer standalone bot licenses, a copy trading service,
+                or both. We keep each product separate with its own billing and
+                onboarding flow.
+              </p>
+            </details>
+            <details>
+              <summary>Do you help with broker setup?</summary>
+              <p class="muted">
+                We provide step-by-step broker onboarding, trade sizing guidance,
+                and risk configuration for each subscriber.
+              </p>
+            </details>
+            <details>
+              <summary>Can I manage who has access?</summary>
+              <p class="muted">
+                Yes. You control license duration, account limits, and broker
+                restrictions from a single dashboard.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="contact">
+        <div class="container">
+          <div class="cta">
+            <h2>Ready to launch your bot service?</h2>
+            <p class="section-intro">
+              Tell us about your strategy and we will map the fastest path to
+              selling bots and onboarding copy trading clients.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="mailto:hello@atlasbotlab.com">
+                Email sales
+              </a>
+              <a class="btn btn-outline" href="#pricing">Review pricing</a>
+            </div>
+            <p class="muted" style="margin-top: 14px;">
+              Response time: under 24 hours on business days.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>
+          Risk disclaimer: Trading involves risk and is not suitable for every
+          investor. Past performance is not indicative of future results. This
+          site is for informational purposes only and does not constitute financial
+          advice.
+        </p>
+        <p>Atlas Bot Lab. All rights reserved.</p>
+      </div>
+    </footer>
+  </body>
+</html>

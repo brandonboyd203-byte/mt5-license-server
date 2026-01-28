@@ -28,6 +28,11 @@ app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+// Serve marketing homepage
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 //+------------------------------------------------------------------+
 //| Load Licenses from File                                          |
 //+------------------------------------------------------------------+
