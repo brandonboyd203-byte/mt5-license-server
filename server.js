@@ -8,14 +8,27 @@ const cors = require('cors');
 const crypto = require('crypto');
 const fs = require('fs').promises;
 const https = require('https');
+const nodemailer = require('nodemailer');
 const path = require('path');
+const cron = require('node-cron');
 
 const app = express();
 // Railway sets PORT automatically - use it or default to 3001
 const PORT = process.env.PORT || 3001;
 const LICENSE_FILE = path.join(__dirname, 'licenses.json');
+const COPIER_SUBSCRIBERS_FILE = path.join(__dirname, 'copier_subscribers.json');
 const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
 const COINBASE_COMMERCE_API_KEY = process.env.COINBASE_COMMERCE_API_KEY || '';
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_SECURE = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : SMTP_PORT === 465;
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
+const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || 'GOLDMINE';
+const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
+const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
 // Middleware
 app.use(cors());
@@ -58,6 +71,30 @@ async function loadLicenses() {
 //+------------------------------------------------------------------+
 async function saveLicenses(licenses) {
     await fs.writeFile(LICENSE_FILE, JSON.stringify(licenses, null, 2), 'utf8');
+}
+
+//+------------------------------------------------------------------+
+//| Load Copier Subscribers                                           |
+//+------------------------------------------------------------------+
+async function loadCopierSubscribers() {
+    try {
+        const data = await fs.readFile(COPIER_SUBSCRIBERS_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        const defaultSubscribers = {
+            subscribers: [],
+            lastUpdated: new Date().toISOString()
+        };
+        await saveCopierSubscribers(defaultSubscribers);
+        return defaultSubscribers;
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Save Copier Subscribers                                           |
+//+------------------------------------------------------------------+
+async function saveCopierSubscribers(subscribers) {
+    await fs.writeFile(COPIER_SUBSCRIBERS_FILE, JSON.stringify(subscribers, null, 2), 'utf8');
 }
 
 //+------------------------------------------------------------------+
@@ -164,12 +201,14 @@ const CHECKOUT_PLANS = {
     copier_option_a: {
         name: 'Copier Option A',
         amount: 262,
-        description: 'Copier Option A (small accounts) - monthly'
+        description: 'Copier Option A (small accounts) - monthly',
+        recurring: true
     },
     copier_option_b: {
         name: 'Copier Option B',
         amount: 262,
-        description: 'Copier Option B (large accounts) - monthly'
+        description: 'Copier Option B (large accounts) - monthly',
+        recurring: true
     }
 };
 
@@ -212,6 +251,145 @@ function createCoinbaseCharge(chargeData) {
         request.write(payload);
         request.end();
     });
+}
+
+function getMailer() {
+    if (!SMTP_USER || !SMTP_PASS) {
+        return null;
+    }
+    return nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_SECURE,
+        auth: {
+            user: SMTP_USER,
+            pass: SMTP_PASS
+        }
+    });
+}
+
+function isSameUtcMonth(dateA, dateB) {
+    return (
+        dateA.getUTCFullYear() === dateB.getUTCFullYear() &&
+        dateA.getUTCMonth() === dateB.getUTCMonth()
+    );
+}
+
+async function sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId }) {
+    const mailer = getMailer();
+    if (!mailer) {
+        throw new Error('SMTP is not configured');
+    }
+
+    const invoiceMonth = new Date().toLocaleString('en-US', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC'
+    });
+    const amount = `$${planInfo.amount.toFixed(2)}`;
+
+    const subject = `GOLDMINE copier invoice - ${planInfo.name} (${invoiceMonth})`;
+    const text = [
+        `Hello ${subscriber.name || 'Trader'},`,
+        '',
+        `Your ${planInfo.name} subscription invoice is ready.`,
+        `Amount: ${amount} USD (paid in crypto via Coinbase Commerce).`,
+        '',
+        `Pay here: ${hostedUrl}`,
+        '',
+        'Notes:',
+        '- MT5-only copier service',
+        '- Returns are paid in USDT',
+        '- No guaranteed returns. Subscription refunded if service fails.',
+        '',
+        `Invoice ID: ${chargeId || 'n/a'}`,
+        '',
+        'Thank you,',
+        'GOLDMINE'
+    ].join('\n');
+
+    await mailer.sendMail({
+        from: SMTP_FROM ? `${SMTP_FROM_NAME} <${SMTP_FROM}>` : SMTP_FROM_NAME,
+        to: subscriber.email,
+        subject: subject,
+        text: text
+    });
+}
+
+async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) {
+    const subscribersData = await loadCopierSubscribers();
+    const subscribers = subscribersData.subscribers || [];
+    const now = new Date();
+    const results = [];
+
+    if (!COINBASE_COMMERCE_API_KEY) {
+        return { ok: false, error: 'Coinbase Commerce is not configured', results };
+    }
+
+    for (const subscriber of subscribers) {
+        if (subscriberId && subscriber.id !== subscriberId) {
+            continue;
+        }
+
+        if (subscriber.isActive === false) {
+            continue;
+        }
+
+        const planInfo = CHECKOUT_PLANS[subscriber.plan];
+        if (!planInfo || !planInfo.recurring) {
+            continue;
+        }
+
+        const lastInvoicedAt = subscriber.lastInvoicedAt ? new Date(subscriber.lastInvoicedAt) : null;
+        if (!force && lastInvoicedAt && isSameUtcMonth(lastInvoicedAt, now)) {
+            continue;
+        }
+
+        try {
+            const baseUrl = PUBLIC_BASE_URL || '';
+
+            const charge = await createCoinbaseCharge({
+                name: planInfo.name,
+                description: planInfo.description,
+                pricing_type: 'fixed_price',
+                local_price: { amount: planInfo.amount.toFixed(2), currency: 'USD' },
+                redirect_url: baseUrl ? `${baseUrl}/#checkout` : undefined,
+                cancel_url: baseUrl ? `${baseUrl}/#checkout` : undefined,
+                metadata: {
+                    subscriberId: subscriber.id,
+                    customerName: subscriber.name || '',
+                    customerEmail: subscriber.email || '',
+                    accountSize: subscriber.accountSize || '',
+                    contact: subscriber.contact || '',
+                    plan: subscriber.plan
+                }
+            });
+
+            const hostedUrl = charge?.data?.hosted_url;
+            const chargeId = charge?.data?.id;
+            if (!hostedUrl) {
+                throw new Error('Coinbase Commerce charge missing hosted URL');
+            }
+
+            await sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId });
+
+            subscriber.lastInvoicedAt = now.toISOString();
+            subscriber.lastChargeId = chargeId || null;
+            subscriber.lastInvoiceStatus = 'sent';
+            subscriber.lastInvoiceError = null;
+
+            results.push({ id: subscriber.id, status: 'sent' });
+        } catch (error) {
+            subscriber.lastInvoiceStatus = 'failed';
+            subscriber.lastInvoiceError = error.message;
+            results.push({ id: subscriber.id, status: 'failed', error: error.message });
+        }
+    }
+
+    subscribersData.lastUpdated = new Date().toISOString();
+    await saveCopierSubscribers(subscribersData);
+
+    return { ok: true, results };
 }
 
 //+------------------------------------------------------------------+
@@ -490,9 +668,149 @@ app.get('/admin/stats', async (req, res) => {
     }
 });
 
+// Copier subscribers (admin only - add authentication in production)
+app.get('/admin/copier-subscribers', async (req, res) => {
+    try {
+        const subscribers = await loadCopierSubscribers();
+        res.json(subscribers);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load copier subscribers' });
+    }
+});
+
+app.post('/admin/copier-subscribers', async (req, res) => {
+    try {
+        const { name, email, plan, accountSize, contact } = req.body;
+
+        if (!name || !email || !plan) {
+            return res.status(400).json({ error: 'name, email, and plan are required' });
+        }
+
+        const planInfo = CHECKOUT_PLANS[plan];
+        if (!planInfo || !planInfo.recurring) {
+            return res.status(400).json({ error: 'Invalid copier plan selection' });
+        }
+
+        const subscribers = await loadCopierSubscribers();
+        const exists = subscribers.subscribers.find(
+            (subscriber) => subscriber.email === email && subscriber.plan === plan && subscriber.isActive !== false
+        );
+        if (exists) {
+            return res.status(400).json({ error: 'Subscriber already exists for this plan' });
+        }
+
+        const newSubscriber = {
+            id: crypto.randomBytes(16).toString('hex'),
+            name: name,
+            email: email,
+            plan: plan,
+            accountSize: accountSize || '',
+            contact: contact || '',
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            lastInvoicedAt: null,
+            lastChargeId: null,
+            lastInvoiceStatus: null,
+            lastInvoiceError: null
+        };
+
+        subscribers.subscribers.push(newSubscriber);
+        subscribers.lastUpdated = new Date().toISOString();
+        await saveCopierSubscribers(subscribers);
+
+        res.json({ success: true, subscriber: newSubscriber });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to add copier subscriber' });
+    }
+});
+
+app.put('/admin/copier-subscribers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body || {};
+
+        if (updates.plan) {
+            const planInfo = CHECKOUT_PLANS[updates.plan];
+            if (!planInfo || !planInfo.recurring) {
+                return res.status(400).json({ error: 'Invalid copier plan selection' });
+            }
+        }
+
+        const subscribers = await loadCopierSubscribers();
+        const subscriberIndex = subscribers.subscribers.findIndex((subscriber) => subscriber.id === id);
+        if (subscriberIndex === -1) {
+            return res.status(404).json({ error: 'Subscriber not found' });
+        }
+
+        subscribers.subscribers[subscriberIndex] = {
+            ...subscribers.subscribers[subscriberIndex],
+            ...updates,
+            updatedAt: new Date().toISOString()
+        };
+        subscribers.lastUpdated = new Date().toISOString();
+        await saveCopierSubscribers(subscribers);
+
+        res.json({ success: true, subscriber: subscribers.subscribers[subscriberIndex] });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update copier subscriber' });
+    }
+});
+
+app.delete('/admin/copier-subscribers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const subscribers = await loadCopierSubscribers();
+        const subscriberIndex = subscribers.subscribers.findIndex((subscriber) => subscriber.id === id);
+        if (subscriberIndex === -1) {
+            return res.status(404).json({ error: 'Subscriber not found' });
+        }
+
+        subscribers.subscribers[subscriberIndex].isActive = false;
+        subscribers.subscribers[subscriberIndex].updatedAt = new Date().toISOString();
+        subscribers.lastUpdated = new Date().toISOString();
+        await saveCopierSubscribers(subscribers);
+
+        res.json({ success: true, message: 'Subscriber deactivated' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to deactivate subscriber' });
+    }
+});
+
+app.post('/admin/copier-subscribers/:id/invoice', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await runCopierInvoiceJob({ force: true, subscriberId: id });
+        const status = result.results.find((entry) => entry.id === id);
+        if (!status) {
+            return res.status(404).json({ error: 'Subscriber not found or not eligible' });
+        }
+        if (status.status === 'failed') {
+            return res.status(500).json({ error: status.error || 'Invoice failed' });
+        }
+        res.json({ success: true, status: status.status });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to send invoice' });
+    }
+});
+
 //+------------------------------------------------------------------+
 //| Start Server                                                      |
 //+------------------------------------------------------------------+
+if (INVOICE_CRON && INVOICE_CRON !== 'off') {
+    cron.schedule(
+        INVOICE_CRON,
+        () => {
+            runCopierInvoiceJob().catch((error) => {
+                console.error('Copier invoice job failed:', error.message);
+            });
+        },
+        { timezone: INVOICE_TIMEZONE }
+    );
+    console.log(`Copier invoice schedule enabled: ${INVOICE_CRON} (${INVOICE_TIMEZONE})`);
+} else {
+    console.log('Copier invoice schedule disabled.');
+}
+
 app.listen(PORT, () => {
     console.log(`========================================`);
     console.log(`License Server Running`);

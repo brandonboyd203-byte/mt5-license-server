@@ -1,4 +1,5 @@
 node_modules/
 licenses.json
+copier_subscribers.json
 .env
 *.log
