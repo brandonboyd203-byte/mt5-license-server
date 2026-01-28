@@ -175,7 +175,7 @@
                 const data = await response.json();
 
                 const list = document.getElementById('subscribersList');
-                list.innerHTML = '<table><tr><th>ID</th><th>Name</th><th>Email</th><th>Plan</th><th>Account</th><th>Status</th><th>Last Invoice</th><th>Actions</th></tr>';
+                list.innerHTML = '<table><tr><th>ID</th><th>Name</th><th>Email</th><th>Plan</th><th>Account</th><th>Status</th><th>Last Invoice</th><th>Invoice Status</th><th>Error</th><th>Actions</th></tr>';
 
                 data.subscribers.forEach(subscriber => {
                     const status = subscriber.isActive === false ? 'Inactive' : 'Active';
@@ -188,6 +188,10 @@
                         : subscriber.plan === 'copier_option_b'
                             ? 'Option B'
                             : subscriber.plan;
+                    const invoiceStatus = subscriber.lastInvoiceStatus || 'n/a';
+                    const invoiceError = subscriber.lastInvoiceError
+                        ? subscriber.lastInvoiceError.substring(0, 80)
+                        : '-';
 
                     list.innerHTML += `
                         <tr class="${rowClass}">
@@ -198,6 +202,8 @@
                             <td>${subscriber.accountSize || '-'}</td>
                             <td>${status}</td>
                             <td>${lastInvoice}</td>
+                            <td>${invoiceStatus}</td>
+                            <td title="${subscriber.lastInvoiceError || ''}">${invoiceError}</td>
                             <td>
                                 <button onclick="sendSubscriberInvoice('${subscriber.id}')">Send Invoice</button>
                                 <button onclick="deactivateSubscriber('${subscriber.id}')">Deactivate</button>

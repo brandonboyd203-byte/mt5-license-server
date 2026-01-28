@@ -390,6 +390,12 @@ async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) 
         } catch (error) {
             subscriber.lastInvoiceStatus = 'failed';
             subscriber.lastInvoiceError = error.message;
+            console.error('Copier invoice error:', {
+                subscriberId: subscriber.id,
+                email: subscriber.email,
+                plan: subscriber.plan,
+                error: error.message
+            });
             results.push({ id: subscriber.id, status: 'failed', error: error.message });
         }
     }
@@ -788,15 +794,21 @@ app.post('/admin/copier-subscribers/:id/invoice', async (req, res) => {
     try {
         const { id } = req.params;
         const result = await runCopierInvoiceJob({ force: true, subscriberId: id });
+        if (!result.ok) {
+            console.error('Copier invoice job failed:', result.error);
+            return res.status(500).json({ error: result.error || 'Invoice job failed' });
+        }
         const status = result.results.find((entry) => entry.id === id);
         if (!status) {
             return res.status(404).json({ error: 'Subscriber not found or not eligible' });
         }
         if (status.status === 'failed') {
+            console.error('Copier invoice failed for subscriber:', id, status.error);
             return res.status(500).json({ error: status.error || 'Invoice failed' });
         }
         res.json({ success: true, status: status.status });
     } catch (error) {
+        console.error('Copier invoice request error:', error.message);
         res.status(500).json({ error: 'Failed to send invoice' });
     }
 });
