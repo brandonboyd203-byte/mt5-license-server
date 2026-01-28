@@ -30,6 +30,14 @@ const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
+function normalizeBaseUrl(value) {
+    if (!value) return '';
+    const trimmed = String(value).trim();
+    if (!trimmed) return '';
+    const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    return withProtocol.replace(/\/+$/, '');
+}
+
 // Middleware
 app.use(cors());
 // Parse JSON - handle both with and without Content-Type header
@@ -346,7 +354,7 @@ async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) 
         }
 
         try {
-            const baseUrl = PUBLIC_BASE_URL || '';
+            const baseUrl = normalizeBaseUrl(PUBLIC_BASE_URL);
 
             const charge = await createCoinbaseCharge({
                 name: planInfo.name,
