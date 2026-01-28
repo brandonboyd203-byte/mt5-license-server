@@ -30,12 +30,28 @@ const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
+const EA_NAME_ALIASES = {
+    FXGOLDTRADERPLUGSMC: ['FXGOLDTRADERSMC'],
+    FXGOLDTRADERSMC: ['FXGOLDTRADERPLUGSMC']
+};
+
 function normalizeBaseUrl(value) {
     if (!value) return '';
     const trimmed = String(value).trim();
     if (!trimmed) return '';
     const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
     return withProtocol.replace(/\/+$/, '');
+}
+
+function getEaNameCandidates(eaName) {
+    const candidates = new Set();
+    if (!eaName) return [];
+    candidates.add(eaName);
+    const aliases = EA_NAME_ALIASES[eaName];
+    if (aliases) {
+        aliases.forEach((alias) => candidates.add(alias));
+    }
+    return Array.from(candidates);
 }
 
 // Middleware
@@ -119,11 +135,12 @@ function generateLicenseHash(accountNumber, broker, expiry) {
 async function validateLicense(accountNumber, broker, licenseKey, eaName) {
     const licenses = await loadLicenses();
     const accountStr = String(accountNumber);
+    const eaCandidates = getEaNameCandidates(eaName);
     
     // Find license for this account
     const license = licenses.licenses.find(l => 
         l.accountNumber === accountStr && 
-        l.eaName === eaName &&
+        eaCandidates.includes(l.eaName) &&
         l.isActive === true
     );
     
