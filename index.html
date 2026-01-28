@@ -470,18 +470,18 @@
           <div>
             <h2>Copier service (MT5 only)</h2>
             <p class="section-intro">
-              Let subscribers copy your live trades while you stay in control of
-              risk, max exposure, and drawdown limits. The copier service is
-              dedicated to MT5 accounts only.
+              Clients fund a crypto wallet and we load funds to a dedicated Exness
+              MT5 account created in their name. They receive investor access to
+              monitor performance in real time and returns are paid out in USDT.
             </p>
             <div class="grid" style="margin-top: 18px;">
               <div class="card">
-                <strong>MT5-only copier</strong>
-                <p>Built for MT5 accounts with gold-focused execution.</p>
+                <strong>Investor access</strong>
+                <p>Watch the Exness account live with read-only investor access.</p>
               </div>
               <div class="card">
-                <strong>Broker setup help</strong>
-                <p>We help clients with broker setup, sizing, and onboarding.</p>
+                <strong>Weekly payouts</strong>
+                <p>Returns are paid weekly via USDT.</p>
               </div>
               <div class="card">
                 <strong>Access control</strong>
@@ -490,35 +490,37 @@
             </div>
           </div>
           <div class="panel">
-            <h3>Copier service tiers</h3>
+            <h3>Copier options</h3>
             <p class="muted">
-              Two account sizes with a 200% gain minimum target or money-back
-              guarantee if the target is not met. Terms apply.
+              Monthly subscription is $262 (includes the $12 copier server fee).
+              Performance targets are not guaranteed. Subscription is refunded if
+              the service fails.
             </p>
             <div class="grid" style="margin-top: 16px;">
               <div class="card" style="background: #0f172a; border-color: #1e293b;">
-                <strong>Small accounts</strong>
-                <p class="muted">$250 to $4000 balance</p>
-                <p class="price">$250 <span class="muted">/ month</span></p>
+                <strong>Option A - Small accounts</strong>
+                <p class="muted">$500 to $4,999 balance</p>
+                <p class="price">$262 <span class="muted">/ month</span></p>
                 <ul class="feature-list">
-                  <li>MT5 copier access</li>
-                  <li>200% minimum gain target</li>
-                  <li>Money-back guarantee if target not met</li>
+                  <li>Profit split: 50% GOLDMINE / 50% client</li>
+                  <li>Up to 100% weekly average target</li>
+                  <li>Investor access to the Exness account</li>
                 </ul>
               </div>
               <div class="card" style="background: #0f172a; border-color: #1e293b;">
-                <strong>Large accounts</strong>
-                <p class="muted">$5000+ balance</p>
-                <p class="price">$500 <span class="muted">/ month</span></p>
+                <strong>Option B - Large accounts</strong>
+                <p class="muted">$5,000 to $20,000 balance</p>
+                <p class="price">$262 <span class="muted">/ month</span></p>
                 <ul class="feature-list">
-                  <li>MT5 copier access</li>
-                  <li>200% minimum gain target</li>
-                  <li>Money-back guarantee if target not met</li>
+                  <li>Profit split: 25% GOLDMINE / 75% client</li>
+                  <li>Up to 100% weekly average target</li>
+                  <li>Investor access to the Exness account</li>
                 </ul>
               </div>
             </div>
             <p class="muted" style="margin-top: 12px;">
-              Copier infrastructure fee: $12 USD per account / month.
+              No guarantee on returns or refunds. If the copier service fails,
+              the subscription fee is refunded.
             </p>
             <a class="btn btn-primary" style="margin-top: 20px;" href="#checkout">
               Start copier service
@@ -634,22 +636,9 @@
                   <option value="advanced_scalper_1">Advanced Scalper 1 - $2000</option>
                   <option value="advanced_scalper_2">Advanced Scalper 2.0 - $3000</option>
                   <option value="fxgoldtraderplugsmc">FXGOLDTRADERPLUGSMC - $5000</option>
-                  <option value="copier_small">Copier Small - $250/mo</option>
-                  <option value="copier_large">Copier Large - $500/mo</option>
-                  <option value="copier_server_fee">Copier Server Fee - $12/account</option>
+                  <option value="copier_option_a">Copier Option A - $262/mo</option>
+                  <option value="copier_option_b">Copier Option B - $262/mo</option>
                 </select>
-              </div>
-              <div>
-                <label for="checkoutCopierAccounts">Copier accounts (for $12 fee)</label>
-                <input
-                  id="checkoutCopierAccounts"
-                  name="copierAccounts"
-                  type="number"
-                  min="1"
-                  max="200"
-                  placeholder="Number of MT5 accounts"
-                  disabled
-                />
               </div>
               <div>
                 <label for="checkoutAccount">Account size (optional)</label>
@@ -776,20 +765,7 @@
     </footer>
     <script>
       const checkoutForm = document.getElementById("checkoutForm");
-      const checkoutPlan = document.getElementById("checkoutPlan");
-      const checkoutCopierAccounts = document.getElementById("checkoutCopierAccounts");
       const checkoutStatus = document.getElementById("checkoutStatus");
-
-      if (checkoutPlan && checkoutCopierAccounts) {
-        checkoutPlan.addEventListener("change", () => {
-          const needsAccounts = checkoutPlan.value === "copier_server_fee";
-          checkoutCopierAccounts.disabled = !needsAccounts;
-          checkoutCopierAccounts.required = needsAccounts;
-          if (!needsAccounts) {
-            checkoutCopierAccounts.value = "";
-          }
-        });
-      }
 
       if (checkoutForm) {
         checkoutForm.addEventListener("submit", async (event) => {
@@ -804,7 +780,6 @@
             plan: document.getElementById("checkoutPlan").value,
             accountSize: document.getElementById("checkoutAccount").value,
             contact: document.getElementById("checkoutContact").value,
-            copierAccounts: document.getElementById("checkoutCopierAccounts").value,
           };
 
           try {

@@ -161,21 +161,15 @@ const CHECKOUT_PLANS = {
         amount: 5000,
         description: 'Bot license - FXGOLDTRADERPLUGSMC'
     },
-    copier_small: {
-        name: 'Copier Small',
-        amount: 250,
-        description: 'Copier subscription (small accounts) - monthly'
+    copier_option_a: {
+        name: 'Copier Option A',
+        amount: 262,
+        description: 'Copier Option A (small accounts) - monthly'
     },
-    copier_large: {
-        name: 'Copier Large',
-        amount: 500,
-        description: 'Copier subscription (large accounts) - monthly'
-    },
-    copier_server_fee: {
-        name: 'Copier Server Fee',
-        amount: 12,
-        description: 'Copier server fee (per account) - monthly',
-        perAccount: true
+    copier_option_b: {
+        name: 'Copier Option B',
+        amount: 262,
+        description: 'Copier Option B (large accounts) - monthly'
     }
 };
 
@@ -251,7 +245,7 @@ app.post('/api/coinbase/charge', async (req, res) => {
             }
         }
 
-        const { name, email, plan, accountSize, contact, copierAccounts } = body || {};
+        const { name, email, plan, accountSize, contact } = body || {};
         if (!name || !email || !plan) {
             return res.status(400).json({ error: 'Name, email, and plan are required' });
         }
@@ -261,19 +255,8 @@ app.post('/api/coinbase/charge', async (req, res) => {
             return res.status(400).json({ error: 'Invalid plan selection' });
         }
 
-        let quantity = 1;
-        if (planInfo.perAccount) {
-            const parsedCount = Number(copierAccounts);
-            if (!Number.isInteger(parsedCount) || parsedCount < 1 || parsedCount > 200) {
-                return res.status(400).json({ error: 'Copier account count must be between 1 and 200' });
-            }
-            quantity = parsedCount;
-        }
-
-        const amount = (planInfo.amount * quantity).toFixed(2);
-        const description = planInfo.perAccount
-            ? `${planInfo.description} (${quantity} account${quantity === 1 ? '' : 's'})`
-            : planInfo.description;
+        const amount = planInfo.amount.toFixed(2);
+        const description = planInfo.description;
         const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
         const baseUrl = `${protocol}://${req.get('host')}`;
 
