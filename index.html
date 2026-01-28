@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Atlas Bot Lab | Bots + Copy Trading</title>
+    <title>GOLDMINE | Bots + Copy Trading</title>
     <style>
       :root {
         color-scheme: light;
@@ -14,6 +14,8 @@
         --muted: #9ca3af;
         --accent: #22c55e;
         --accent-dark: #16a34a;
+        --gold: #fbbf24;
+        --gold-dark: #d97706;
         --border: #1f2937;
         --shadow: 0 18px 45px rgba(6, 10, 24, 0.45);
         --radius: 18px;
@@ -98,9 +100,21 @@
       }
 
       .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
         font-weight: 700;
         font-size: 1.2rem;
         letter-spacing: 0.4px;
+      }
+
+      .logo-mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, var(--gold), var(--gold-dark));
+        box-shadow: 0 8px 18px rgba(251, 191, 36, 0.35);
+        border: 1px solid rgba(251, 191, 36, 0.4);
       }
 
       .nav-links {
@@ -307,7 +321,10 @@
     <header>
       <div class="container">
         <nav>
-          <div class="logo">Atlas Bot Lab</div>
+          <div class="logo">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>GOLDMINE</span>
+          </div>
           <div class="nav-links">
             <a href="#bots">Bots</a>
             <a href="#copy-trading">Copy Trading</a>
@@ -324,12 +341,13 @@
       <section class="hero">
         <div class="container hero-grid">
           <div>
-            <span class="badge">Bots + Copy Trading</span>
-            <h1>Automated trading systems built for disciplined execution.</h1>
+            <span class="badge">Gold Bots + Copy Trading</span>
+            <h1>Gold-focused trading systems built for disciplined execution.</h1>
             <p>
-              Sell your bots with confidence and offer investors a transparent copy
-              trading program. We provide risk controls, onboarding support, and
-              real-time monitoring so your strategy stays consistent across accounts.
+              Sell your XAUUSD and XAGUSD bots with confidence and offer investors
+              a transparent copy trading program. We provide risk controls,
+              onboarding support, and real-time monitoring so your strategy stays
+              consistent across accounts.
             </p>
             <div class="hero-actions">
               <a class="btn btn-primary" href="#pricing">View plans</a>
@@ -360,41 +378,41 @@
 
       <section id="bots">
         <div class="container">
-          <h2>Bot marketplace</h2>
+          <h2>Bot lineup</h2>
           <p class="section-intro">
-            Launch your automated strategies with clear licensing and simple
-            onboarding. Each bot plan includes version control, account limits, and
+            Launch your gold and silver strategies with clear licensing and simple
+            onboarding. Each bot includes account limits, risk controls, and
             transparent reporting.
           </p>
           <div class="grid grid-3" style="margin-top: 26px;">
             <div class="card">
-              <span class="pill">Flagship</span>
-              <h3>Trend Rider Pro</h3>
-              <p>Multi-timeframe trend bot with adaptive stops and news filters.</p>
+              <span class="pill">Smart Money Concepts</span>
+              <h3>FXGOLDTRADERSMC</h3>
+              <p>Order blocks, FVGs, and market structure for gold and silver.</p>
               <ul class="feature-list">
-                <li>Fixed risk per trade</li>
-                <li>Session filters and volatility guard</li>
-                <li>Daily summary and trade journal</li>
+                <li>Order block + FVG retest entries</li>
+                <li>Multi-timeframe bias (M5/M15/M30)</li>
+                <li>Partial take-profits + auto break-even</li>
               </ul>
             </div>
             <div class="card">
-              <span class="pill">Scalping</span>
-              <h3>Pulse Scalper</h3>
-              <p>Fast execution bot for liquid pairs with spread protection.</p>
+              <span class="pill">Aggressive Scalper</span>
+              <h3>Advanced Scalper 1</h3>
+              <p>Multi-confluence scalper with session sweeps and range logic.</p>
               <ul class="feature-list">
-                <li>Broker-aware spread checks</li>
-                <li>Loss cap and max trades per session</li>
-                <li>Auto pause during news events</li>
+                <li>Multi-timeframe OB and FVG detection</li>
+                <li>Session sweeps, retests, and daily levels</li>
+                <li>Confluence-based entries with risk caps</li>
               </ul>
             </div>
             <div class="card">
-              <span class="pill">Swing</span>
-              <h3>Atlas Swing</h3>
-              <p>Position trader built for weekly setups and stable drawdowns.</p>
+              <span class="pill">Breakout Scalper</span>
+              <h3>Advanced Scalper 2.0</h3>
+              <p>Channel breakouts with volume order blocks and engulfing filters.</p>
               <ul class="feature-list">
-                <li>Scaling entries with risk tiers</li>
-                <li>Hedging mode and trailing exits</li>
-                <li>Weekly performance insights</li>
+                <li>Breakout channel entries (volatility based)</li>
+                <li>Volume-filtered OB retests</li>
+                <li>Quick 15-30 pip targets with BE</li>
               </ul>
             </div>
           </div>
@@ -478,37 +496,37 @@
 
       <section id="pricing">
         <div class="container">
-          <h2>Bot licensing plans</h2>
+          <h2>Bot pricing</h2>
           <p class="section-intro">
-            Offer one-time or subscription licenses with flexible account limits.
-            All plans include license management and basic analytics.
+            One-time pricing per bot with license management and onboarding
+            support for gold and silver strategies.
           </p>
           <div class="grid grid-3" style="margin-top: 26px;">
             <div class="card">
-              <h3>Starter</h3>
-              <p class="price">$79<span class="muted">/mo</span></p>
+              <h3>Advanced Scalper 1</h3>
+              <p class="price">$2000</p>
               <ul class="feature-list">
-                <li>Up to 10 client accounts</li>
-                <li>1 bot strategy</li>
-                <li>Email support</li>
+                <li>Multi-confluence scalper for XAUUSD/XAGUSD</li>
+                <li>Session sweep and range logic</li>
+                <li>Risk caps and partial exits</li>
               </ul>
             </div>
             <div class="card pricing-card">
-              <h3>Growth</h3>
-              <p class="price">$179<span class="muted">/mo</span></p>
+              <h3>Advanced Scalper 2.0</h3>
+              <p class="price">$3000</p>
               <ul class="feature-list">
-                <li>Up to 50 client accounts</li>
-                <li>3 bot strategies</li>
-                <li>Copy trading dashboard</li>
+                <li>Breakout channel + volume OB strategy</li>
+                <li>Quick 15-30 pip targets</li>
+                <li>Auto break-even and runners</li>
               </ul>
             </div>
             <div class="card">
-              <h3>Enterprise</h3>
-              <p class="price">Custom</p>
+              <h3>FXGOLDTRADERPLUGSMC</h3>
+              <p class="price">$4000</p>
               <ul class="feature-list">
-                <li>Unlimited accounts and bots</li>
-                <li>Dedicated onboarding manager</li>
-                <li>Custom compliance reporting</li>
+                <li>Smart Money Concepts order blocks + FVGs</li>
+                <li>License name: FXGOLDTRADERSMC</li>
+                <li>Multi-timeframe swing entries</li>
               </ul>
             </div>
           </div>
@@ -581,10 +599,29 @@
               selling bots and onboarding copy trading clients.
             </p>
             <div class="hero-actions">
-              <a class="btn btn-primary" href="mailto:hello@atlasbotlab.com">
-                Email sales
+              <a class="btn btn-primary" href="mailto:fxgoldtraderplug@gmail.com">
+                Email GOLDMINE
               </a>
               <a class="btn btn-outline" href="#pricing">Review pricing</a>
+            </div>
+            <div class="grid" style="margin-top: 18px;">
+              <div class="card" style="padding: 16px;">
+                <strong>Contact</strong>
+                <p class="muted" style="margin: 6px 0 0;">
+                  Email:
+                  <a href="mailto:fxgoldtraderplug@gmail.com">fxgoldtraderplug@gmail.com</a>
+                </p>
+                <p class="muted" style="margin: 6px 0 0;">
+                  Phone / WhatsApp:
+                  <a href="tel:+61411094731">+61 411 094 731</a>
+                </p>
+                <p class="muted" style="margin: 6px 0 0;">
+                  Telegram:
+                  <a href="https://t.me/goldtraderplug" target="_blank" rel="noreferrer">
+                    @GOLDTRADERPLUG
+                  </a>
+                </p>
+              </div>
             </div>
             <p class="muted" style="margin-top: 14px;">
               Response time: under 24 hours on business days.
@@ -602,7 +639,7 @@
           site is for informational purposes only and does not constitute financial
           advice.
         </p>
-        <p>Atlas Bot Lab. All rights reserved.</p>
+        <p>GOLDMINE. All rights reserved.</p>
       </div>
     </footer>
   </body>
