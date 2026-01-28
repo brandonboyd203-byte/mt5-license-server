@@ -607,8 +607,8 @@
           <div>
             <h2>Crypto checkout</h2>
             <p class="section-intro">
-              Complete your order with a crypto invoice. We will confirm your
-              plan, send the wallet address, and activate your MT5 access.
+              Pay securely with Coinbase Commerce. We only accept crypto for bot
+              licenses and copier subscriptions.
             </p>
             <ul class="feature-list" style="margin-top: 18px;">
               <li>Crypto payments only (USDT, BTC, ETH)</li>
@@ -617,7 +617,7 @@
             </ul>
           </div>
           <div class="card">
-            <h3>Request a crypto invoice</h3>
+            <h3>Pay with Coinbase Commerce</h3>
             <form id="checkoutForm" class="form-grid">
               <div>
                 <label for="checkoutName">Full name</label>
@@ -631,13 +631,25 @@
                 <label for="checkoutPlan">Choose a plan</label>
                 <select id="checkoutPlan" name="plan" required>
                   <option value="">Select one</option>
-                  <option value="Advanced Scalper 1 - $2000">Advanced Scalper 1 - $2000</option>
-                  <option value="Advanced Scalper 2.0 - $3000">Advanced Scalper 2.0 - $3000</option>
-                  <option value="FXGOLDTRADERPLUGSMC - $5000">FXGOLDTRADERPLUGSMC - $5000</option>
-                  <option value="Copier Small - $250/mo">Copier Small - $250/mo</option>
-                  <option value="Copier Large - $500/mo">Copier Large - $500/mo</option>
-                  <option value="Copier Server Fee - $12/account">Copier Server Fee - $12/account</option>
+                  <option value="advanced_scalper_1">Advanced Scalper 1 - $2000</option>
+                  <option value="advanced_scalper_2">Advanced Scalper 2.0 - $3000</option>
+                  <option value="fxgoldtraderplugsmc">FXGOLDTRADERPLUGSMC - $5000</option>
+                  <option value="copier_small">Copier Small - $250/mo</option>
+                  <option value="copier_large">Copier Large - $500/mo</option>
+                  <option value="copier_server_fee">Copier Server Fee - $12/account</option>
                 </select>
+              </div>
+              <div>
+                <label for="checkoutCopierAccounts">Copier accounts (for $12 fee)</label>
+                <input
+                  id="checkoutCopierAccounts"
+                  name="copierAccounts"
+                  type="number"
+                  min="1"
+                  max="200"
+                  placeholder="Number of MT5 accounts"
+                  disabled
+                />
               </div>
               <div>
                 <label for="checkoutAccount">Account size (optional)</label>
@@ -647,16 +659,10 @@
                 <label for="checkoutContact">Telegram or WhatsApp</label>
                 <input id="checkoutContact" name="contact" type="text" placeholder="@goldtraderplug or +61..." />
               </div>
-              <div>
-                <label for="checkoutPayment">Payment method</label>
-                <select id="checkoutPayment" name="payment" required>
-                  <option value="Crypto (USDT/BTC/ETH)">Crypto (USDT/BTC/ETH)</option>
-                </select>
-              </div>
-              <button class="btn btn-primary" type="submit">Request crypto invoice</button>
+              <button class="btn btn-primary" type="submit">Continue to crypto payment</button>
             </form>
-            <p class="muted" style="margin-top: 12px;">
-              We respond within 24 hours with your invoice and wallet address.
+            <p class="muted" id="checkoutStatus" style="margin-top: 12px;">
+              You will be redirected to Coinbase Commerce to complete payment.
             </p>
           </div>
         </div>
@@ -770,21 +776,56 @@
     </footer>
     <script>
       const checkoutForm = document.getElementById("checkoutForm");
+      const checkoutPlan = document.getElementById("checkoutPlan");
+      const checkoutCopierAccounts = document.getElementById("checkoutCopierAccounts");
+      const checkoutStatus = document.getElementById("checkoutStatus");
+
+      if (checkoutPlan && checkoutCopierAccounts) {
+        checkoutPlan.addEventListener("change", () => {
+          const needsAccounts = checkoutPlan.value === "copier_server_fee";
+          checkoutCopierAccounts.disabled = !needsAccounts;
+          checkoutCopierAccounts.required = needsAccounts;
+          if (!needsAccounts) {
+            checkoutCopierAccounts.value = "";
+          }
+        });
+      }
+
       if (checkoutForm) {
-        checkoutForm.addEventListener("submit", (event) => {
+        checkoutForm.addEventListener("submit", async (event) => {
           event.preventDefault();
-          const formData = new FormData(checkoutForm);
-          const details = [
-            `Name: ${formData.get("name")}`,
-            `Email: ${formData.get("email")}`,
-            `Plan: ${formData.get("plan")}`,
-            `Account size: ${formData.get("account") || "n/a"}`,
-            `Contact: ${formData.get("contact") || "n/a"}`,
-            `Payment: ${formData.get("payment")}`,
-          ].join("\n");
-          const subject = encodeURIComponent("GOLDMINE crypto checkout request");
-          const body = encodeURIComponent(details);
-          window.location.href = `mailto:fxgoldtraderplug@gmail.com?subject=${subject}&body=${body}`;
+          if (checkoutStatus) {
+            checkoutStatus.textContent = "Creating your Coinbase Commerce invoice...";
+          }
+
+          const payload = {
+            name: document.getElementById("checkoutName").value,
+            email: document.getElementById("checkoutEmail").value,
+            plan: document.getElementById("checkoutPlan").value,
+            accountSize: document.getElementById("checkoutAccount").value,
+            contact: document.getElementById("checkoutContact").value,
+            copierAccounts: document.getElementById("checkoutCopierAccounts").value,
+          };
+
+          try {
+            const response = await fetch("/api/coinbase/charge", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.hostedUrl) {
+              throw new Error(result.error || "Unable to create a charge.");
+            }
+
+            window.location.href = result.hostedUrl;
+          } catch (error) {
+            if (checkoutStatus) {
+              checkoutStatus.textContent =
+                "Checkout is unavailable right now. Email fxgoldtraderplug@gmail.com for a manual invoice.";
+            }
+          }
         });
       }
     </script>

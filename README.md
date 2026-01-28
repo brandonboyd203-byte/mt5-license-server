@@ -7,8 +7,9 @@ Remote license validation server for BigBeluga and Advanced Scalper EAs.
 1. Push this repo to GitHub
 2. Connect to Railway
 3. Set `SECRET_KEY` environment variable
-4. Get your server URL
-5. Update EAs with the URL
+4. (Optional) Set `COINBASE_COMMERCE_API_KEY` for crypto checkout
+5. Get your server URL
+6. Update EAs with the URL
 
 See `DEPLOY_TO_RAILWAY.md` for detailed instructions.
 
@@ -28,6 +29,7 @@ See `DEPLOY_TO_RAILWAY.md` for detailed instructions.
 - `POST /admin/licenses` - Add new license
 - `DELETE /admin/licenses/:id` - Deactivate license
 - `GET /admin/stats` - Get statistics
+- `POST /api/coinbase/charge` - Create Coinbase Commerce checkout
 
 ## License
 

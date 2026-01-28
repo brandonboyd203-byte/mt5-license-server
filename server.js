@@ -7,6 +7,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const fs = require('fs').promises;
+const https = require('https');
 const path = require('path');
 
 const app = express();
@@ -14,6 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const LICENSE_FILE = path.join(__dirname, 'licenses.json');
 const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
+const COINBASE_COMMERCE_API_KEY = process.env.COINBASE_COMMERCE_API_KEY || '';
 
 // Middleware
 app.use(cors());
@@ -141,12 +143,164 @@ async function validateLicense(accountNumber, broker, licenseKey, eaName) {
 }
 
 //+------------------------------------------------------------------+
+//| Coinbase Commerce Checkout                                       |
+//+------------------------------------------------------------------+
+const CHECKOUT_PLANS = {
+    advanced_scalper_1: {
+        name: 'Advanced Scalper 1',
+        amount: 2000,
+        description: 'Bot license - Advanced Scalper 1'
+    },
+    advanced_scalper_2: {
+        name: 'Advanced Scalper 2.0',
+        amount: 3000,
+        description: 'Bot license - Advanced Scalper 2.0'
+    },
+    fxgoldtraderplugsmc: {
+        name: 'FXGOLDTRADERPLUGSMC',
+        amount: 5000,
+        description: 'Bot license - FXGOLDTRADERPLUGSMC'
+    },
+    copier_small: {
+        name: 'Copier Small',
+        amount: 250,
+        description: 'Copier subscription (small accounts) - monthly'
+    },
+    copier_large: {
+        name: 'Copier Large',
+        amount: 500,
+        description: 'Copier subscription (large accounts) - monthly'
+    },
+    copier_server_fee: {
+        name: 'Copier Server Fee',
+        amount: 12,
+        description: 'Copier server fee (per account) - monthly',
+        perAccount: true
+    }
+};
+
+function createCoinbaseCharge(chargeData) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify(chargeData);
+        const request = https.request(
+            {
+                hostname: 'api.commerce.coinbase.com',
+                path: '/charges',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(payload),
+                    'X-CC-Api-Key': COINBASE_COMMERCE_API_KEY,
+                    'X-CC-Version': '2018-03-22'
+                }
+            },
+            (response) => {
+                let body = '';
+                response.on('data', (chunk) => {
+                    body += chunk;
+                });
+                response.on('end', () => {
+                    let parsed;
+                    try {
+                        parsed = JSON.parse(body);
+                    } catch (error) {
+                        return reject(new Error('Invalid response from Coinbase Commerce'));
+                    }
+                    if (response.statusCode < 200 || response.statusCode >= 300) {
+                        return reject(new Error(parsed.error?.message || 'Coinbase Commerce error'));
+                    }
+                    resolve(parsed);
+                });
+            }
+        );
+
+        request.on('error', reject);
+        request.write(payload);
+        request.end();
+    });
+}
+
+//+------------------------------------------------------------------+
 //| API Endpoints                                                     |
 //+------------------------------------------------------------------+
 
 // Health check
 app.get('/health', (req, res) => {
     res.json({ status: 'online', timestamp: new Date().toISOString() });
+});
+
+// Create Coinbase Commerce checkout
+app.post('/api/coinbase/charge', async (req, res) => {
+    try {
+        if (!COINBASE_COMMERCE_API_KEY) {
+            return res.status(503).json({ error: 'Coinbase Commerce is not configured' });
+        }
+
+        let body = req.body;
+        if (Buffer.isBuffer(body)) {
+            try {
+                body = JSON.parse(body.toString('utf8'));
+            } catch (error) {
+                return res.status(400).json({ error: 'Invalid JSON payload' });
+            }
+        } else if (typeof body === 'string') {
+            try {
+                body = JSON.parse(body);
+            } catch (error) {
+                // Leave as-is if already parsed
+            }
+        }
+
+        const { name, email, plan, accountSize, contact, copierAccounts } = body || {};
+        if (!name || !email || !plan) {
+            return res.status(400).json({ error: 'Name, email, and plan are required' });
+        }
+
+        const planInfo = CHECKOUT_PLANS[plan];
+        if (!planInfo) {
+            return res.status(400).json({ error: 'Invalid plan selection' });
+        }
+
+        let quantity = 1;
+        if (planInfo.perAccount) {
+            const parsedCount = Number(copierAccounts);
+            if (!Number.isInteger(parsedCount) || parsedCount < 1 || parsedCount > 200) {
+                return res.status(400).json({ error: 'Copier account count must be between 1 and 200' });
+            }
+            quantity = parsedCount;
+        }
+
+        const amount = (planInfo.amount * quantity).toFixed(2);
+        const description = planInfo.perAccount
+            ? `${planInfo.description} (${quantity} account${quantity === 1 ? '' : 's'})`
+            : planInfo.description;
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+        const baseUrl = `${protocol}://${req.get('host')}`;
+
+        const charge = await createCoinbaseCharge({
+            name: planInfo.name,
+            description: description,
+            pricing_type: 'fixed_price',
+            local_price: { amount, currency: 'USD' },
+            redirect_url: `${baseUrl}/#checkout`,
+            cancel_url: `${baseUrl}/#checkout`,
+            metadata: {
+                customerName: name,
+                customerEmail: email,
+                accountSize: accountSize || '',
+                contact: contact || '',
+                plan: plan
+            }
+        });
+
+        res.json({
+            hostedUrl: charge?.data?.hosted_url,
+            chargeId: charge?.data?.id
+        });
+    } catch (error) {
+        console.error('Coinbase checkout error:', error.message);
+        res.status(500).json({ error: 'Failed to create Coinbase checkout' });
+    }
 });
 
 // Validate license
