@@ -233,7 +233,8 @@ function createCoinbaseCharge(chargeData) {
                     'Content-Length': Buffer.byteLength(payload),
                     'X-CC-Api-Key': COINBASE_COMMERCE_API_KEY,
                     'X-CC-Version': '2018-03-22'
-                }
+                },
+                timeout: 15000
             },
             (response) => {
                 let body = '';
@@ -255,6 +256,9 @@ function createCoinbaseCharge(chargeData) {
             }
         );
 
+        request.on('timeout', () => {
+            request.destroy(new Error('Coinbase Commerce request timed out'));
+        });
         request.on('error', reject);
         request.write(payload);
         request.end();
@@ -269,6 +273,9 @@ function getMailer() {
         host: SMTP_HOST,
         port: SMTP_PORT,
         secure: SMTP_SECURE,
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 15000,
         auth: {
             user: SMTP_USER,
             pass: SMTP_PASS
@@ -355,6 +362,11 @@ async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) 
 
         try {
             const baseUrl = normalizeBaseUrl(PUBLIC_BASE_URL);
+            console.log('Copier invoice started:', {
+                subscriberId: subscriber.id,
+                email: subscriber.email,
+                plan: subscriber.plan
+            });
 
             const charge = await createCoinbaseCharge({
                 name: planInfo.name,
@@ -380,6 +392,11 @@ async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) 
             }
 
             await sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId });
+            console.log('Copier invoice sent:', {
+                subscriberId: subscriber.id,
+                email: subscriber.email,
+                chargeId: chargeId
+            });
 
             subscriber.lastInvoicedAt = now.toISOString();
             subscriber.lastChargeId = chargeId || null;
