@@ -30,10 +30,27 @@ const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
-const EA_NAME_ALIASES = {
-    FXGOLDTRADERPLUGSMC: ['FXGOLDTRADERSMC'],
-    FXGOLDTRADERSMC: ['FXGOLDTRADERPLUGSMC']
-};
+const EA_NAME_GROUPS = [
+    ['FXGOLDTRADERSMC', 'FXGOLDTRADERPLUGSMC', 'BigBeluga'],
+    ['AdvancedScalper', 'Advanced Scalper', 'Advanced_Scalper'],
+    [
+        'AdvancedScalper2',
+        'AdvancedScalper2.0',
+        'Advanced Scalper 2',
+        'Advanced Scalper 2.0',
+        'Advanced_Scalper_2',
+        'Gold Scalper',
+        'GoldScalper',
+        'Gold_Scalper'
+    ]
+];
+
+function normalizeEaName(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_-]+/g, '');
+}
 
 function normalizeBaseUrl(value) {
     if (!value) return '';
@@ -46,11 +63,14 @@ function normalizeBaseUrl(value) {
 function getEaNameCandidates(eaName) {
     const candidates = new Set();
     if (!eaName) return [];
+    const normalized = normalizeEaName(eaName);
+    EA_NAME_GROUPS.forEach((group) => {
+        const hasMatch = group.some((name) => normalizeEaName(name) === normalized);
+        if (hasMatch) {
+            group.forEach((name) => candidates.add(name));
+        }
+    });
     candidates.add(eaName);
-    const aliases = EA_NAME_ALIASES[eaName];
-    if (aliases) {
-        aliases.forEach((alias) => candidates.add(alias));
-    }
     return Array.from(candidates);
 }
 
