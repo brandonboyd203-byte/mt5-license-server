@@ -76,6 +76,7 @@ function getEaNameCandidates(eaName) {
 
 // Middleware
 app.use(cors());
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 // Parse JSON - handle both with and without Content-Type header
 app.use(express.json({ 
     type: ['application/json', 'text/plain', 'text/json', '*/*'],
@@ -90,6 +91,11 @@ app.get('/admin.html', (req, res) => {
 // Serve marketing homepage
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Serve setup guide
+app.get('/setup', (req, res) => {
+    res.sendFile(path.join(__dirname, 'setup.html'));
 });
 
 //+------------------------------------------------------------------+

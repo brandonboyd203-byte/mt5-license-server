@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520">
+  <rect width="900" height="520" fill="#0f172a" />
+  <rect x="40" y="40" width="820" height="440" rx="18" fill="#111827" stroke="#1f2937" stroke-width="2" />
+  <text x="450" y="150" fill="#e5e7eb" font-size="32" font-family="Arial" text-anchor="middle">
+    Windows Step 4
+  </text>
+  <text x="450" y="210" fill="#9ca3af" font-size="22" font-family="Arial" text-anchor="middle">
+    Replace with screenshot: drag EA onto chart
+  </text>
+  <text x="450" y="300" fill="#22c55e" font-size="18" font-family="Arial" text-anchor="middle">
+    Tip: show Navigator and XAUUSD chart
+  </text>
+</svg>

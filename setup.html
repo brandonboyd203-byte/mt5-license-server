@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GOLDMINE Setup Guide | MT5 Bots</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0b0f1a;
+        --panel: #111827;
+        --card: #151f32;
+        --ink: #e5e7eb;
+        --muted: #9ca3af;
+        --accent: #22c55e;
+        --gold: #fbbf24;
+        --gold-dark: #d97706;
+        --border: #1f2937;
+        --shadow: 0 18px 45px rgba(6, 10, 24, 0.45);
+        --radius: 18px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        line-height: 1.6;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .container {
+        width: min(1120px, 92%);
+        margin: 0 auto;
+      }
+
+      header {
+        padding: 28px 0 12px;
+      }
+
+      nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 1.2rem;
+        letter-spacing: 0.4px;
+      }
+
+      .logo-mark {
+        position: relative;
+        width: 34px;
+        height: 24px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+        box-shadow: 0 10px 20px rgba(251, 191, 36, 0.25);
+        border: 1px solid rgba(251, 191, 36, 0.45);
+        overflow: hidden;
+      }
+
+      .logo-mark::before,
+      .logo-mark::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        border-radius: 4px;
+      }
+
+      .logo-mark::before {
+        top: 4px;
+        height: 8px;
+        background: linear-gradient(135deg, #fde68a, var(--gold));
+        opacity: 0.95;
+      }
+
+      .logo-mark::after {
+        bottom: 4px;
+        height: 6px;
+        background: rgba(12, 18, 30, 0.2);
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 22px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 22px;
+        border-radius: 999px;
+        font-weight: 600;
+        border: 1px solid transparent;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #0b0f1a;
+        box-shadow: 0 12px 30px rgba(34, 197, 94, 0.3);
+      }
+
+      .btn-outline {
+        border-color: rgba(229, 231, 235, 0.35);
+        color: var(--ink);
+      }
+
+      .hero {
+        padding: 80px 0 40px;
+        background: radial-gradient(circle at top, rgba(34, 197, 94, 0.15), transparent 55%);
+      }
+
+      h1 {
+        font-size: clamp(2.4rem, 3.6vw, 3.2rem);
+        line-height: 1.1;
+        margin: 18px 0;
+      }
+
+      h2 {
+        font-size: clamp(1.8rem, 2.6vw, 2.4rem);
+        margin: 0 0 16px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      section {
+        padding: 60px 0;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 26px;
+        box-shadow: var(--shadow);
+      }
+
+      .grid {
+        display: grid;
+        gap: 20px;
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+
+      .step-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .step-card img {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #0f172a;
+      }
+
+      .step-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .checklist {
+        padding: 0;
+        margin: 0;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+        color: var(--muted);
+      }
+
+      .checklist li::before {
+        content: "+";
+        color: var(--accent);
+        margin-right: 8px;
+      }
+
+      footer {
+        padding: 40px 0 60px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 900px) {
+        .nav-links {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <nav>
+          <div class="logo">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>GOLDMINE</span>
+          </div>
+          <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/setup">Setup Guide</a>
+            <a href="/#pricing">Pricing</a>
+            <a href="/#contact">Contact</a>
+          </div>
+          <a class="btn btn-outline" href="/">Back to home</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container">
+          <span class="step-badge">MT5 only</span>
+          <h1>GOLDMINE bot setup guide</h1>
+          <p class="muted" style="max-width: 720px;">
+            Follow this step-by-step walkthrough to install your bot on Windows
+            or Mac, connect the license server, and start trading. Each step
+            includes a photo placeholder so you can see exactly where to drag
+            and drop files.
+          </p>
+          <div style="margin-top: 20px;">
+            <a class="btn btn-primary" href="#windows">Windows setup</a>
+            <a class="btn btn-outline" href="#mac" style="margin-left: 10px;">Mac setup</a>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <div class="panel">
+            <h2>Before you start</h2>
+            <ul class="checklist">
+              <li>MT5 installed and logged in to your broker account.</li>
+              <li>EA file ready (.ex5 or .mq5).</li>
+              <li>License active for your account number.</li>
+              <li>WebRequest enabled for the license server URL.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="windows">
+        <div class="container">
+          <h2>Windows setup</h2>
+          <div class="grid grid-3" style="margin-top: 20px;">
+            <div class="step-card">
+              <span class="step-badge">Step 1</span>
+              <img src="/assets/setup/windows-01-download.svg" alt="Download MT5 on Windows" />
+              <strong>Install MT5</strong>
+              <p class="muted">Download MT5 and log in to your broker account.</p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 2</span>
+              <img src="/assets/setup/windows-02-data-folder.svg" alt="Open MT5 data folder on Windows" />
+              <strong>Open the data folder</strong>
+              <p class="muted">In MT5 go to File > Open Data Folder.</p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 3</span>
+              <img src="/assets/setup/windows-03-copy-ea.svg" alt="Copy EA into MQL5 Experts folder on Windows" />
+              <strong>Copy the EA file</strong>
+              <p class="muted">Paste the .ex5 into MQL5 > Experts.</p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 4</span>
+              <img src="/assets/setup/windows-04-attach-ea.svg" alt="Drag the EA onto a chart on Windows" />
+              <strong>Attach to chart</strong>
+              <p class="muted">Restart MT5, then drag the EA onto XAUUSD.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="mac">
+        <div class="container">
+          <h2>Mac setup</h2>
+          <p class="muted">
+            If you use a Windows VPS, follow the Windows steps. For native Mac
+            installs, use File > Open Data Folder in MT5 to locate MQL5 > Experts.
+          </p>
+          <div class="grid grid-3" style="margin-top: 20px;">
+            <div class="step-card">
+              <span class="step-badge">Step 1</span>
+              <img src="/assets/setup/mac-01-install.svg" alt="Install MT5 on Mac" />
+              <strong>Install MT5</strong>
+              <p class="muted">Install MT5 for Mac and sign in to your account.</p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 2</span>
+              <img src="/assets/setup/mac-02-data-folder.svg" alt="Open MT5 data folder on Mac" />
+              <strong>Open the data folder</strong>
+              <p class="muted">Use File > Open Data Folder in MT5.</p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 3</span>
+              <img src="/assets/setup/mac-03-copy-ea.svg" alt="Copy EA into MQL5 Experts folder on Mac" />
+              <strong>Copy the EA file</strong>
+              <p class="muted">Paste the .ex5 into MQL5 > Experts.</p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 4</span>
+              <img src="/assets/setup/mac-04-attach-ea.svg" alt="Drag the EA onto a chart on Mac" />
+              <strong>Attach to chart</strong>
+              <p class="muted">Restart MT5, then drag the EA onto XAUUSD.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <h2>Common steps (all users)</h2>
+          <div class="grid grid-3" style="margin-top: 20px;">
+            <div class="step-card">
+              <span class="step-badge">Step 5</span>
+              <img src="/assets/setup/common-01-webrequest.svg" alt="Allow WebRequest URL in MT5" />
+              <strong>Allow WebRequest</strong>
+              <p class="muted">
+                Tools > Options > Expert Advisors > Allow WebRequest. Add your license
+                server URL.
+              </p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 6</span>
+              <img src="/assets/setup/common-02-autotrading.svg" alt="Enable AutoTrading in MT5" />
+              <strong>Enable AutoTrading</strong>
+              <p class="muted">Click the AutoTrading button so it turns green.</p>
+            </div>
+            <div class="step-card">
+              <span class="step-badge">Step 7</span>
+              <img src="/assets/setup/common-03-license.svg" alt="Confirm license is valid" />
+              <strong>Confirm license</strong>
+              <p class="muted">Check the Experts tab for "License valid".</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <h2>Troubleshooting</h2>
+          <div class="panel">
+            <ul class="checklist">
+              <li>"Account not licensed" means your account number or EA name does not match.</li>
+              <li>"WebRequest not allowed" means the server URL is not added in Options.</li>
+              <li>EA not visible? Restart MT5 after copying files into MQL5 > Experts.</li>
+              <li>No trades? Make sure AutoTrading is enabled and the chart is correct.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <div class="panel">
+            <h2>Need help?</h2>
+            <p class="muted">
+              If you get stuck, contact us and we will guide you through setup.
+            </p>
+            <a class="btn btn-primary" href="mailto:fxgoldtraderplug@gmail.com">Email GOLDMINE</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>
+          Risk disclaimer: Trading involves risk and is not suitable for every
+          investor. Past performance is not indicative of future results.
+        </p>
+        <p>GOLDMINE. All rights reserved.</p>
+      </div>
+    </footer>
+  </body>
+</html>
