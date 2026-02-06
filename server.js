@@ -123,6 +123,48 @@ async function saveLicenses(licenses) {
     await fs.writeFile(LICENSE_FILE, JSON.stringify(licenses, null, 2), 'utf8');
 }
 
+function normalizeAllowedBrokers(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+        return value.map((broker) => String(broker).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+        return value
+            .split(',')
+            .map((broker) => broker.trim())
+            .filter(Boolean);
+    }
+    return [];
+}
+
+function buildLicenseEntry(input) {
+    const accountNumber = String(input.accountNumber || '').trim();
+    const userName = String(input.userName || 'Unknown').trim();
+    const eaName = String(input.eaName || '').trim();
+    const expiryDate = input.expiryDate ? String(input.expiryDate).trim() : null;
+    const allowedBrokers = normalizeAllowedBrokers(input.allowedBrokers);
+    const licenseKey = input.licenseKey ? String(input.licenseKey).trim() : '';
+
+    if (!accountNumber || !eaName) {
+        return { error: 'accountNumber and eaName are required' };
+    }
+
+    return {
+        entry: {
+            id: crypto.randomBytes(16).toString('hex'),
+            accountNumber: accountNumber,
+            userName: userName || 'Unknown',
+            eaName: eaName,
+            expiryDate: expiryDate || null,
+            allowedBrokers: allowedBrokers,
+            licenseKey: licenseKey || generateLicenseHash(accountNumber, 'any', expiryDate),
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            lastValidated: null
+        }
+    };
+}
+
 //+------------------------------------------------------------------+
 //| Load Copier Subscribers                                           |
 //+------------------------------------------------------------------+
@@ -620,36 +662,23 @@ app.get('/admin/licenses', async (req, res) => {
 // Add new license (admin only)
 app.post('/admin/licenses', async (req, res) => {
     try {
-        const { accountNumber, userName, eaName, expiryDate, allowedBrokers, licenseKey } = req.body;
-        
-        if (!accountNumber || !eaName) {
-            return res.status(400).json({ error: 'accountNumber and eaName are required' });
+        const build = buildLicenseEntry(req.body || {});
+        if (build.error) {
+            return res.status(400).json({ error: build.error });
         }
         
         const licenses = await loadLicenses();
         
         // Check if license already exists
         const exists = licenses.licenses.find(l => 
-            l.accountNumber === String(accountNumber) && l.eaName === eaName
+            l.accountNumber === build.entry.accountNumber && l.eaName === build.entry.eaName
         );
         
         if (exists) {
             return res.status(400).json({ error: 'License already exists for this account and EA' });
         }
         
-        // Create new license
-        const newLicense = {
-            id: crypto.randomBytes(16).toString('hex'),
-            accountNumber: String(accountNumber),
-            userName: userName || 'Unknown',
-            eaName: eaName,
-            expiryDate: expiryDate || null,
-            allowedBrokers: allowedBrokers || [],
-            licenseKey: licenseKey || generateLicenseHash(accountNumber, 'any', expiryDate),
-            isActive: true,
-            createdAt: new Date().toISOString(),
-            lastValidated: null
-        };
+        const newLicense = build.entry;
         
         licenses.licenses.push(newLicense);
         licenses.lastUpdated = new Date().toISOString();
@@ -660,6 +689,48 @@ app.post('/admin/licenses', async (req, res) => {
     } catch (error) {
         console.error('Add license error:', error);
         res.status(500).json({ error: 'Failed to add license' });
+    }
+});
+
+// Bulk add licenses (admin only)
+app.post('/admin/licenses/bulk', async (req, res) => {
+    try {
+        const items = Array.isArray(req.body) ? req.body : req.body?.licenses;
+        if (!Array.isArray(items)) {
+            return res.status(400).json({ error: 'Expected an array of licenses' });
+        }
+
+        const licenses = await loadLicenses();
+        const results = { added: 0, skipped: 0, errors: [] };
+
+        items.forEach((item, index) => {
+            const build = buildLicenseEntry(item || {});
+            if (build.error) {
+                results.errors.push({ index, error: build.error });
+                return;
+            }
+
+            const exists = licenses.licenses.find(l =>
+                l.accountNumber === build.entry.accountNumber && l.eaName === build.entry.eaName
+            );
+            if (exists) {
+                results.skipped += 1;
+                return;
+            }
+
+            licenses.licenses.push(build.entry);
+            results.added += 1;
+        });
+
+        if (results.added > 0) {
+            licenses.lastUpdated = new Date().toISOString();
+            await saveLicenses(licenses);
+        }
+
+        res.json({ success: true, ...results, total: licenses.licenses.length });
+    } catch (error) {
+        console.error('Bulk add licenses error:', error);
+        res.status(500).json({ error: 'Failed to add licenses' });
     }
 });
 

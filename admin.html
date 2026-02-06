@@ -36,6 +36,15 @@
             <button type="submit">Add License</button>
         </form>
     </div>
+
+    <div class="section">
+        <h2>Bulk Add Licenses</h2>
+        <p>Paste one license per line in this format:</p>
+        <p><code>accountNumber,userName,eaName,expiryDate(optional),allowedBrokers(optional),licenseKey(optional)</code></p>
+        <textarea id="bulkLicenses" rows="6" placeholder="433065526,brandon boyd,FXGOLDTRADERPLUGSMC,,,"></textarea>
+        <button onclick="bulkAddLicenses()">Bulk Add Licenses</button>
+        <div id="bulkResult"></div>
+    </div>
     
     <div class="section">
         <h2>All Licenses</h2>
