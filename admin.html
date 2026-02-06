@@ -266,6 +266,67 @@
                 alert('Error: ' + error.message);
             }
         }
+
+        async function bulkAddLicenses() {
+            const bulkInput = document.getElementById('bulkLicenses');
+            const bulkResult = document.getElementById('bulkResult');
+            const rawText = bulkInput.value || '';
+            const lines = rawText.split('\n').map(line => line.trim()).filter(line => line);
+
+            if (lines.length === 0) {
+                alert('Paste at least one license line.');
+                return;
+            }
+
+            const licenses = lines.map((line, index) => {
+                const parts = line.split(',').map(part => part.trim());
+                const [
+                    accountNumber,
+                    userName,
+                    eaName,
+                    expiryDate,
+                    allowedBrokers,
+                    licenseKey
+                ] = parts;
+
+                return {
+                    accountNumber,
+                    userName,
+                    eaName,
+                    expiryDate: expiryDate || null,
+                    allowedBrokers: allowedBrokers || null,
+                    licenseKey: licenseKey || null,
+                    _line: index + 1
+                };
+            });
+
+            try {
+                const response = await fetch(`${SERVER_URL}/admin/licenses/bulk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ licenses })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    bulkResult.innerHTML = `
+                        <p>Added: ${result.added}, Skipped: ${result.skipped}, Errors: ${result.errors.length}</p>
+                    `;
+                    if (result.errors.length > 0) {
+                        bulkResult.innerHTML += `
+                            <ul>
+                                ${result.errors.map(err => `<li>Line ${err.index + 1}: ${err.error}</li>`).join('')}
+                            </ul>
+                        `;
+                    }
+                    loadLicenses();
+                } else {
+                    bulkResult.textContent = 'Error: ' + (result.error || 'Unknown error');
+                }
+            } catch (error) {
+                bulkResult.textContent = 'Error: ' + error.message;
+            }
+        }
         
         async function deactivateLicense(id) {
             if (!confirm('Deactivate this license?')) return;
