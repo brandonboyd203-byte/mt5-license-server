@@ -22,13 +22,27 @@
     
     <div class="section">
         <h2>Add New License</h2>
+        <p style="color:#666; font-size: 0.9em;">One license per product line covers both Gold and Silver (e.g. &quot;Goldmine Nexus - Gold&quot; works for Nexus Gold and Nexus Silver). Use the exact account number from MT5.</p>
         <form id="addLicenseForm">
-            <input type="text" id="accountNumber" placeholder="Account Number" required>
+            <input type="text" id="accountNumber" placeholder="Account Number (e.g. 433114926)" required>
             <input type="text" id="userName" placeholder="User Name" required>
             <select id="eaName" required>
-                <option value="FXGOLDTRADERSMC">FXGOLDTRADERSMC</option>
-                <option value="AdvancedScalper">Advanced Scalper</option>
-                <option value="AdvancedScalper2">Advanced Scalper 2.0</option>
+                <optgroup label="Goldmine">
+                    <option value="Goldmine Blueprint - Gold">Goldmine Blueprint - Gold</option>
+                    <option value="Goldmine Blueprint - Silver">Goldmine Blueprint - Silver</option>
+                    <option value="Goldmine Nexus - Gold">Goldmine Nexus - Gold</option>
+                    <option value="Goldmine Nexus - Silver">Goldmine Nexus - Silver</option>
+                    <option value="Goldmine Edge - Gold">Goldmine Edge - Gold</option>
+                    <option value="Goldmine Surge - Gold">Goldmine Surge - Gold</option>
+                </optgroup>
+                <optgroup label="Legacy">
+                    <option value="FXGOLDTRADERPLUGSMC">FXGOLDTRADERPLUGSMC (Blueprint)</option>
+                    <option value="FXGOLDTRADERPLUG">FXGOLDTRADERPLUG (Nexus)</option>
+                    <option value="FXGOLDTRADERSMC">FXGOLDTRADERSMC</option>
+                    <option value="BigBeluga">BigBeluga</option>
+                    <option value="AdvancedScalper">Advanced Scalper</option>
+                    <option value="AdvancedScalper2">Advanced Scalper 2.0</option>
+                </optgroup>
             </select>
             <input type="datetime-local" id="expiryDate" placeholder="Expiry Date (optional)">
             <input type="text" id="allowedBrokers" placeholder="Allowed Brokers (comma-separated, optional)">

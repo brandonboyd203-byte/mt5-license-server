@@ -30,10 +30,15 @@ const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
+// One license in a group = valid for any EA name in that group (dash/hyphen normalized in code)
+// Include both ASCII hyphen (-) and en-dash (–) so EAs work regardless of encoding
 const EA_NAME_GROUPS = [
-    ['FXGOLDTRADERSMC', 'FXGOLDTRADERPLUGSMC', 'BigBeluga'],
-    ['AdvancedScalper', 'Advanced Scalper', 'Advanced_Scalper'],
+    ['Goldmine Blueprint - Gold', 'Goldmine Blueprint - Silver', 'Goldmine Blueprint – Gold', 'Goldmine Blueprint – Silver', 'FXGOLDTRADERPLUGSMC', 'FXGOLDTRADERSMC', 'BigBeluga'],
+    ['Goldmine Nexus - Gold', 'Goldmine Nexus - Silver', 'Goldmine Nexus – Gold', 'Goldmine Nexus – Silver', 'FXGOLDTRADERPLUG'],
+    ['Goldmine Edge - Gold', 'Goldmine Edge – Gold', 'AdvancedScalper', 'Advanced Scalper', 'Advanced Scalper 1', 'Advanced Scalper 1.0', 'Advanced_Scalper'],
     [
+        'Goldmine Surge - Gold',
+        'Goldmine Surge – Gold',
         'AdvancedScalper2',
         'AdvancedScalper2.0',
         'Advanced Scalper 2',
@@ -49,7 +54,8 @@ function normalizeEaName(value) {
     return String(value || '')
         .trim()
         .toLowerCase()
-        .replace(/[\s_-]+/g, '');
+        .replace(/\s+/g, '')
+        .replace(/[\-_–—\u00AD]/g, '');  // strip hyphens/dashes so "Goldmine Nexus - Silver" matches "Goldmine Nexus – Gold"
 }
 
 function normalizeBaseUrl(value) {
@@ -104,14 +110,16 @@ app.get('/setup', (req, res) => {
 async function loadLicenses() {
     try {
         const data = await fs.readFile(LICENSE_FILE, 'utf8');
-        return JSON.parse(data);
+        const obj = JSON.parse(data);
+        if (!obj || !Array.isArray(obj.licenses)) obj.licenses = [];
+        return obj;
     } catch (error) {
-        // File doesn't exist, create default
+        // File doesn't exist or invalid - return default so server doesn't crash
         const defaultLicenses = {
             licenses: [],
             lastUpdated: new Date().toISOString()
         };
-        await saveLicenses(defaultLicenses);
+        try { await saveLicenses(defaultLicenses); } catch (e) { /* ignore */ }
         return defaultLicenses;
     }
 }
@@ -201,18 +209,23 @@ function generateLicenseHash(accountNumber, broker, expiry) {
 //| Validate License Request                                         |
 //+------------------------------------------------------------------+
 async function validateLicense(accountNumber, broker, licenseKey, eaName) {
-    const licenses = await loadLicenses();
-    const accountStr = String(accountNumber);
-    const eaCandidates = getEaNameCandidates(eaName);
+    const data = await loadLicenses();
+    const list = Array.isArray(data.licenses) ? data.licenses : [];
+    const accountStr = String(accountNumber ?? '').trim();
+    const eaNameTrimmed = String(eaName ?? '').trim();
+    const eaCandidates = getEaNameCandidates(eaNameTrimmed);
     
-    // Find license for this account
-    const license = licenses.licenses.find(l => 
-        l.accountNumber === accountStr && 
-        eaCandidates.includes(l.eaName) &&
-        l.isActive === true
+    // Find license: match account (string comparison) + active + EA name in same group
+    const license = list.find(l => 
+        String(l.accountNumber ?? '').trim() === accountStr && 
+        l.isActive === true &&
+        (eaCandidates.includes(l.eaName) || (l.eaName && eaCandidates.some(c => normalizeEaName(c) === normalizeEaName(String(l.eaName)))))
     );
     
     if (!license) {
+        // Log why lookup failed so you can fix it (e.g. empty file after deploy, wrong account/eaName)
+        const accountNumbers = [...new Set(list.map(l => String(l.accountNumber ?? '').trim()).filter(Boolean))];
+        console.error(`[LICENSE] No license found. Account: "${accountStr}" EA: "${eaNameTrimmed}" | Total licenses in file: ${list.length} | Active for this account: ${list.filter(l => String(l.accountNumber ?? '').trim() === accountStr).length} | Account IDs in file (sample): ${accountNumbers.slice(0, 5).join(', ')}`);
         return {
             valid: false,
             reason: 'Account not licensed',
@@ -612,7 +625,10 @@ app.post('/validate', async (req, res) => {
             bodyType: typeof req.body
         });
         
-        const { accountNumber, broker, licenseKey, eaName } = body;
+        const accountNumber = body.accountNumber != null ? String(body.accountNumber).trim() : '';
+        const broker = body.broker != null ? String(body.broker).trim() : '';
+        const eaName = body.eaName != null ? String(body.eaName).trim() : '';
+        const licenseKey = body.licenseKey != null ? String(body.licenseKey).trim() : '';
         
         // Validate required fields
         if (!accountNumber || !broker || !eaName) {
