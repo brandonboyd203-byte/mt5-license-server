@@ -51,7 +51,8 @@ const EA_NAME_GROUPS = [
         'Gold Scalper',
         'GoldScalper',
         'Gold_Scalper'
-    ]
+    ],
+    ['Goldmine Dominion']
 ];
 
 function normalizeEaName(value) {
@@ -358,7 +359,7 @@ const CHECKOUT_PLANS = {
     },
     copier_option_b: {
         name: 'Copier Option B',
-        amount: 262,
+        amount: 500,
         description: 'Copier Option B (large accounts) - monthly',
         recurring: true
     }
@@ -635,7 +636,8 @@ app.post('/api/coinbase/charge', async (req, res) => {
         });
     } catch (error) {
         console.error('Coinbase checkout error:', error.message);
-        res.status(500).json({ error: 'Failed to create Coinbase checkout' });
+        const message = error.message || 'Failed to create Coinbase checkout';
+        res.status(500).json({ error: message });
     }
 });
 
