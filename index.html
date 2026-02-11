@@ -549,35 +549,35 @@
           <div class="panel">
             <h3>Copier options</h3>
             <p class="muted">
-              Monthly subscription is $262 (includes the $12 copier server fee).
-              Performance targets are not guaranteed. Subscription is refunded if
-              the service fails.
+              Monthly subscription (includes the $12 copier server fee).
+              Performance targets are not guaranteed. Subscription is 50%
+              refundable if the service fails.
             </p>
             <div class="grid" style="margin-top: 16px;">
               <div class="card" style="background: #0f172a; border-color: #1e293b;">
                 <strong>Option A - Small accounts</strong>
-                <p class="muted">$500 to $4,999 balance</p>
+                <p class="muted">$1,000 to $4,999 balance</p>
                 <p class="price">$262 <span class="muted">/ month</span></p>
                 <ul class="feature-list">
                   <li>Profit split: 50% GOLDMINE / 50% client</li>
-                  <li>Up to 100% weekly average target</li>
+                  <li>Results are dependent on market conditions</li>
                   <li>Investor access to the Exness account</li>
                 </ul>
               </div>
               <div class="card" style="background: #0f172a; border-color: #1e293b;">
                 <strong>Option B - Large accounts</strong>
                 <p class="muted">$5,000 to $20,000 balance</p>
-                <p class="price">$262 <span class="muted">/ month</span></p>
+                <p class="price">$500 <span class="muted">/ month</span></p>
                 <ul class="feature-list">
                   <li>Profit split: 25% GOLDMINE / 75% client</li>
-                  <li>Up to 100% weekly average target</li>
+                  <li>Results are dependent on market conditions</li>
                   <li>Investor access to the Exness account</li>
                 </ul>
               </div>
             </div>
             <p class="muted" style="margin-top: 12px;">
               No guarantee on returns or refunds. If the copier service fails,
-              the subscription fee is refunded.
+              50% of the subscription fee is refundable.
             </p>
             <a class="btn btn-primary" style="margin-top: 20px;" href="#checkout">
               Start copier service
@@ -753,7 +753,7 @@
                   <option value="goldmine_nexus_silver">Goldmine Nexus – Silver</option>
                   <option value="goldmine_dominion">Goldmine Dominion</option>
                   <option value="copier_option_a">Copier Option A - $262/mo</option>
-                  <option value="copier_option_b">Copier Option B - $262/mo</option>
+                  <option value="copier_option_b">Copier Option B - $500/mo</option>
                 </select>
               </div>
               <div>
@@ -762,7 +762,7 @@
               </div>
               <div>
                 <label for="checkoutContact">Telegram or WhatsApp</label>
-                <input id="checkoutContact" name="contact" type="text" placeholder="@goldtraderplug or +61..." />
+                <input id="checkoutContact" name="contact" type="text" placeholder="@goldminebots or +61..." />
               </div>
               <button class="btn btn-primary" type="submit">Continue to crypto payment</button>
             </form>
@@ -836,7 +836,7 @@
               selling bots and onboarding copy trading clients.
             </p>
             <div class="hero-actions">
-              <a class="btn btn-primary" href="mailto:fxgoldtraderplug@gmail.com">
+              <a class="btn btn-primary" href="mailto:goldminebotsltd@gmail.com">
                 Email GOLDMINE
               </a>
               <a class="btn btn-outline" href="#pricing">Review pricing</a>
@@ -846,7 +846,7 @@
                 <strong>Contact</strong>
                 <p class="muted" style="margin: 6px 0 0;">
                   Email:
-                  <a href="mailto:fxgoldtraderplug@gmail.com">fxgoldtraderplug@gmail.com</a>
+                  <a href="mailto:goldminebotsltd@gmail.com">goldminebotsltd@gmail.com</a>
                 </p>
                 <p class="muted" style="margin: 6px 0 0;">
                   Phone / WhatsApp:
@@ -854,8 +854,14 @@
                 </p>
                 <p class="muted" style="margin: 6px 0 0;">
                   Telegram:
-                  <a href="https://t.me/goldtraderplug" target="_blank" rel="noreferrer">
-                    @GOLDTRADERPLUG
+                  <a href="https://t.me/goldminebots" target="_blank" rel="noreferrer">
+                    @goldminebots
+                  </a>
+                </p>
+                <p class="muted" style="margin: 6px 0 0;">
+                  Discord:
+                  <a href="https://discord.gg/cxhupcFF" target="_blank" rel="noreferrer">
+                    discord.gg/cxhupcFF
                   </a>
                 </p>
               </div>
@@ -914,7 +920,7 @@
           } catch (error) {
             if (checkoutStatus) {
               checkoutStatus.textContent =
-                "Checkout is unavailable right now. Email fxgoldtraderplug@gmail.com for a manual invoice.";
+                "Checkout is unavailable right now. Email goldminebotsltd@gmail.com for a manual invoice.";
             }
           }
         });
