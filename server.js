@@ -100,8 +100,17 @@ function getLogoPath() {
 app.get('/logo', (req, res) => {
     const logoPath = getLogoPath();
     if (!logoPath) return res.status(404).end();
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
     res.sendFile(logoPath);
+});
+// Serve logo from assets with no-cache so updates show immediately after deploy
+app.get('/assets/logo.png', (req, res) => {
+    const p = path.join(__dirname, 'assets', 'logo.png');
+    if (!fsSync.existsSync(p)) return res.status(404).end();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.sendFile(p);
 });
 
 // Middleware
