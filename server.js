@@ -15,8 +15,12 @@ const cron = require('node-cron');
 const app = express();
 // Railway sets PORT automatically - use it or default to 3001
 const PORT = process.env.PORT || 3001;
-const LICENSE_FILE = path.join(__dirname, 'licenses.json');
-const COPIER_SUBSCRIBERS_FILE = path.join(__dirname, 'copier_subscribers.json');
+// License/copier paths: env first, then /data if volume is mounted (Railway), else app dir
+const fsSync = require('fs');
+const DATA_DIR = '/data';
+const useDataDir = !process.env.LICENSE_FILE && fsSync.existsSync(DATA_DIR);
+const LICENSE_FILE = process.env.LICENSE_FILE || (useDataDir ? path.join(DATA_DIR, 'licenses.json') : path.join(__dirname, 'licenses.json'));
+const COPIER_SUBSCRIBERS_FILE = process.env.COPIER_SUBSCRIBERS_FILE || (useDataDir ? path.join(DATA_DIR, 'copier_subscribers.json') : path.join(__dirname, 'copier_subscribers.json'));
 const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
 const COINBASE_COMMERCE_API_KEY = process.env.COINBASE_COMMERCE_API_KEY || '';
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
@@ -80,6 +84,26 @@ function getEaNameCandidates(eaName) {
     return Array.from(candidates);
 }
 
+// Logo: serve before static; use LOGO_PATH env (e.g. /data/LOGO.png on volume) or look in assets
+function getLogoPath() {
+    if (process.env.LOGO_PATH && require('fs').existsSync(process.env.LOGO_PATH)) return process.env.LOGO_PATH;
+    const names = ['LOGO.png', 'logo.png', 'GOLDMINE LOGO.png', 'logo.svg'];
+    const dirs = [path.join(__dirname, 'assets'), __dirname];
+    for (const dir of dirs) {
+        for (const name of names) {
+            const p = path.join(dir, name);
+            try { if (require('fs').existsSync(p)) return p; } catch (_) {}
+        }
+    }
+    return null;
+}
+app.get('/logo', (req, res) => {
+    const logoPath = getLogoPath();
+    if (!logoPath) return res.status(404).end();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.sendFile(logoPath);
+});
+
 // Middleware
 app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
@@ -105,30 +129,38 @@ app.get('/setup', (req, res) => {
 });
 
 //+------------------------------------------------------------------+
-//| Load Licenses from File                                          |
+//| Load Licenses from File (restore from .backup if main missing)    |
 //+------------------------------------------------------------------+
 async function loadLicenses() {
-    try {
-        const data = await fs.readFile(LICENSE_FILE, 'utf8');
+    const backupPath = LICENSE_FILE + '.backup';
+    const tryLoad = async (filePath) => {
+        const data = await fs.readFile(filePath, 'utf8');
         const obj = JSON.parse(data);
-        if (!obj || !Array.isArray(obj.licenses)) obj.licenses = [];
+        if (!obj || !Array.isArray(obj.licenses)) return null;
         return obj;
-    } catch (error) {
-        // File doesn't exist or invalid - return default so server doesn't crash
-        const defaultLicenses = {
-            licenses: [],
-            lastUpdated: new Date().toISOString()
-        };
-        try { await saveLicenses(defaultLicenses); } catch (e) { /* ignore */ }
-        return defaultLicenses;
-    }
+    };
+    try {
+        return await tryLoad(LICENSE_FILE);
+    } catch (_) {}
+    try {
+        const obj = await tryLoad(backupPath);
+        if (obj) {
+            await fs.writeFile(LICENSE_FILE, JSON.stringify(obj, null, 2), 'utf8');
+            return obj;
+        }
+    } catch (_) {}
+    const defaultLicenses = { licenses: [], lastUpdated: new Date().toISOString() };
+    try { await saveLicenses(defaultLicenses); } catch (e) { /* ignore */ }
+    return defaultLicenses;
 }
 
 //+------------------------------------------------------------------+
-//| Save Licenses to File                                            |
+//| Save Licenses to File (and .backup so redeploy can restore)       |
 //+------------------------------------------------------------------+
 async function saveLicenses(licenses) {
-    await fs.writeFile(LICENSE_FILE, JSON.stringify(licenses, null, 2), 'utf8');
+    const json = JSON.stringify(licenses, null, 2);
+    await fs.writeFile(LICENSE_FILE, json, 'utf8');
+    try { await fs.writeFile(LICENSE_FILE + '.backup', json, 'utf8'); } catch (e) { /* ignore */ }
 }
 
 function normalizeAllowedBrokers(value) {
@@ -174,27 +206,32 @@ function buildLicenseEntry(input) {
 }
 
 //+------------------------------------------------------------------+
-//| Load Copier Subscribers                                           |
+//| Load Copier Subscribers (restore from .backup if main missing)    |
 //+------------------------------------------------------------------+
 async function loadCopierSubscribers() {
+    const backupPath = COPIER_SUBSCRIBERS_FILE + '.backup';
     try {
         const data = await fs.readFile(COPIER_SUBSCRIBERS_FILE, 'utf8');
         return JSON.parse(data);
-    } catch (error) {
-        const defaultSubscribers = {
-            subscribers: [],
-            lastUpdated: new Date().toISOString()
-        };
-        await saveCopierSubscribers(defaultSubscribers);
-        return defaultSubscribers;
-    }
+    } catch (_) {}
+    try {
+        const data = await fs.readFile(backupPath, 'utf8');
+        const obj = JSON.parse(data);
+        await fs.writeFile(COPIER_SUBSCRIBERS_FILE, data, 'utf8');
+        return obj;
+    } catch (_) {}
+    const defaultSubscribers = { subscribers: [], lastUpdated: new Date().toISOString() };
+    await saveCopierSubscribers(defaultSubscribers);
+    return defaultSubscribers;
 }
 
 //+------------------------------------------------------------------+
-//| Save Copier Subscribers                                           |
+//| Save Copier Subscribers (and .backup for restore on redeploy)     |
 //+------------------------------------------------------------------+
 async function saveCopierSubscribers(subscribers) {
-    await fs.writeFile(COPIER_SUBSCRIBERS_FILE, JSON.stringify(subscribers, null, 2), 'utf8');
+    const json = JSON.stringify(subscribers, null, 2);
+    await fs.writeFile(COPIER_SUBSCRIBERS_FILE, json, 'utf8');
+    try { await fs.writeFile(COPIER_SUBSCRIBERS_FILE + '.backup', json, 'utf8'); } catch (e) { /* ignore */ }
 }
 
 //+------------------------------------------------------------------+
@@ -527,7 +564,7 @@ async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) 
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'online', timestamp: new Date().toISOString() });
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Create Coinbase Commerce checkout
@@ -979,11 +1016,22 @@ if (INVOICE_CRON && INVOICE_CRON !== 'off') {
 }
 
 app.listen(PORT, () => {
+    const envLicense = process.env.LICENSE_FILE;
+    const envCopier = process.env.COPIER_SUBSCRIBERS_FILE;
     console.log(`========================================`);
     console.log(`License Server Running`);
     console.log(`========================================`);
     console.log(`Port: ${PORT}`);
-    console.log(`License File: ${LICENSE_FILE}`);
+    console.log(`LICENSE_FILE (env): ${envLicense === undefined ? '(not set)' : envLicense}`);
+    console.log(`COPIER_SUBSCRIBERS_FILE (env): ${envCopier === undefined ? '(not set)' : envCopier}`);
+    console.log(`License File (resolved): ${LICENSE_FILE}`);
+    console.log(`Copier File (resolved): ${COPIER_SUBSCRIBERS_FILE}`);
+    if (!envLicense && !useDataDir) {
+        console.log(`WARNING: No LICENSE_FILE set and /data not found. Licenses will not persist across redeploys.`);
+    }
+    if (useDataDir) {
+        console.log(`Using /data for licenses (volume detected).`);
+    }
     console.log(`Server URL: http://localhost:${PORT}`);
     console.log(`Health Check: http://localhost:${PORT}/health`);
     console.log(`========================================`);
