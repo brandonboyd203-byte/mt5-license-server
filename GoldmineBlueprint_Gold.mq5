@@ -3544,6 +3544,7 @@ void ManagePositions() {
         double currentPrice = (position.Type() == POSITION_TYPE_BUY) ? currentBID : currentASK;
         
         int ticketIndex = GetTicketIndex(ticket);
+        if(ticketIndex < 0 || ticketIndex >= ArraySize(tp1Hit)) continue; // Prevent array out of range crash / EA removal
         
         // Log position status every 10 seconds for debugging
         if(currentTime - lastLogTime >= 10) {
