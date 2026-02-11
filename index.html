@@ -107,7 +107,14 @@
         font-size: 1.2rem;
         letter-spacing: 0.4px;
       }
-      .logo .logo-img { height: 40px; width: auto; display: block; }
+      .logo .logo-img {
+        height: 44px;
+        width: auto;
+        max-width: 200px;
+        display: block;
+        object-fit: contain;
+        object-position: left center;
+      }
       .logo .logo-text { display: none; align-items: center; gap: 10px; }
       .logo.logo-noimg .logo-img { display: none; }
       .logo.logo-noimg .logo-text { display: inline-flex; }
@@ -371,7 +378,7 @@
       <div class="container">
         <nav>
           <div class="logo" id="header-logo">
-            <img src="/logo?v=9" alt="GOLDMINE" class="logo-img" onerror="this.parentElement.classList.add('logo-noimg')" />
+            <img src="/assets/logo.png?v=12" alt="GOLDMINE" class="logo-img" onerror="this.style.display='none'; this.parentElement.classList.add('logo-noimg');" />
             <span class="logo-text">
               <span class="logo-mark" aria-hidden="true"></span>
               <span>GOLDMINE</span>
@@ -442,7 +449,6 @@
             <div class="card">
               <span class="pill">XAUUSD</span>
               <h3>Goldmine Blueprint – Gold</h3>
-              <p class="price">$4,999</p>
               <p>Order blocks, FVGs, and market structure for gold.</p>
               <ul class="feature-list">
                 <li>Order block + FVG retest entries</li>
@@ -453,7 +459,6 @@
             <div class="card">
               <span class="pill">XAGUSD</span>
               <h3>Goldmine Blueprint – Silver</h3>
-              <p class="price">$4,999</p>
               <p>Order blocks, FVGs, and market structure for silver.</p>
               <ul class="feature-list">
                 <li>Order block + FVG retest entries</li>
@@ -462,18 +467,8 @@
               </ul>
             </div>
             <div class="card">
-              <span class="pill">XAUUSD + XAGUSD</span>
-              <h3>Goldmine Blueprint – Gold & Silver</h3>
-              <p class="price">$7,999</p>
-              <p>Both pairs; save when you buy both.</p>
-              <ul class="feature-list">
-                <li>Same features as individual Blueprint bots</li>
-              </ul>
-            </div>
-            <div class="card">
               <span class="pill">XAUUSD</span>
               <h3>Goldmine Nexus – Gold</h3>
-              <p class="price">$4,999</p>
               <p>TP ladder and runner management for gold.</p>
               <ul class="feature-list">
                 <li>TP1 / TP2 / TP3 partial closes + runner</li>
@@ -484,7 +479,6 @@
             <div class="card">
               <span class="pill">XAGUSD</span>
               <h3>Goldmine Nexus – Silver</h3>
-              <p class="price">$4,999</p>
               <p>TP ladder and runner management for silver.</p>
               <ul class="feature-list">
                 <li>TP1 / TP2 / TP3 partial closes + runner</li>
@@ -493,62 +487,33 @@
               </ul>
             </div>
             <div class="card">
-              <span class="pill">XAUUSD + XAGUSD</span>
-              <h3>Goldmine Nexus – Gold & Silver</h3>
-              <p class="price">$7,999</p>
-              <p>Both pairs; save when you buy both.</p>
-              <ul class="feature-list">
-                <li>Same features as individual Nexus bots</li>
-              </ul>
-            </div>
-            <div class="card">
               <span class="pill">Coming soon</span>
               <h3>Goldmine Edge – Gold</h3>
-              <p class="price">Coming soon</p>
               <p>Multi-confluence scalper with session sweeps and range logic.</p>
               <ul class="feature-list">
                 <li>Multi-timeframe OB and FVG detection</li>
                 <li>Session sweeps, retests, and daily levels</li>
-                <li>Join the waitlist for launch</li>
+                <li>Waitlist open for early access</li>
               </ul>
             </div>
             <div class="card">
               <span class="pill">Coming soon</span>
               <h3>Goldmine Surge – Gold</h3>
-              <p class="price">Coming soon</p>
               <p>Channel breakouts with volume order blocks and engulfing filters.</p>
               <ul class="feature-list">
                 <li>Breakout channel entries (volatility based)</li>
                 <li>Volume-filtered OB retests</li>
-                <li>Join the waitlist for launch</li>
+                <li>Waitlist open for early access</li>
               </ul>
             </div>
             <div class="card">
-              <span class="pill">XAUUSD</span>
-              <h3>Goldmine Dominion – Gold</h3>
-              <p class="price">$4,999</p>
-              <p>One EA, attach to Gold chart.</p>
+              <span class="pill">XAUUSD / XAGUSD</span>
+              <h3>Goldmine Dominion</h3>
+              <p>One EA for Gold or Silver: reversal + OB + FVG + session sweeps.</p>
               <ul class="feature-list">
-                <li>Reversal + OB + FVG + session sweeps</li>
+                <li>Reversal-focused entries with OB and FVG</li>
                 <li>Layered TP + break-even (25/30 pips, SELL BE capped)</li>
-              </ul>
-            </div>
-            <div class="card">
-              <span class="pill">XAGUSD</span>
-              <h3>Goldmine Dominion – Silver</h3>
-              <p class="price">$4,999</p>
-              <p>Same EA, attach to Silver chart.</p>
-              <ul class="feature-list">
-                <li>Same logic as Dominion Gold</li>
-              </ul>
-            </div>
-            <div class="card pricing-card">
-              <span class="pill">XAUUSD + XAGUSD</span>
-              <h3>Goldmine Dominion – Gold & Silver</h3>
-              <p class="price">$7,999</p>
-              <p>Both charts with one license.</p>
-              <ul class="feature-list">
-                <li>One EA on both Gold and Silver charts</li>
+                <li>Volume-step normalized; same robustness as Blueprint & Nexus</li>
               </ul>
             </div>
           </div>
