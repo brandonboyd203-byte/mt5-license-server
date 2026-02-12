@@ -836,7 +836,7 @@
               selling bots and onboarding copy trading clients.
             </p>
             <div class="hero-actions">
-              <a class="btn btn-primary" href="mailto:goldminebotsltd@gmail.com">
+              <a class="btn btn-primary" id="mailtoHero" href="mailto:goldminebotsltd@gmail.com">
                 Email GOLDMINE
               </a>
               <a class="btn btn-outline" href="#pricing">Review pricing</a>
@@ -846,7 +846,7 @@
                 <strong>Contact</strong>
                 <p class="muted" style="margin: 6px 0 0;">
                   Email:
-                  <a href="mailto:goldminebotsltd@gmail.com">goldminebotsltd@gmail.com</a>
+                  <a id="mailtoContact" href="mailto:goldminebotsltd@gmail.com">goldminebotsltd@gmail.com</a>
                 </p>
                 <p class="muted" style="margin: 6px 0 0;">
                   Phone / WhatsApp:
@@ -889,6 +889,21 @@
       const checkoutForm = document.getElementById("checkoutForm");
       const checkoutStatus = document.getElementById("checkoutStatus");
 
+      // Load support email from server (set SUPPORT_EMAIL env) and update mailto links
+      fetch("/api/config")
+        .then((r) => r.json())
+        .then((cfg) => {
+          if (cfg.supportEmail) {
+            window.__supportEmail = cfg.supportEmail;
+            const mailto = "mailto:" + cfg.supportEmail;
+            const hero = document.getElementById("mailtoHero");
+            const contact = document.getElementById("mailtoContact");
+            if (hero) { hero.href = mailto; }
+            if (contact) { contact.href = mailto; contact.textContent = cfg.supportEmail; }
+          }
+        })
+        .catch(() => {});
+
       if (checkoutForm) {
         checkoutForm.addEventListener("submit", async (event) => {
           event.preventDefault();
@@ -919,8 +934,9 @@
             window.location.href = result.hostedUrl;
           } catch (error) {
             if (checkoutStatus) {
+              const supportEmail = window.__supportEmail || "goldminebotsltd@gmail.com";
               checkoutStatus.textContent =
-                error.message || "Checkout unavailable. Email goldminebotsltd@gmail.com for a manual invoice.";
+                error.message || "Checkout unavailable. Email " + supportEmail + " for a manual invoice.";
             }
           }
         });

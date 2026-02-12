@@ -1,6 +1,6 @@
 # Payment (Coinbase Commerce) and Email Setup
 
-Step-by-step so checkout works and invoices email correctly. Do these in order.
+Step-by-step so checkout works, redirects are correct, and copier invoices email correctly. Do these in order.
 
 ---
 
@@ -44,7 +44,7 @@ Step-by-step so checkout works and invoices email correctly. Do these in order.
 
 ## 2. Public URL (redirects after payment)
 
-After paying, Coinbase sends the customer back to your site. The server uses your public URL for that.
+After paying, Coinbase sends the customer back to your site. The server uses **PUBLIC_BASE_URL** for that (and for copier invoice links).
 
 1. Railway → **Variables**.
 2. Add or edit:
@@ -55,64 +55,94 @@ After paying, Coinbase sends the customer back to your site. The server uses you
 
 ---
 
-## 3. Email (Gmail) for copier invoices
+## 3. Support / contact email (shown on the site)
 
-Used to send monthly copier invoices (and any “send invoice” from admin). Not required for the main checkout link; only for **sending** the invoice email with the link.
+Set your support email so the website shows it in “Email GOLDMINE” links and in the checkout error message (“Email X for a manual invoice”).
 
-### Gmail App Password (not your normal password)
+1. Railway → **Variables**.
+2. Add or edit:
+   - **Name:** `SUPPORT_EMAIL`
+   - **Value:** your support email, e.g. `support@yourdomain.com` or `hello@goldmine.com`
+3. Save. Redeploy. The main site and setup page will load this via `/api/config` and update all mailto links and the fallback checkout message.
 
-1. Use a Gmail account (e.g. goldminebotsltd@gmail.com).
-2. Turn on 2-Step Verification for that Google account (Google Account → Security).
-3. In Google Account → Security → **2-Step Verification** → **App passwords**.
-4. Create an app password for “Mail” (or “Other” → name it “GOLDMINE server”).
-5. Copy the 16-character password (no spaces).
-
-### Set SMTP on Railway
-
-In Railway → **Variables**, add (replace with your email and app password):
-
-| Variable       | Value                     |
-|----------------|---------------------------|
-| `SMTP_HOST`    | `smtp.gmail.com`          |
-| `SMTP_PORT`    | `465`                     |
-| `SMTP_SECURE`  | `true`                    |
-| `SMTP_USER`    | `goldminebotsltd@gmail.com` |
-| `SMTP_PASS`    | *the 16-char app password* |
-| `SMTP_FROM`    | `goldminebotsltd@gmail.com` |
-| `SMTP_FROM_NAME` | `GOLDMINE`              |
-
-Save. Redeploy.
-
-### If Gmail blocks or “not accepting”
-
-- Use an **App Password**, not your normal Gmail password.
-- “Less secure app access” is no longer used; App Passwords are the correct method.
-- If you use a different provider (e.g. Outlook), set `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SECURE` for that provider and keep `SMTP_USER` / `SMTP_PASS` for that account.
+If you don’t set `SUPPORT_EMAIL`, the site falls back to `goldminebotsltd@gmail.com`.
 
 ---
 
-## 4. Quick checklist
+## 4. Copier invoice emails (Resend or SMTP)
 
-| What you want              | What to set |
-|----------------------------|-------------|
-| Checkout link works        | `COINBASE_COMMERCE_API_KEY` (Commerce API key from commerce.coinbase.com) |
-| Redirect after payment     | `PUBLIC_BASE_URL` = your live site URL |
-| Invoice emails send        | `SMTP_USER`, `SMTP_PASS` (Gmail + app password), plus other `SMTP_*` if needed |
+Used to send **monthly copier invoices** (and “Send Invoice” from the admin panel). Not required for the main checkout; only for sending the invoice email with the payment link.
 
-After changing variables, always let Railway finish redeploying, then test checkout (and one invoice email if you use copier).
+You can use **either** Resend (recommended, no Gmail) **or** SMTP (Gmail, Mailgun, SendGrid, Outlook, etc.).
+
+### Option A: Resend (recommended – no app passwords)
+
+1. Sign up at [resend.com](https://resend.com) and create an API key.
+2. (Optional) Verify your domain in Resend so you can send from e.g. `invoices@yourdomain.com`. Until then you can use their test address.
+3. Railway → **Variables**, add:
+   - **Name:** `RESEND_API_KEY`  
+   - **Value:** your Resend API key (e.g. `re_...`)
+4. (Optional) If you want a specific “From” for invoices:
+   - **Name:** `RESEND_FROM_EMAIL`  
+   - **Value:** e.g. `GOLDMINE <invoices@yourdomain.com>` or just `invoices@yourdomain.com`  
+   If you don’t set this, the server uses `SUPPORT_EMAIL` or a default.
+5. Save. Redeploy. Run **npm install** (or ensure `resend` is in `package.json`) so the server can send via Resend.
+
+Invoice emails will be sent with Resend; no Gmail or SMTP needed.
+
+### Option B: SMTP (Gmail, Mailgun, SendGrid, Outlook, etc.)
+
+If you prefer SMTP (e.g. Gmail with an app password, or another provider):
+
+**Gmail**
+
+1. Use a Gmail account. Turn on 2-Step Verification (Google Account → Security).
+2. In Security → **2-Step Verification** → **App passwords**, create an app password for “Mail”.
+3. In Railway → **Variables**, add:
+
+| Variable         | Value                          |
+|------------------|--------------------------------|
+| `SMTP_HOST`      | `smtp.gmail.com`               |
+| `SMTP_PORT`      | `465`                          |
+| `SMTP_SECURE`    | `true`                         |
+| `SMTP_USER`      | your Gmail address             |
+| `SMTP_PASS`      | the 16-character app password |
+| `SMTP_FROM`      | same as SMTP_USER (or desired) |
+| `SMTP_FROM_NAME` | `GOLDMINE`                     |
+
+**Other providers (Mailgun, SendGrid, Outlook, etc.)**
+
+- Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` for that provider.
+- Set `SMTP_USER` and `SMTP_PASS` (often an API key or app password).
+- Set `SMTP_FROM` and `SMTP_FROM_NAME` as desired.
+
+If **both** Resend and SMTP are configured, the server uses **Resend first**; if Resend is not set, it uses SMTP.
 
 ---
 
-## 5. If checkout still fails
+## 5. Quick checklist
+
+| What you want           | What to set |
+|-------------------------|-------------|
+| Checkout link works     | `COINBASE_COMMERCE_API_KEY` (Commerce API key from commerce.coinbase.com) |
+| Redirect after payment  | `PUBLIC_BASE_URL` = your live site URL (no trailing slash) |
+| Your email on the site  | `SUPPORT_EMAIL` = your support/contact email |
+| Invoice emails send     | **Option A:** `RESEND_API_KEY` (and optionally `RESEND_FROM_EMAIL`) **or** **Option B:** `SMTP_USER`, `SMTP_PASS`, and other `SMTP_*` as needed |
+
+After changing variables, let Railway finish redeploying, then test checkout and (if you use copier) one “Send Invoice” from the admin panel.
+
+---
+
+## 6. If checkout still fails
 
 1. **Check the error on the page**  
-   The site now shows the message returned by the server (e.g. “Coinbase Commerce is not configured”, “Invalid API key”).
+   The site shows the message returned by the server (e.g. “Coinbase Commerce is not configured”, “Invalid API key”).
 
 2. **Check Railway logs**  
-   After clicking “Continue to crypto payment”, look at the service logs for “Coinbase checkout error” and the line after it; that’s the exact reason.
+   After clicking “Continue to crypto payment”, look for “Coinbase checkout error” and the line after it.
 
 3. **Verify the key**  
    In Coinbase Commerce, confirm the API key is active and that you’re using the right environment (test vs live).
 
 4. **Manual fallback**  
-   The checkout page tells users to email goldminebotsltd@gmail.com for a manual invoice if something is misconfigured.
+   The checkout page tells users to email your support address (from `SUPPORT_EMAIL`) for a manual invoice if something is misconfigured.

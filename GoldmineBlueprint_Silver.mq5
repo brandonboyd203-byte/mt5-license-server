@@ -112,7 +112,7 @@ input group "=== FVG Detection ==="
 input bool UseFVG = true;                    // Enable FVG trading
 input double FVG_MinSize = 5.0;              // Minimum FVG size (pips)
 input int FVG_Lookback = 50;                 // Bars to look back for FVG
-input bool FVG_RequirePullback = true;        // TRUE = only BUY in lower half of bullish FVG, SELL in upper half (Nexus-aligned)
+input bool FVG_RequirePullback = true;        // TRUE = only BUY in lower half (fewer trades). FALSE = entry on any touch (more trades).
 
 input group "=== Market Structure ==="
 input bool UseMarketStructure = true;        // Enable BOS/CHoCH
@@ -689,7 +689,7 @@ int OnInit() {
     
     // Set initialization time for startup cooldown (20 seconds)
     initTime = TimeCurrent();
-    Print("Startup cooldown: 20 seconds - trades will be blocked until ", TimeToString(initTime + 20, TIME_DATE|TIME_SECONDS));
+    Print("Startup cooldown: 5 seconds - trades will be blocked until ", TimeToString(initTime + 5, TIME_DATE|TIME_SECONDS));
     
 #ifdef SMC_SYMBOL_GOLD
     if(StringFind(symbolUpper, "XAU") < 0 && StringFind(symbolUpper, "GOLD") < 0) {
@@ -720,6 +720,15 @@ void OnDeinit(const int reason) {
 //| Expert tick function                                            |
 //+------------------------------------------------------------------+
 void OnTick() {
+    // HEARTBEAT: So you always see something in Experts tab (every 60 sec)
+    static datetime lastHeartbeat = 0;
+    if(TimeCurrent() - lastHeartbeat >= 60) {
+        int buys = CountPositions(POSITION_TYPE_BUY);
+        int sells = CountPositions(POSITION_TYPE_SELL);
+        Print(">>> Blueprint Silver: RUNNING | BUY=", buys, " SELL=", sells, " | Entry check on new bar only <<<");
+        lastHeartbeat = TimeCurrent();
+    }
+    
     // Periodic license check (every hour)
     static datetime lastLicenseCheck = 0;
     if(TimeCurrent() - lastLicenseCheck >= 3600) { // Check every hour
@@ -1628,12 +1637,12 @@ bool CheckFVG_Retest_M15(double &fvgTop, double &fvgBottom, bool &isBullishFVG) 
 //| Check Entry Signals                                              |
 //+------------------------------------------------------------------+
 void CheckEntrySignals() {
-    // STARTUP COOLDOWN: Block trades for 20 seconds after EA initialization
-    if(initTime > 0 && TimeCurrent() - initTime < 20) {
+    // STARTUP COOLDOWN: Block trades for 5 seconds (was 20 - reduced so you can trade sooner)
+    if(initTime > 0 && TimeCurrent() - initTime < 5) {
         static datetime lastCooldownLog = 0;
-        if(TimeCurrent() - lastCooldownLog >= 5) { // Log every 5 seconds during cooldown
-            int remainingSeconds = 20 - (int)(TimeCurrent() - initTime);
-            Print("*** STARTUP COOLDOWN: ", remainingSeconds, " seconds remaining - trades blocked ***");
+        if(TimeCurrent() - lastCooldownLog >= 2) {
+            int remainingSeconds = 5 - (int)(TimeCurrent() - initTime);
+            Print("*** STARTUP COOLDOWN: ", remainingSeconds, " sec - trades blocked ***");
             lastCooldownLog = TimeCurrent();
         }
         return; // Exit early - no trades during cooldown

@@ -19,7 +19,8 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.13"
+    "nodemailer": "^7.0.13",
+    "resend": "^4.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

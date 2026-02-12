@@ -23,6 +23,12 @@ const LICENSE_FILE = process.env.LICENSE_FILE || (useDataDir ? path.join(DATA_DI
 const COPIER_SUBSCRIBERS_FILE = process.env.COPIER_SUBSCRIBERS_FILE || (useDataDir ? path.join(DATA_DIR, 'copier_subscribers.json') : path.join(__dirname, 'copier_subscribers.json'));
 const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
 const COINBASE_COMMERCE_API_KEY = process.env.COINBASE_COMMERCE_API_KEY || '';
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL ? String(process.env.PUBLIC_BASE_URL).replace(/\/+$/, '') : '';
+// Support/contact email shown on site and in checkout error messages (e.g. support@yourdomain.com)
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || process.env.CONTACT_EMAIL || '';
+// Invoice sending: Resend (preferred) or SMTP (any provider – Gmail, Mailgun, SendGrid, Outlook, etc.)
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || SUPPORT_EMAIL || 'GOLDMINE <onboarding@resend.dev>';
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_SECURE = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : SMTP_PORT === 465;
@@ -32,7 +38,6 @@ const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || 'GOLDMINE';
 const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
 // One license in a group = valid for any EA name in that group (dash/hyphen normalized in code)
 // Include both ASCII hyphen (-) and en-dash (–) so EAs work regardless of encoding
@@ -336,6 +341,46 @@ async function validateLicense(accountNumber, broker, licenseKey, eaName) {
 //| Coinbase Commerce Checkout                                       |
 //+------------------------------------------------------------------+
 const CHECKOUT_PLANS = {
+    // Goldmine bot licenses (website checkout dropdown)
+    goldmine_blueprint_gold: {
+        name: 'Goldmine Blueprint – Gold',
+        amount: 4999,
+        description: 'Bot license - Goldmine Blueprint Gold'
+    },
+    goldmine_blueprint_silver: {
+        name: 'Goldmine Blueprint – Silver',
+        amount: 4999,
+        description: 'Bot license - Goldmine Blueprint Silver'
+    },
+    goldmine_nexus_gold: {
+        name: 'Goldmine Nexus – Gold',
+        amount: 4999,
+        description: 'Bot license - Goldmine Nexus Gold'
+    },
+    goldmine_nexus_silver: {
+        name: 'Goldmine Nexus – Silver',
+        amount: 4999,
+        description: 'Bot license - Goldmine Nexus Silver'
+    },
+    goldmine_dominion: {
+        name: 'Goldmine Dominion',
+        amount: 4999,
+        description: 'Bot license - Goldmine Dominion'
+    },
+    // Copier subscriptions (monthly)
+    copier_option_a: {
+        name: 'Copier Option A',
+        amount: 262,
+        description: 'Copier Option A (small accounts) - monthly',
+        recurring: true
+    },
+    copier_option_b: {
+        name: 'Copier Option B',
+        amount: 500,
+        description: 'Copier Option B (large accounts) - monthly',
+        recurring: true
+    },
+    // Legacy
     advanced_scalper_1: {
         name: 'Advanced Scalper 1',
         amount: 2000,
@@ -350,18 +395,6 @@ const CHECKOUT_PLANS = {
         name: 'FXGOLDTRADERPLUGSMC',
         amount: 5000,
         description: 'Bot license - FXGOLDTRADERPLUGSMC'
-    },
-    copier_option_a: {
-        name: 'Copier Option A',
-        amount: 262,
-        description: 'Copier Option A (small accounts) - monthly',
-        recurring: true
-    },
-    copier_option_b: {
-        name: 'Copier Option B',
-        amount: 500,
-        description: 'Copier Option B (large accounts) - monthly',
-        recurring: true
     }
 };
 
@@ -379,7 +412,7 @@ function createCoinbaseCharge(chargeData) {
                     'X-CC-Api-Key': COINBASE_COMMERCE_API_KEY,
                     'X-CC-Version': '2018-03-22'
                 },
-                timeout: 15000
+                timeout: 25000
             },
             (response) => {
                 let body = '';
@@ -418,9 +451,9 @@ function getMailer() {
         host: SMTP_HOST,
         port: SMTP_PORT,
         secure: SMTP_SECURE,
-        connectionTimeout: 15000,
-        greetingTimeout: 15000,
-        socketTimeout: 15000,
+        connectionTimeout: 25000,
+        greetingTimeout: 25000,
+        socketTimeout: 25000,
         auth: {
             user: SMTP_USER,
             pass: SMTP_PASS
@@ -435,19 +468,13 @@ function isSameUtcMonth(dateA, dateB) {
     );
 }
 
-async function sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId }) {
-    const mailer = getMailer();
-    if (!mailer) {
-        throw new Error('SMTP is not configured');
-    }
-
+function getInvoiceEmailContent({ subscriber, planInfo, hostedUrl, chargeId }) {
     const invoiceMonth = new Date().toLocaleString('en-US', {
         month: 'long',
         year: 'numeric',
         timeZone: 'UTC'
     });
     const amount = `$${planInfo.amount.toFixed(2)}`;
-
     const subject = `GOLDMINE copier invoice - ${planInfo.name} (${invoiceMonth})`;
     const text = [
         `Hello ${subscriber.name || 'Trader'},`,
@@ -467,12 +494,44 @@ async function sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId }) {
         'Thank you,',
         'GOLDMINE'
     ].join('\n');
+    return { subject, text };
+}
 
+async function sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId }) {
+    const { subject, text } = getInvoiceEmailContent({ subscriber, planInfo, hostedUrl, chargeId });
+
+    // Option 1: Resend (no Gmail/app passwords – just API key; use resend.com)
+    if (RESEND_API_KEY) {
+        try {
+            const { Resend } = require('resend');
+            const resend = new Resend(RESEND_API_KEY);
+            const from = RESEND_FROM_EMAIL.includes('<') ? RESEND_FROM_EMAIL : `GOLDMINE <${RESEND_FROM_EMAIL}>`;
+            const { data, error } = await resend.emails.send({
+                from,
+                to: subscriber.email,
+                subject,
+                text
+            });
+            if (error) {
+                throw new Error(error.message || 'Resend send failed');
+            }
+            return;
+        } catch (err) {
+            console.error('Resend invoice send error:', err.message);
+            throw err;
+        }
+    }
+
+    // Option 2: SMTP (Gmail, Mailgun, SendGrid, Outlook, etc.)
+    const mailer = getMailer();
+    if (!mailer) {
+        throw new Error('Neither Resend nor SMTP is configured. Set RESEND_API_KEY or SMTP_USER/SMTP_PASS.');
+    }
     await mailer.sendMail({
         from: SMTP_FROM ? `${SMTP_FROM_NAME} <${SMTP_FROM}>` : SMTP_FROM_NAME,
         to: subscriber.email,
-        subject: subject,
-        text: text
+        subject,
+        text
     });
 }
 
@@ -513,22 +572,28 @@ async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) 
                 plan: subscriber.plan
             });
 
-            const charge = await createCoinbaseCharge({
-                name: planInfo.name,
-                description: planInfo.description,
-                pricing_type: 'fixed_price',
-                local_price: { amount: planInfo.amount.toFixed(2), currency: 'USD' },
-                redirect_url: baseUrl ? `${baseUrl}/#checkout` : undefined,
-                cancel_url: baseUrl ? `${baseUrl}/#checkout` : undefined,
-                metadata: {
-                    subscriberId: subscriber.id,
-                    customerName: subscriber.name || '',
-                    customerEmail: subscriber.email || '',
-                    accountSize: subscriber.accountSize || '',
-                    contact: subscriber.contact || '',
-                    plan: subscriber.plan
-                }
-            });
+            let charge;
+            try {
+                charge = await createCoinbaseCharge({
+                    name: planInfo.name,
+                    description: planInfo.description,
+                    pricing_type: 'fixed_price',
+                    local_price: { amount: planInfo.amount.toFixed(2), currency: 'USD' },
+                    redirect_url: baseUrl ? `${baseUrl}/#checkout` : undefined,
+                    cancel_url: baseUrl ? `${baseUrl}/#checkout` : undefined,
+                    metadata: {
+                        subscriberId: subscriber.id,
+                        customerName: subscriber.name || '',
+                        customerEmail: subscriber.email || '',
+                        accountSize: subscriber.accountSize || '',
+                        contact: subscriber.contact || '',
+                        plan: subscriber.plan
+                    }
+                });
+            } catch (coinbaseErr) {
+                console.error('Copier invoice: Coinbase charge failed:', coinbaseErr.message);
+                throw new Error('Coinbase: ' + (coinbaseErr.message || 'Connection timeout'));
+            }
 
             const hostedUrl = charge?.data?.hosted_url;
             const chargeId = charge?.data?.id;
@@ -536,7 +601,12 @@ async function runCopierInvoiceJob({ force = false, subscriberId = null } = {}) 
                 throw new Error('Coinbase Commerce charge missing hosted URL');
             }
 
-            await sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId });
+            try {
+                await sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId });
+            } catch (emailErr) {
+                console.error('Copier invoice: Email send failed:', emailErr.message);
+                throw new Error('Email: ' + (emailErr.message || 'Connection timeout'));
+            }
             console.log('Copier invoice sent:', {
                 subscriberId: subscriber.id,
                 email: subscriber.email,
@@ -577,6 +647,13 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Public config (support email for mailto links and checkout error message)
+app.get('/api/config', (req, res) => {
+    res.json({
+        supportEmail: SUPPORT_EMAIL || 'goldminebotsltd@gmail.com'
+    });
+});
+
 // Create Coinbase Commerce checkout
 app.post('/api/coinbase/charge', async (req, res) => {
     try {
@@ -612,7 +689,7 @@ app.post('/api/coinbase/charge', async (req, res) => {
         const amount = planInfo.amount.toFixed(2);
         const description = planInfo.description;
         const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-        const baseUrl = `${protocol}://${req.get('host')}`;
+        const baseUrl = PUBLIC_BASE_URL || `${protocol}://${req.get('host')}`;
 
         const charge = await createCoinbaseCharge({
             name: planInfo.name,
@@ -1042,6 +1119,13 @@ app.listen(PORT, () => {
     }
     if (useDataDir) {
         console.log(`Using /data for licenses (volume detected).`);
+    }
+    if (RESEND_API_KEY) {
+        console.log(`Invoice emails: Resend (RESEND_API_KEY set)`);
+    } else if (SMTP_USER && SMTP_PASS) {
+        console.log(`Invoice emails: SMTP`);
+    } else {
+        console.log(`Invoice emails: NOT CONFIGURED (set RESEND_API_KEY or SMTP_USER/SMTP_PASS)`);
     }
     console.log(`Server URL: http://localhost:${PORT}`);
     console.log(`Health Check: http://localhost:${PORT}/health`);

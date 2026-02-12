@@ -90,7 +90,9 @@
     </div>
     
     <script>
-        const SERVER_URL = 'https://mt5-license-server-production.up.railway.app';
+        // When opened from file:// or localhost, use production URL. When opened from your deployed site, use same origin.
+        const isLocal = /^file:\/\//.test(window.location.origin) || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const SERVER_URL = isLocal ? 'https://mt5-license-server-production.up.railway.app' : window.location.origin;
         
         document.getElementById('addLicenseForm').addEventListener('submit', async (e) => {
             e.preventDefault();

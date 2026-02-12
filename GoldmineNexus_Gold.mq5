@@ -128,7 +128,7 @@ input bool UseFVG = true;                    // Enable FVG trading
 input double FVG_MinSize = 5.0;              // Minimum FVG size (pips)
 input int FVG_Lookback = 50;                 // Bars to look back for FVG
 input bool FVG_EntryOnTouch = true;           // Entry when price TOUCHES FVG zone
-input bool FVG_RequirePullback = true;        // TRUE = only BUY in lower half of bullish FVG, SELL in upper half of bearish (no entry at high/low)
+input bool FVG_RequirePullback = true;        // TRUE = only BUY in lower half (fewer trades). FALSE = entry on any touch (more trades).
 input bool FVG_EntryOn50Percent = true;      // Entry when price hits 50% of FVG (retest) - used with CheckFVG_Retest for OB
 input bool UseFVG_M1 = true;                 // FVG on M1
 input bool UseFVG_M3 = true;                 // FVG on M3
@@ -716,7 +716,7 @@ int OnInit() {
     
     // Set initialization time for startup cooldown (20 seconds)
     initTime = TimeCurrent();
-    Print("Startup cooldown: 20 seconds - trades will be blocked until ", TimeToString(initTime + 20, TIME_DATE|TIME_SECONDS));
+    Print("Startup cooldown: 5 seconds - trades will be blocked until ", TimeToString(initTime + 5, TIME_DATE|TIME_SECONDS));
     
 #ifdef PLUG_SYMBOL_GOLD
     if(StringFind(symbolUpper, "XAU") < 0 && StringFind(symbolUpper, "GOLD") < 0) {
@@ -747,6 +747,15 @@ void OnDeinit(const int reason) {
 //| Expert tick function                                            |
 //+------------------------------------------------------------------+
 void OnTick() {
+    // HEARTBEAT: So you always see something in Experts tab (every 60 sec)
+    static datetime lastHeartbeat = 0;
+    if(TimeCurrent() - lastHeartbeat >= 60) {
+        int buys = CountPositions(POSITION_TYPE_BUY);
+        int sells = CountPositions(POSITION_TYPE_SELL);
+        Print(">>> Nexus Gold (", _Symbol, "): RUNNING | BUY=", buys, " SELL=", sells, " | Entry check on new M1 bar only <<<");
+        lastHeartbeat = TimeCurrent();
+    }
+    
     // Periodic license check (every hour)
     static datetime lastLicenseCheck = 0;
     if(TimeCurrent() - lastLicenseCheck >= 3600) { // Check every hour
@@ -1731,12 +1740,12 @@ bool CheckFVG_Retest_M15(double &fvgTop, double &fvgBottom, bool &isBullishFVG) 
 //| Check Entry Signals                                              |
 //+------------------------------------------------------------------+
 void CheckEntrySignals() {
-    // STARTUP COOLDOWN: Block trades for 20 seconds after EA initialization
-    if(initTime > 0 && TimeCurrent() - initTime < 20) {
+    // STARTUP COOLDOWN: Block trades for 5 seconds after EA initialization (was 20 - reduced so you can trade sooner)
+    if(initTime > 0 && TimeCurrent() - initTime < 5) {
         static datetime lastCooldownLog = 0;
-        if(TimeCurrent() - lastCooldownLog >= 5) { // Log every 5 seconds during cooldown
-            int remainingSeconds = 20 - (int)(TimeCurrent() - initTime);
-            Print("*** STARTUP COOLDOWN: ", remainingSeconds, " seconds remaining - trades blocked ***");
+        if(TimeCurrent() - lastCooldownLog >= 2) {
+            int remainingSeconds = 5 - (int)(TimeCurrent() - initTime);
+            Print("*** STARTUP COOLDOWN: ", remainingSeconds, " sec - trades blocked ***");
             lastCooldownLog = TimeCurrent();
         }
         return; // Exit early - no trades during cooldown
@@ -2771,6 +2780,13 @@ void OpenBuyOrder(OrderBlock &ob, double useSL = 0, double riskPercent = 0, stri
             Print("*** BUY: SL widened to broker minimum (", (minDistPrice / pipValue), " pips) to avoid Retcode 10011 ***");
         }
     }
+    // LAST-LINE FLOOR: Gold SL never below 25 pips (XAUUSD 1 pip = 0.1)
+    const double GOLD_PIP = 0.1;
+    double buySLPips = (entryPrice - sl) / GOLD_PIP;
+    if(buySLPips < 25.0 && buySLPips > 0) {
+        sl = NormalizeDouble(entryPrice - 25.0 * GOLD_PIP, symbolDigits);
+        Print("*** BUY: SL raised to 25 pips (was ", DoubleToString(buySLPips, 1), " pips) ***");
+    }
     
     // Calculate take profit - use order block 300 pips away (for reference only)
     // We don't set TP initially - we manage it manually to allow runner
@@ -2865,6 +2881,13 @@ void OpenSellOrder(OrderBlock &ob, double useSL = 0, double riskPercent = 0, str
             sl = NormalizeDouble(entryPrice + minDistPriceSell, symbolDigits);
             Print("*** SELL: SL widened to broker minimum (", (minDistPriceSell / pipValue), " pips) ***");
         }
+    }
+    // LAST-LINE FLOOR: Gold SL never below 25 pips (XAUUSD 1 pip = 0.1)
+    const double GOLD_PIP_SELL = 0.1;
+    double sellSLPips = (sl - entryPrice) / GOLD_PIP_SELL;
+    if(sellSLPips < 25.0 && sellSLPips > 0) {
+        sl = NormalizeDouble(entryPrice + 25.0 * GOLD_PIP_SELL, symbolDigits);
+        Print("*** SELL: SL raised to 25 pips (was ", DoubleToString(sellSLPips, 1), " pips) ***");
     }
     
     double tp = 0;
@@ -3482,6 +3505,10 @@ void OpenBuyOrderFromFVG(FVG &fvg, double riskPercent = 0) {
         sl = NormalizeDouble(entryPrice - MaxSL_Pips_Gold * pvGold, symbolDigits);
         Print("*** FVG BUY: SL capped at ", MaxSL_Pips_Gold, " pips (was ", DoubleToString(slPipsFVG, 1), " pips) ***");
     }
+    if(slPipsFVG < 25.0 && slPipsFVG > 0) {
+        sl = NormalizeDouble(entryPrice - 25.0 * pvGold, symbolDigits);
+        Print("*** FVG BUY: SL raised to 25 pips (was ", DoubleToString(slPipsFVG, 1), " pips) ***");
+    }
     // Layered risk when enabled
     double actualRisk = (riskPercent > 0) ? riskPercent : (AllowLayeredEntries ? (TotalLayeredRiskPercent / (double)MathMax(1, MaxEntries)) : RiskPercent);
     double riskAmount = accountBalance * (actualRisk / 100.0);
@@ -3521,6 +3548,10 @@ void OpenSellOrderFromFVG(FVG &fvg, double riskPercent = 0) {
     if(slPipsFVGSell > MaxSL_Pips_Gold) {
         sl = NormalizeDouble(entryPrice + MaxSL_Pips_Gold * pvGold, symbolDigits);
         Print("*** FVG SELL: SL capped at ", MaxSL_Pips_Gold, " pips (was ", DoubleToString(slPipsFVGSell, 1), " pips) ***");
+    }
+    if(slPipsFVGSell < 25.0 && slPipsFVGSell > 0) {
+        sl = NormalizeDouble(entryPrice + 25.0 * pvGold, symbolDigits);
+        Print("*** FVG SELL: SL raised to 25 pips (was ", DoubleToString(slPipsFVGSell, 1), " pips) ***");
     }
     double actualRisk = (riskPercent > 0) ? riskPercent : (AllowLayeredEntries ? (TotalLayeredRiskPercent / (double)MathMax(1, MaxEntries)) : RiskPercent);
     double riskAmount = accountBalance * (actualRisk / 100.0);

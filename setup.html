@@ -391,12 +391,21 @@
             <p class="muted">
               If you get stuck, contact us and we will guide you through setup.
             </p>
-            <a class="btn btn-primary" href="mailto:goldminebotsltd@gmail.com">Email GOLDMINE</a>
+            <a class="btn btn-primary" id="mailtoSupport" href="mailto:goldminebotsltd@gmail.com">Email GOLDMINE</a>
           </div>
         </div>
       </section>
     </main>
 
+    <script>
+      fetch("/api/config").then(function(r){ return r.json(); }).then(function(cfg){
+        if (cfg.supportEmail) {
+          var m = "mailto:" + cfg.supportEmail;
+          var el = document.getElementById("mailtoSupport");
+          if (el) { el.href = m; }
+        }
+      }).catch(function(){});
+    </script>
     <footer>
       <div class="container">
         <p>
