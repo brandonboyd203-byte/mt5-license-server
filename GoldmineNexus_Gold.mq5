@@ -39,7 +39,7 @@ input bool UseBreakEven = true;              // Enable break-even
 input bool UseDynamicBE = true;              // BE at position's SL distance (dynamic); if false use fixed pips below
 input double BreakEvenPips = 25.0;            // Move to BE at this many pips - min when UseDynamicBE, or fixed when off
 #ifndef PLUG_SYMBOL_GOLD
-input double BreakEvenPips_Silver = 25.0;    // Move to BE at this many pips (Silver)
+input double BreakEvenPips_Silver = 30.0;    // Move to BE at this many pips (Silver)
 #endif
 input double BE_FVG_Pips = 30.0;             // BE pips for FVG entries
 input double BE_OB_Pips = 30.0;              // BE pips for Order Block entries
@@ -50,11 +50,12 @@ input group "=== Dynamic SL Settings ==="
 #ifndef PLUG_SYMBOL_GOLD
 input bool DynamicSL_GoldOnly = false;       // Apply dynamic SL only to Gold (XAUUSD) - FALSE = Use for both
 #endif
-input double DynamicSL_MinPips = 15.0;       // Minimum dynamic SL (pips) - never tighter than base
+input double DynamicSL_MinPips = 25.0;       // Minimum dynamic SL (pips) - Gold: never smaller (was 15; 14 too tight)
 #ifndef PLUG_SYMBOL_GOLD
 input double DynamicSL_MinPips_Silver = 30.0; // Minimum dynamic SL (pips) - Silver
 #endif
 input double DynamicSL_MaxPips = 80.0;       // Maximum dynamic SL (pips) - allows structure/spikes
+input double MaxSL_Pips_Gold = 80.0;         // Hard cap: Gold SL never exceeds this (stops 100+ pip SL; broker min may still widen slightly)
 #ifndef PLUG_SYMBOL_GOLD
 input double DynamicSL_MaxPips_Silver = 60.0; // Maximum dynamic SL (pips) - Silver
 #endif
@@ -81,19 +82,23 @@ input group "=== Take Profit System ==="
 #else
 // All TP/BE levels below are used as-is (Gold 0.1/pip, Silver 0.01/pip applied internally)
 #endif
-input double TP1_Pips = 25.0;                // TP1 (pips) - Close 25%
-input double TP1_Percent = 25.0;             // % to close at TP1
-input double TP2_Pips = 50.0;                // TP2 (pips) - Close 25%
-input double TP2_Percent = 25.0;             // % to close at TP2
-input double TP3_Pips = 80.0;                // TP3 (pips) - Close 25%
-input double TP3_Percent = 25.0;             // % to close at TP3
-input double TP4_Pips = 150.0;               // TP4 (pips) - Close 10%, leave runner
-input double TP4_Percent = 10.0;             // % to close at TP4 (at 150 pips)
+input double TP1_Pips = 50.0;                // TP1 (pips) - Close 15% (same Gold & Silver, Buys & Sells)
+input double TP1_Percent = 15.0;            // % to close at TP1
+input double TP2_Pips = 70.0;                // TP2 (pips) - Close 15%
+input double TP2_Percent = 15.0;            // % to close at TP2
+input double TP3_Pips = 90.0;                // TP3 (pips) - Close 25%
+input double TP3_Percent = 25.0;            // % to close at TP3
+input double TP4_Pips = 150.0;               // TP4 (pips) - Close 25%, leave runner
+input double TP4_Percent = 25.0;            // % to close at TP4 (at 150 pips)
 input bool TP4_To1H_SR = true;               // TP4 alternate: remaining can also target 1H S/R
 input double TP5_Pips = 150.0;              // TP5 (pips) - Secure at 150 (reduce to runner)
 input double TP6_Pips = 300.0;               // TP6 (pips) - Close runner at 300 pips
 input double RunnerSizePercent = 15.0;       // % to keep as runner - DEFAULT: 15%
 input bool RunnerTo1H_SR = true;             // Runner targets 1H support/resistance
+input bool UseTrailSL = true;                // Trail SL when profit >= TrailStartPips (Gold & Silver)
+input double TrailStartPips = 100.0;         // Start trailing when profit >= this (pips)
+input double TrailDistancePips = 20.0;      // Trail SL this many pips behind price
+input bool UseDynamicTrail = true;            // Close on structure reversal (BOS/CHoCH) to exit with a win
 #ifndef PLUG_SYMBOL_GOLD
 enum ENUM_SYMBOL_FILTER_PLUG { SYMBOL_BOTH_P = 0, SYMBOL_GOLD_ONLY_P = 1, SYMBOL_SILVER_ONLY_P = 2 };
 input ENUM_SYMBOL_FILTER_PLUG SymbolFilter = SYMBOL_BOTH_P; // Gold only / Silver only = one pair per chart (best for BE). Set Gold only on XAU chart, Silver only on XAG chart.
@@ -122,8 +127,9 @@ input group "=== FVG Detection (Goldmine Nexus: All TFs) ==="
 input bool UseFVG = true;                    // Enable FVG trading
 input double FVG_MinSize = 5.0;              // Minimum FVG size (pips)
 input int FVG_Lookback = 50;                 // Bars to look back for FVG
-input bool FVG_EntryOnTouch = true;           // Entry when price TOUCHES FVG (not just 50% retest)
-input bool FVG_EntryOn50Percent = true;      // Entry when price hits 50% of FVG (retest)
+input bool FVG_EntryOnTouch = true;           // Entry when price TOUCHES FVG zone
+input bool FVG_RequirePullback = true;        // TRUE = only BUY in lower half of bullish FVG, SELL in upper half of bearish (no entry at high/low)
+input bool FVG_EntryOn50Percent = true;      // Entry when price hits 50% of FVG (retest) - used with CheckFVG_Retest for OB
 input bool UseFVG_M1 = true;                 // FVG on M1
 input bool UseFVG_M3 = true;                 // FVG on M3
 input bool UseFVG_M5 = true;                 // FVG on M5
@@ -2458,6 +2464,9 @@ void CheckEntrySignals() {
             if(!fvgs[i].isActive) continue;
             
             if(fvgs[i].isBullish && currentPrice >= fvgs[i].bottom && currentPrice <= fvgs[i].top) {
+                // Require pullback: only BUY when price is in LOWER half of bullish FVG (not at the high)
+                double fvgMidBuy = (fvgs[i].bottom + fvgs[i].top) / 2.0;
+                if(FVG_RequirePullback && currentPrice > fvgMidBuy) continue; // Skip: price at top of FVG, wait for pullback
                 // CRITICAL: Re-check position count BEFORE opening trade
                 buyPositions = CountPositions(POSITION_TYPE_BUY);
                 if(buyPositions >= MaxEntries) {
@@ -2499,6 +2508,9 @@ void CheckEntrySignals() {
                     }
                 }
             } else if(!fvgs[i].isBullish && currentPrice <= fvgs[i].top && currentPrice >= fvgs[i].bottom) {
+                // Require pullback: only SELL when price is in UPPER half of bearish FVG (not at the low)
+                double fvgMidSell = (fvgs[i].bottom + fvgs[i].top) / 2.0;
+                if(FVG_RequirePullback && currentPrice < fvgMidSell) continue; // Skip: price at bottom of FVG, wait for pullback
                 // CRITICAL: Re-check position count BEFORE opening trade
                 sellPositions = CountPositions(POSITION_TYPE_SELL);
                 if(sellPositions >= MaxEntries) {
@@ -2977,7 +2989,7 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
     }
     double baseSL = SL_Pips;
     double minPips = DynamicSL_MinPips;
-    double maxPips = DynamicSL_MaxPips;
+    double maxPips = MathMin(DynamicSL_MaxPips, MaxSL_Pips_Gold);  // Never exceed hard cap
 #else
 #ifdef PLUG_SYMBOL_SILVER
     double pv = (symPoint >= 0.1) ? 0.1 : 0.01;
@@ -3139,10 +3151,16 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
     if(slPips > maxPips) {
         slPips = maxPips;
     }
-    // Safety: Gold absolute cap 80 pips (lot sizing uses this SL from entry so risk stays constant)
-    if(isGold && slPips > 80.0) {
-        Print("  [SAFETY] Gold SL capped at 80 pips (was ", DoubleToString(slPips, 1), " pips)");
-        slPips = 80.0;
+    // HARD FLOOR: Gold never below 25 pips (ignores saved inputs / old .ex5)
+    const double GOLD_ABSOLUTE_MIN_SL_PIPS = 25.0;
+    if(isGold && slPips < GOLD_ABSOLUTE_MIN_SL_PIPS) {
+        Print("  [SAFETY] Gold SL raised to ", GOLD_ABSOLUTE_MIN_SL_PIPS, " pips (was ", DoubleToString(slPips, 1), " pips)");
+        slPips = GOLD_ABSOLUTE_MIN_SL_PIPS;
+    }
+    // Safety: Gold absolute cap at MaxSL_Pips_Gold (stops 100+ pip SL from structure/broker min)
+    if(isGold && slPips > MaxSL_Pips_Gold) {
+        Print("  [SAFETY] Gold SL capped at ", MaxSL_Pips_Gold, " pips (was ", DoubleToString(slPips, 1), " pips)");
+        slPips = MaxSL_Pips_Gold;
     }
     
     // Calculate final SL price
@@ -3457,7 +3475,13 @@ void OpenBuyOrderFromFVG(FVG &fvg, double riskPercent = 0) {
     double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
     double entryPrice = ask;
     double sl = fvg.bottom - (FVG_SLBuffer_Pips * pipValue); // SL below FVG
-    
+    // Cap FVG SL so we never get 100+ pip SL on large FVGs (Gold: 1 pip = 0.1)
+    double pvGold = 0.1;
+    double slPipsFVG = (entryPrice - sl) / pvGold;
+    if(slPipsFVG > MaxSL_Pips_Gold) {
+        sl = NormalizeDouble(entryPrice - MaxSL_Pips_Gold * pvGold, symbolDigits);
+        Print("*** FVG BUY: SL capped at ", MaxSL_Pips_Gold, " pips (was ", DoubleToString(slPipsFVG, 1), " pips) ***");
+    }
     // Layered risk when enabled
     double actualRisk = (riskPercent > 0) ? riskPercent : (AllowLayeredEntries ? (TotalLayeredRiskPercent / (double)MathMax(1, MaxEntries)) : RiskPercent);
     double riskAmount = accountBalance * (actualRisk / 100.0);
@@ -3491,7 +3515,13 @@ void OpenSellOrderFromFVG(FVG &fvg, double riskPercent = 0) {
     double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
     double entryPrice = bid;
     double sl = fvg.top + (FVG_SLBuffer_Pips * pipValue); // SL above FVG
-    
+    // Cap FVG SL so we never get 100+ pip SL on large FVGs (Gold: 1 pip = 0.1)
+    double pvGold = 0.1;
+    double slPipsFVGSell = (sl - entryPrice) / pvGold;
+    if(slPipsFVGSell > MaxSL_Pips_Gold) {
+        sl = NormalizeDouble(entryPrice + MaxSL_Pips_Gold * pvGold, symbolDigits);
+        Print("*** FVG SELL: SL capped at ", MaxSL_Pips_Gold, " pips (was ", DoubleToString(slPipsFVGSell, 1), " pips) ***");
+    }
     double actualRisk = (riskPercent > 0) ? riskPercent : (AllowLayeredEntries ? (TotalLayeredRiskPercent / (double)MathMax(1, MaxEntries)) : RiskPercent);
     double riskAmount = accountBalance * (actualRisk / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
@@ -3677,6 +3707,7 @@ void ManagePositions() {
         double currentSL = position.StopLoss();
         double currentTP = position.TakeProfit();
         double currentVolume = position.Volume();
+        ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)position.Type();
         
         bool isSilver = (StringFind(posSymbolUpper, "XAG") >= 0 || StringFind(posSymbolUpper, "SILVER") >= 0);
         double posPipValue = GetPipValueForSymbol(posSymbol);
@@ -3693,17 +3724,17 @@ void ManagePositions() {
         double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
         
         double currentProfitPips = 0;
-        if(position.Type() == POSITION_TYPE_BUY)
+        if(posType == POSITION_TYPE_BUY)
             currentProfitPips = (currentBID - openPrice) / posPipValue;
         else
             currentProfitPips = (openPrice - currentASK) / posPipValue;
         // Gold BUY: 1 pip = 0.1 so BE/TP always see correct pips (e.g. 4950→4962 = 120 pips)
         bool isGoldSym = (StringFind(posSymbolUpper, "XAU") >= 0 || StringFind(posSymbolUpper, "GOLD") >= 0);
-        if(isGoldSym && position.Type() == POSITION_TYPE_BUY)
+        if(isGoldSym && posType == POSITION_TYPE_BUY)
             currentProfitPips = (currentBID - openPrice) / 0.1;
         // Silver: 1 pip = 0.01
         if(isSilver) {
-            if(position.Type() == POSITION_TYPE_BUY)
+            if(posType == POSITION_TYPE_BUY)
                 currentProfitPips = (currentBID - openPrice) / 0.01;
             else
                 currentProfitPips = (openPrice - currentASK) / 0.01;
@@ -3713,39 +3744,56 @@ void ManagePositions() {
         posPipValue = 0.1;
         isSilver = false;
         isGoldSym = true;
-        currentProfitPips = (position.Type() == POSITION_TYPE_BUY) ? (currentBID - openPrice) / 0.1 : (openPrice - currentASK) / 0.1;
+        currentProfitPips = (posType == POSITION_TYPE_BUY) ? (currentBID - openPrice) / 0.1 : (openPrice - currentASK) / 0.1;
 #endif
 #ifdef PLUG_SYMBOL_SILVER
         // SILVER-ONLY EA: force pip = 0.01 and profit from price (no broker/symbol ambiguity)
         posPipValue = 0.01;
         isSilver = true;
         isGoldSym = false;
-        currentProfitPips = (position.Type() == POSITION_TYPE_BUY) ? (currentBID - openPrice) / 0.01 : (openPrice - currentASK) / 0.01;
-        if(position.Type() == POSITION_TYPE_SELL)
+        currentProfitPips = (posType == POSITION_TYPE_BUY) ? (currentBID - openPrice) / 0.01 : (openPrice - currentASK) / 0.01;
+        if(posType == POSITION_TYPE_SELL)
             currentProfitPips = (openPrice - currentASK) / 0.01;
 #endif
         // SELL profit: always use fixed pip size so BE/TP never fail (Silver=0.01, Gold=0.1)
-        if(position.Type() == POSITION_TYPE_SELL)
+        if(posType == POSITION_TYPE_SELL)
             currentProfitPips = (openPrice - currentASK) / (isSilver ? 0.01 : 0.1);
         const double PLUG_MIN_PIPS_FULL_CLOSE = 80.0; // Never full-close below this (stops Silver "full at 50")
         
         // CRITICAL: For SELL trades, use ASK for BE/TP calculations (what we buy back at)
         // For BUY trades, use BID (what we sell at)
-        double currentPrice = (position.Type() == POSITION_TYPE_BUY) ? currentBID : currentASK;
+        double currentPrice = (posType == POSITION_TYPE_BUY) ? currentBID : currentASK;
+        
+        // Auto-correct position type if MT5 reports wrong type (e.g. SELL shown as BUY after broker/MT issue)
+        double pipVal = isSilver ? 0.01 : 0.1;
+        double profitIfBuy  = (currentBID - openPrice) / pipVal;
+        double profitIfSell = (openPrice - currentASK) / pipVal;
+        const double TYPE_CORRECT_PIP_THRESH = 5.0;
+        if(posType == POSITION_TYPE_BUY && profitIfBuy < -TYPE_CORRECT_PIP_THRESH && profitIfSell > TYPE_CORRECT_PIP_THRESH) {
+            posType = POSITION_TYPE_SELL;
+            currentProfitPips = profitIfSell;
+            currentPrice = currentASK;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported BUY but price below entry (SELL in profit ", DoubleToString(currentProfitPips, 1), " pips) - treating as SELL ***");
+        } else if(posType == POSITION_TYPE_SELL && profitIfSell < -TYPE_CORRECT_PIP_THRESH && profitIfBuy > TYPE_CORRECT_PIP_THRESH) {
+            posType = POSITION_TYPE_BUY;
+            currentProfitPips = profitIfBuy;
+            currentPrice = currentBID;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported SELL but price above entry (BUY in profit) - treating as BUY ***");
+        }
         
         // Stable per-ticket tracking index
         int ticketIndex = GetTicketIndex(ticket);
         
         // Log position status every 10 seconds for debugging
         if(currentTime - lastLogTime >= 10) {
-            Print("Position #", ticket, " | Type=", (position.Type() == POSITION_TYPE_BUY ? "BUY" : "SELL"),
+            Print("Position #", ticket, " | Type=", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"),
                   " | Open=", openPrice, " | Current=", currentPrice, 
                   " | Profit=", currentProfitPips, " pips | SL=", currentSL, " | TP=", currentTP);
             lastLogTime = currentTime;
         }
         
         // DEBUG: Verify calculation for SELL trades with large profit/loss
-        if(isSilver && position.Type() == POSITION_TYPE_SELL && MathAbs(currentProfitPips) > 50) {
+        if(isSilver && posType == POSITION_TYPE_SELL && MathAbs(currentProfitPips) > 50) {
             static datetime lastSellProfitDebug = 0;
             if(TimeCurrent() - lastSellProfitDebug >= 2) {
                 Print("=== SELL TRADE PROFIT DEBUG ===");
@@ -3783,6 +3831,8 @@ void ManagePositions() {
         }
         
         double minLot = SymbolInfoDouble(posSymbol, SYMBOL_VOLUME_MIN);
+        double lotStep = SymbolInfoDouble(posSymbol, SYMBOL_VOLUME_STEP);
+        if(lotStep <= 0) lotStep = 0.01;
         
         // Store original volume if not already stored
         if(originalVolume[ticketIndex] == 0) {
@@ -3814,7 +3864,7 @@ void ManagePositions() {
         if(UseDynamicBE && currentSL > 0 && posPipValue > 0) {
             // Use fixed pip size for Silver (0.01) / Gold (0.1) so SL distance is correct regardless of broker digits
             double pipForSL = isSilver ? 0.01 : (isGoldSym ? 0.1 : posPipValue);
-            double slDistancePips = (position.Type() == POSITION_TYPE_BUY)
+            double slDistancePips = (posType == POSITION_TYPE_BUY)
                 ? (openPrice - currentSL) / pipForSL
                 : (currentSL - openPrice) / pipForSL;
             if(slDistancePips > 0) {
@@ -3836,17 +3886,27 @@ void ManagePositions() {
 #endif
             }
         }
+        // Gold: BE must be at least 30 pips (never trigger BE earlier than BreakEvenPips)
+#ifdef PLUG_SYMBOL_GOLD
+        bePips = MathMax(bePips, BreakEvenPips);
+#endif
+        // Cap BE at user setting so we never wait longer than BreakEvenPips / BreakEvenPips_Silver
+#ifdef PLUG_SYMBOL_GOLD
+        bePips = MathMin(bePips, BreakEvenPips);
+#else
+        bePips = MathMin(bePips, isSilver ? BreakEvenPips_Silver : BreakEvenPips);
+#endif
         
         // CRITICAL: Silver SELL - always use price-based profit (1 pip = 0.01) so BE/TP never fail
 #ifdef PLUG_SYMBOL_SILVER
-        if(position.Type() == POSITION_TYPE_SELL) {
+        if(posType == POSITION_TYPE_SELL) {
             double silverSellPipsNow = (openPrice - currentASK) / 0.01;
             if(silverSellPipsNow > currentProfitPips) currentProfitPips = silverSellPipsNow;
         }
 #endif
         // GOLD SELL FIX: Force BE trigger from price distance (1 pip Gold = 0.1) so BE always fires (like Goldmine Edge / SMC)
         bool isGold = (StringFind(posSymbolUpper, "XAU") >= 0 || StringFind(posSymbolUpper, "GOLD") >= 0);
-        if(isGold && position.Type() == POSITION_TYPE_SELL) {
+        if(isGold && posType == POSITION_TYPE_SELL) {
             double priceProfit = openPrice - currentASK;
             const double goldPipPrice = 0.1;
             double pipsFromPrice = priceProfit / goldPipPrice;
@@ -3854,21 +3914,20 @@ void ManagePositions() {
                 currentProfitPips = pipsFromPrice;
         }
         
-        // SELL BE: Same as Goldmine Edge - one Modify(ticket, openPrice, 0). Try every tick until SL at BE.
-        if(position.Type() == POSITION_TYPE_SELL) {
+        // SELL BE: Same as Goldmine Edge - one Modify(ticket, openPrice, 0). Try every tick until SL at BE. Gold & Silver both at 30 pips.
+        if(posType == POSITION_TYPE_SELL) {
             double pipSizeSELL = isGold ? 0.1 : (isSilver ? 0.01 : posPipValue);
             double sellPips = (openPrice - currentASK) / pipSizeSELL;
             if(sellPips > currentProfitPips) currentProfitPips = sellPips;
             if(sellPips >= bePips && sellPips > 0) {
                 if(!tp1Hit[ticketIndex]) { tp1Hit[ticketIndex] = true; tp1HitPrice[ticketIndex] = currentPrice; }
-                if(position.Type() == POSITION_TYPE_SELL)
-                    Print("*** SELL BE FLAG (Silver): ", DoubleToString(sellPips, 1), " pips >= ", bePips, " | Ticket #", ticket, " → TP enabled ***");
+                Print("*** SELL BE FLAG (", (isGold ? "Gold" : "Silver"), "): ", DoubleToString(sellPips, 1), " pips >= ", bePips, " | Ticket #", ticket, " → TP enabled ***");
                 if(UseBreakEven) {
                     double newSL = openPrice;
                     bool needToModify = (currentSL == 0 || newSL < currentSL);
                     if(needToModify) {
                         if(trade.PositionModify(ticket, newSL, 0)) {
-                            Print("*** SELL BE SET | Ticket #", ticket, " | ", DoubleToString(sellPips, 1), " pips ***");
+                            Print("*** SELL BE SET | Ticket #", ticket, " (", (isGold ? "Gold" : "Silver"), ") | ", DoubleToString(sellPips, 1), " pips ***");
                         } else if(isSilver) {
                             // Silver SELL: BE = entry. If broker rejects, try 1 pip in profit (SL slightly below entry)
                             double cushionSL = NormalizeDouble(openPrice - 0.01, posDigits);
@@ -3880,6 +3939,12 @@ void ManagePositions() {
                                     Print("*** SELL BE SET (2 decimals) | Ticket #", ticket, " ***");
                                 }
                             }
+                        } else if(isGold) {
+                            // Gold SELL: If broker rejects exact BE, try 1 pip in profit (SL 0.1 below entry)
+                            double cushionSL = NormalizeDouble(openPrice - 0.1, posDigits);
+                            if(trade.PositionModify(ticket, cushionSL, 0)) {
+                                Print("*** Gold SELL BE SET (cushion -1 pip) | Ticket #", ticket, " | ", DoubleToString(sellPips, 1), " pips ***");
+                            }
                         }
                     }
                 }
@@ -3890,13 +3955,13 @@ void ManagePositions() {
         if(currentProfitPips >= bePips && currentProfitPips > 0 && !tp1Hit[ticketIndex]) {
             tp1Hit[ticketIndex] = true;
             tp1HitPrice[ticketIndex] = currentPrice;
-            if(position.Type() == POSITION_TYPE_SELL)
+            if(posType == POSITION_TYPE_SELL)
                 Print("*** SELL BE FLAG SET: ", currentProfitPips, " pips >= ", bePips, " → TP can run (will still try to move SL) ***");
         }
         
         bool shouldTriggerBE = (currentProfitPips >= bePips && currentProfitPips > 0);
         // Silver BUY: force BE from price (0.01/pip) so 30 pips triggers BE
-        if(isSilver && position.Type() == POSITION_TYPE_BUY) {
+        if(isSilver && posType == POSITION_TYPE_BUY) {
             double silverBuyPips = (currentBID - openPrice) / 0.01;
             if(silverBuyPips >= bePips && silverBuyPips > 0) {
                 currentProfitPips = silverBuyPips;
@@ -3904,7 +3969,7 @@ void ManagePositions() {
             }
         }
         // Force BE trigger for Gold SELL from price (so BE always fires regardless of pip conversion)
-        if(isGold && position.Type() == POSITION_TYPE_SELL) {
+        if(isGold && posType == POSITION_TYPE_SELL) {
             double priceProfitSELL = openPrice - currentASK;
             double pipsFromPriceSELL = priceProfitSELL / 0.1;
             if(pipsFromPriceSELL >= bePips && pipsFromPriceSELL > 0) {
@@ -3913,7 +3978,7 @@ void ManagePositions() {
             }
         }
         // Silver SELL: force BE from price (1 pip = 0.01) so e.g. 25 pips triggers BE (no dependency on posPipValue/dynamic cap)
-        if(isSilver && position.Type() == POSITION_TYPE_SELL) {
+        if(isSilver && posType == POSITION_TYPE_SELL) {
             double silverSellPips = (openPrice - currentASK) / 0.01;
             if(silverSellPips >= bePips && silverSellPips > 0) {
                 currentProfitPips = silverSellPips;
@@ -3927,7 +3992,7 @@ void ManagePositions() {
         }
         
         // CRITICAL FIX FOR SELL TRADES: Use fixed pip size so BE/TP never fail (Gold=0.1, Silver=0.01)
-        if(position.Type() == POSITION_TYPE_SELL) {
+        if(posType == POSITION_TYPE_SELL) {
             double sellPipSize = isGold ? 0.1 : 0.01;
             double sellProfitCheck = (openPrice - currentASK) / sellPipSize;
             if(sellProfitCheck != currentProfitPips) currentProfitPips = sellProfitCheck;
@@ -3935,7 +4000,7 @@ void ManagePositions() {
         }
         
         // ENHANCED LOGGING FOR SELL TRADES: Log every time profit is above 10 pips
-        if(position.Type() == POSITION_TYPE_SELL && currentProfitPips >= 10.0) {
+        if(posType == POSITION_TYPE_SELL && currentProfitPips >= 10.0) {
             static datetime lastSellBELog = 0;
             if(TimeCurrent() - lastSellBELog >= 3) {
                 Print("=== SELL TRADE BE STATUS CHECK ===");
@@ -3948,16 +4013,16 @@ void ManagePositions() {
         }
         
         // Enhanced logging for Silver trades - log every 2 seconds when profit > 5 pips OR for SELL trades
-        if(isSilver && (currentProfitPips > 5 || position.Type() == POSITION_TYPE_SELL)) {
+        if(isSilver && (currentProfitPips > 5 || posType == POSITION_TYPE_SELL)) {
             static datetime lastSilverBELog = 0;
             if(TimeCurrent() - lastSilverBELog >= 2) {
                 double bidPrice = SymbolInfoDouble(posSymbol, SYMBOL_BID);
                 double askPrice = SymbolInfoDouble(posSymbol, SYMBOL_ASK);
                 
                 Print("=== SILVER TRADE DETAILED CHECK ===");
-                Print("Ticket: ", ticket, " | Type: ", (position.Type() == POSITION_TYPE_BUY ? "BUY" : "SELL"));
+                Print("Ticket: ", ticket, " | Type: ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"));
                 
-                if(position.Type() == POSITION_TYPE_BUY) {
+                if(posType == POSITION_TYPE_BUY) {
                     Print("BUY Trade - Entry (ASK): ", openPrice, " | Current BID: ", bidPrice, " | Current ASK: ", askPrice);
                     Print("Price diff (BID - Entry): ", (bidPrice - openPrice), " | Profit: ", currentProfitPips, " pips");
                 } else {
@@ -3974,7 +4039,7 @@ void ManagePositions() {
         }
         
         // BUY only: main BE block. SELL is handled above by dedicated block (Goldmine Edge logic) - skip here to avoid any interference
-        if(shouldTriggerBE && position.Type() == POSITION_TYPE_BUY) {
+        if(shouldTriggerBE && posType == POSITION_TYPE_BUY) {
             
             Print("*** ", bePips, " pips profit reached! Moving to BE *** Ticket #", ticket, 
                   " | Profit: ", currentProfitPips, " pips | Symbol: ", posSymbol, " | BE Trigger: ", bePips, " pips");
@@ -3994,7 +4059,7 @@ void ManagePositions() {
                 double minLevelPrice = (double)minLevelPts * posPoint;
 
                 // Stop/freeze: delay BE only for non-Silver BUY when BE would be above allowed. Silver BUY: always try (retry with cushion if broker rejects).
-                if(minLevelPts > 0 && position.Type() == POSITION_TYPE_BUY && !isSilver) {
+                if(minLevelPts > 0 && posType == POSITION_TYPE_BUY && !isSilver) {
                     double maxAllowedSL = NormalizeDouble(currentPrice - minLevelPrice, posDigits);
                     if(newSL > maxAllowedSL) {
                         Print("BE DELAYED: stop/freeze level too high. Need more profit. | BE=", newSL, " | maxAllowedSL=", maxAllowedSL);
@@ -4002,7 +4067,7 @@ void ManagePositions() {
                     }
                 }
                 
-                if(position.Type() == POSITION_TYPE_BUY) {
+                if(posType == POSITION_TYPE_BUY) {
                     // For BUY: newSL (BE) should be higher than current SL (or currentSL is 0)
                     if(newSL > currentSL || currentSL == 0) {
                         needToModify = true;
@@ -4026,7 +4091,7 @@ void ManagePositions() {
                 }
                 
                 if(needToModify) {
-                    Print("  Attempting to move SL to BE | Type: ", (position.Type() == POSITION_TYPE_BUY ? "BUY" : "SELL"), 
+                    Print("  Attempting to move SL to BE | Type: ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), 
                           " | Current SL: ", currentSL, " | New SL: ", newSL, " | Entry: ", openPrice);
                     Print("  Profit: ", currentProfitPips, " pips | BE Trigger: ", bePips, " pips | Symbol: ", posSymbol);
                     Print("  pipValue: ", posPipValue, " | point: ", posPoint, " | isSilver: ", isSilver);
@@ -4037,7 +4102,7 @@ void ManagePositions() {
                         if(!position.SelectByTicket(ticket)) break;
                         double slToTry = newSL;
                         // SELL: try exact entry first (retry 0), then entry+1pip, +2pip... (like Goldmine Edge)
-                        if(position.Type() == POSITION_TYPE_SELL) {
+                        if(posType == POSITION_TYPE_SELL) {
                             double pv = isGold ? 0.1 : posPipValue;
                             if(retry == 0)
                                 slToTry = NormalizeDouble(openPrice, posDigits);
@@ -4060,7 +4125,7 @@ void ManagePositions() {
                     
                     if(!slMoved) {
                         Print("*** ERROR: Failed to move SL to BE after ", maxRetries, " attempts! ***");
-                        Print("  Ticket: ", ticket, " | Symbol: ", posSymbol, " | Type: ", (position.Type() == POSITION_TYPE_BUY ? "BUY" : "SELL"));
+                        Print("  Ticket: ", ticket, " | Symbol: ", posSymbol, " | Type: ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"));
                         Print("  Current SL: ", currentSL, " | Target SL: ", newSL, " | Entry: ", openPrice);
                         Print("  Profit: ", currentProfitPips, " pips | BE Trigger: ", bePips, " pips");
                         Print("  stopsLevelPts=", stopsLevelPts, " freezeLevelPts=", freezeLevelPts);
@@ -4068,7 +4133,7 @@ void ManagePositions() {
                         
                         // CRITICAL FIX FOR SELL TRADES: Even if SL move failed, mark BE as hit so TP can proceed
                         // This prevents SELL trades from missing TP1/TP2/TP3 because BE wasn't set
-                        if(position.Type() == POSITION_TYPE_SELL && currentProfitPips >= bePips) {
+                        if(posType == POSITION_TYPE_SELL && currentProfitPips >= bePips) {
                             tp1Hit[ticketIndex] = true;
                             tp1HitPrice[ticketIndex] = currentPrice;
                             Print("*** SELL TRADE: BE marked as hit despite SL move failure - TP system can now proceed ***");
@@ -4079,7 +4144,7 @@ void ManagePositions() {
                     // If SL already at/through BE, mark as hit so TP system can proceed.
                     tp1Hit[ticketIndex] = true;
                     tp1HitPrice[ticketIndex] = currentPrice;
-                    Print("  BE already set (SL at or better than entry) | Type: ", (position.Type() == POSITION_TYPE_BUY ? "BUY" : "SELL"),
+                    Print("  BE already set (SL at or better than entry) | Type: ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"),
                           " | Current SL: ", currentSL, " | Entry: ", openPrice, " | BE: ", newSL);
                 }
             } else {
@@ -4098,7 +4163,7 @@ void ManagePositions() {
             if(!tp1Hit[ticketIndex] && currentProfitPips >= bePips) {
                 tp1Hit[ticketIndex] = true;
                 tp1HitPrice[ticketIndex] = currentPrice;
-                if(position.Type() == POSITION_TYPE_SELL) {
+                if(posType == POSITION_TYPE_SELL) {
                     Print("*** SELL TRADE: AUTO-MARKING BE AS HIT (profit=", currentProfitPips, " pips >= ", bePips, " pips) - TP system can now proceed ***");
                     Print("  Entry: ", openPrice, " | Current ASK: ", currentASK, " | Profit: ", currentProfitPips, " pips");
                     Print("  This ensures TP1/TP2/TP3 will trigger for SELL trades even if BE SL move failed!");
@@ -4174,8 +4239,14 @@ void ManagePositions() {
                     remainingVolume = runnerSize;
                 }
                 
+                // CRITICAL: Normalize to broker's volume step (fixes "invalid volume")
+                closeVolume = MathFloor(closeVolume / lotStep) * lotStep;
+                closeVolume = NormalizeDouble(MathMax(minLot, MathMin(closeVolume, currentVolume - minLot)), 2);
+                remainingVolume = currentVolume - closeVolume;
+                if(remainingVolume < minLot) { closeVolume = currentVolume - minLot; closeVolume = MathFloor(closeVolume / lotStep) * lotStep; closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2); remainingVolume = currentVolume - closeVolume; }
+                
                 // EXTRA SAFETY: Log before closing to verify calculation
-                if(position.Type() == POSITION_TYPE_SELL) {
+                if(posType == POSITION_TYPE_SELL) {
                     Print("*** SELL TP1 CLOSE CALCULATION ***");
                     Print("  Original Volume: ", origVol, " | Current Volume: ", currentVolume);
                     Print("  TP1_Percent: ", TP1_Percent, "% | Calculated Close: ", closeVolume);
@@ -4261,6 +4332,10 @@ void ManagePositions() {
                     closeVolume = currentVolume - runnerSize; // Adjust to leave exactly runner
                     remainingVolume = runnerSize;
                 }
+                closeVolume = MathFloor(closeVolume / lotStep) * lotStep;
+                closeVolume = NormalizeDouble(MathMax(minLot, MathMin(closeVolume, currentVolume - minLot)), 2);
+                remainingVolume = currentVolume - closeVolume;
+                if(remainingVolume < minLot) { closeVolume = currentVolume - minLot; closeVolume = MathFloor(closeVolume / lotStep) * lotStep; closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2); remainingVolume = currentVolume - closeVolume; }
                 
                 if(closeVolume >= minLot && remainingVolume >= minLot) {
                     // CRITICAL: Verify position still exists before attempting to close
@@ -4338,6 +4413,10 @@ void ManagePositions() {
                     closeVolume = currentVolume - runnerSize; // Adjust to leave exactly runner
                     remainingVolume = runnerSize;
                 }
+                closeVolume = MathFloor(closeVolume / lotStep) * lotStep;
+                closeVolume = NormalizeDouble(MathMax(minLot, MathMin(closeVolume, currentVolume - minLot)), 2);
+                remainingVolume = currentVolume - closeVolume;
+                if(remainingVolume < minLot) { closeVolume = currentVolume - minLot; closeVolume = MathFloor(closeVolume / lotStep) * lotStep; closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2); remainingVolume = currentVolume - closeVolume; }
                 
                 if(closeVolume >= minLot && remainingVolume >= minLot) {
                     // CRITICAL: Verify position still exists before attempting to close
@@ -4412,12 +4491,12 @@ void ManagePositions() {
         
         // Step 3: TP4 alternate - Remaining targets 1H S/R (after TP3)
         if(hasTP4 && TP4_To1H_SR && !hasRunner && !tp5Hit[ticketIndex]) {
-            double targetSR = Find1H_SupportResistance(position.Type() == POSITION_TYPE_BUY);
+            double targetSR = Find1H_SupportResistance(posType == POSITION_TYPE_BUY);
             
             if(targetSR > 0) {
                 // Check if price reached 1H S/R (within 5 pips)
                 bool reachedSR = false;
-                if(position.Type() == POSITION_TYPE_BUY) {
+                if(posType == POSITION_TYPE_BUY) {
                     reachedSR = currentPrice >= targetSR - (5 * posPipValue);
                 } else {
                     reachedSR = currentPrice <= targetSR + (5 * posPipValue);
@@ -4493,11 +4572,11 @@ void ManagePositions() {
         
         // Step 5: Runner targets 1H S/R. Never full-close below 80 pips (stops Silver "full at 50").
         if(hasRunner && RunnerTo1H_SR && !tp6Hit[ticketIndex] && currentProfitPips >= PLUG_MIN_PIPS_FULL_CLOSE) {
-            double targetSR = Find1H_SupportResistance(position.Type() == POSITION_TYPE_BUY);
+            double targetSR = Find1H_SupportResistance(posType == POSITION_TYPE_BUY);
             
             if(targetSR > 0) {
                 bool reachedSR = false;
-                if(position.Type() == POSITION_TYPE_BUY) {
+                if(posType == POSITION_TYPE_BUY) {
                     reachedSR = currentPrice >= targetSR - (5 * posPipValue);
                 } else {
                     reachedSR = currentPrice <= targetSR + (5 * posPipValue);
@@ -4510,7 +4589,38 @@ void ManagePositions() {
             }
         }
         
-        // Step 5: Ensure SL closes immediately (verify it's set correctly)
+        // Step 5a: Dynamic Trail - close on structure reversal (BOS/CHoCH) to exit with a win (same logic Gold & Silver)
+        if(UseDynamicTrail && UseMarketStructure && currentProfitPips > 0 && posSymbol == _Symbol) {
+            bool reversalAgainstBuy  = (posType == POSITION_TYPE_BUY  && marketStruct.trend == -1);
+            bool reversalAgainstSell  = (posType == POSITION_TYPE_SELL && marketStruct.trend == 1);
+            if(reversalAgainstBuy || reversalAgainstSell) {
+                if(trade.PositionClose(ticket)) {
+                    Print("*** Dynamic Trail: Structure reversal (trend=", marketStruct.trend, ") | Closed #", ticket, " with ", DoubleToString(currentProfitPips, 1), " pips profit ***");
+                    continue;
+                }
+            }
+        }
+        
+        // Step 5b: Trail SL when profit >= TrailStartPips (Gold & Silver)
+        if(UseTrailSL && currentProfitPips >= TrailStartPips && currentProfitPips > 0) {
+            double trailPipValue = isSilver ? 0.01 : (isGold ? 0.1 : posPipValue);
+            double newSL = 0;
+            if(posType == POSITION_TYPE_BUY) {
+                newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPipValue, posDigits);
+                if(newSL > openPrice && (currentSL == 0 || newSL > currentSL)) {
+                    if(trade.PositionModify(ticket, newSL, 0))
+                        Print("*** Trail SL (BUY): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                }
+            } else {
+                newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPipValue, posDigits);
+                if(newSL < openPrice && (currentSL == 0 || newSL < currentSL)) {
+                    if(trade.PositionModify(ticket, newSL, 0))
+                        Print("*** Trail SL (SELL): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                }
+            }
+        }
+        
+        // Step 6: Ensure SL closes immediately (verify it's set correctly)
         // SL should already be set on order open, but verify it's still active
         if(currentSL == 0) {
             Print("WARNING: Position #", ticket, " (", posSymbol, ") has no SL! Setting tight SL...");
@@ -4525,7 +4635,7 @@ void ManagePositions() {
 #endif
             double pvUse = posPipValue;
             double newSL = 0;
-            if(position.Type() == POSITION_TYPE_BUY) {
+            if(posType == POSITION_TYPE_BUY) {
                 newSL = NormalizeDouble(openPrice - (slPipsUse * pvUse), posDigits);
             } else {
                 newSL = NormalizeDouble(openPrice + (slPipsUse * pvUse), posDigits);

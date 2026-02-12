@@ -920,7 +920,7 @@
           } catch (error) {
             if (checkoutStatus) {
               checkoutStatus.textContent =
-                "Checkout is unavailable right now. Email goldminebotsltd@gmail.com for a manual invoice.";
+                error.message || "Checkout unavailable. Email goldminebotsltd@gmail.com for a manual invoice.";
             }
           }
         });
