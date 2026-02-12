@@ -517,6 +517,10 @@ async function sendInvoiceEmail({ subscriber, planInfo, hostedUrl, chargeId }) {
             }
             return;
         } catch (err) {
+            if (err.code === 'MODULE_NOT_FOUND' || (err.message && err.message.includes('Cannot find module'))) {
+                console.error('Resend package not installed. Add "resend" to package.json, run npm install, and redeploy.');
+                throw new Error('Resend is configured but the resend package is not installed. Redeploy after adding resend to package.json.');
+            }
             console.error('Resend invoice send error:', err.message);
             throw err;
         }
