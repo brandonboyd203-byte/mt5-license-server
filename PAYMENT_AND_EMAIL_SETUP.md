@@ -78,7 +78,7 @@ You can use **either** Resend (recommended, no Gmail) **or** SMTP (Gmail, Mailgu
 ### Option A: Resend (recommended – no app passwords)
 
 1. Sign up at [resend.com](https://resend.com) and create an API key.
-2. (Optional) Verify your domain in Resend so you can send from e.g. `invoices@yourdomain.com`. Until then you can use their test address.
+2. (Optional) Verify your domain in Resend so you can send from e.g. `invoices@goldminetrading.store`. Until then you can use their test address.
 3. Railway → **Variables**, add:
    - **Name:** `RESEND_API_KEY`  
    - **Value:** your Resend API key (e.g. `re_...`)
@@ -89,6 +89,23 @@ You can use **either** Resend (recommended, no Gmail) **or** SMTP (Gmail, Mailgu
 5. Save. Redeploy. Run **npm install** (or ensure `resend` is in `package.json`) so the server can send via Resend.
 
 Invoice emails will be sent with Resend; no Gmail or SMTP needed.
+
+#### Fix "Missing required SPF records" / Enable Sending (Failed)
+
+If Resend shows **Domain Verification: Verified** (DKIM) but **Enable Sending: Failed** with "Missing required SPF records", add these at your **domain DNS host** (where `goldminetrading.store` is managed – e.g. Cloudflare, Namecheap, GoDaddy, Route 53):
+
+1. **MX record** (for `send` subdomain):
+   - **Name/host:** `send` (or `send.goldminetrading.store` if the host is the full name)
+   - **Value:** copy from Resend (e.g. `feedback-smtp.ap-northeast-1.amazonses.com`)
+   - **Priority:** `10`
+   - **TTL:** 3600 or Auto
+
+2. **TXT record (SPF)** (for `send` subdomain):
+   - **Name/host:** `send`
+   - **Value:** `v=spf1 include:amazonses.com ~all`
+   - **TTL:** 3600 or Auto
+
+Then in Resend click **Verify** (or wait a few minutes and refresh). DNS can take 5–60 minutes to propagate. If it still fails, double-check the **exact** host name and values in Resend and that there are no typos or extra spaces.
 
 ### Option B: SMTP (Gmail, Mailgun, SendGrid, Outlook, etc.)
 

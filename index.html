@@ -575,6 +575,18 @@
                 </ul>
               </div>
             </div>
+            <h4 style="margin-top: 24px;">How to fund the account you copy into</h4>
+            <p class="muted">
+              Your subscription (e.g. $262/mo) is paid in crypto via the invoice link. To have a live trading balance that receives the copied trades:
+            </p>
+            <ol class="feature-list" style="margin-left: 1rem;">
+              <li>We create a dedicated Exness MT5 account in your name and send you investor (read-only) login.</li>
+              <li>You fund that account by sending crypto (USDT or agreed coin) to the wallet address we provide in your welcome email.</li>
+              <li>We load the equivalent into your Exness account so copying can start. Minimum by tier: Option A $1,000–$4,999, Option B $5,000–$20,000.</li>
+            </ol>
+            <p class="muted">
+              Exact wallet and timing are in the email after you subscribe. Questions: <a href="#" id="supportEmailFunding">email support</a>.
+            </p>
             <p class="muted" style="margin-top: 12px;">
               No guarantee on returns or refunds. If the copier service fails,
               50% of the subscription fee is refundable.
@@ -898,8 +910,10 @@
             const mailto = "mailto:" + cfg.supportEmail;
             const hero = document.getElementById("mailtoHero");
             const contact = document.getElementById("mailtoContact");
+            const fundingSupport = document.getElementById("supportEmailFunding");
             if (hero) { hero.href = mailto; }
             if (contact) { contact.href = mailto; contact.textContent = cfg.supportEmail; }
+            if (fundingSupport) { fundingSupport.href = mailto; }
           }
         })
         .catch(() => {});

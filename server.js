@@ -57,7 +57,8 @@ const EA_NAME_GROUPS = [
         'GoldScalper',
         'Gold_Scalper'
     ],
-    ['Goldmine Dominion']
+    ['Goldmine Dominion'],
+    ['Goldmine Fresh - Gold', 'Goldmine Fresh – Gold']
 ];
 
 function normalizeEaName(value) {

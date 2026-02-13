@@ -33,14 +33,18 @@ input bool UseDecreasingRiskPerLayer = true;  // First layer risks more, next la
 #ifndef PLUG_SYMBOL_SILVER
 input double SL_Pips = 20.0;                 // Stop Loss (pips) - Base SL for Gold (used if dynamic SL disabled)
 #endif
-input double SL_Pips_Silver = 35.0;           // Stop Loss (pips) - Base SL (dynamic can expand)
+input double SL_Pips_Silver = 25.0;           // Stop Loss (pips) - Base SL for Silver (25 pips; dynamic can expand)
 input bool UseDynamicSL = true;              // Enable dynamic SL (adapts to market structure)
 input bool UseBreakEven = true;              // Enable break-even
 input bool UseDynamicBE = true;              // BE at position's SL distance (dynamic); if false use fixed pips below
 #ifndef PLUG_SYMBOL_SILVER
 input double BreakEvenPips = 30.0;            // Move to BE at this many pips (Gold) – max when UseDynamicBE
 #endif
-input double BreakEvenPips_Silver = 30.0;    // Move to BE at this many pips (Silver)
+input double BreakEvenPips_Silver = 30.0;    // Move to BE at this many pips (Silver) – used when volatility switch off
+input double BE_Pips_Silver_LowVol = 25.0;   // Silver: BE at this many pips when volatility is LOW (triggers sooner)
+input double BE_Pips_Silver_HighVol = 30.0; // Silver: BE at this many pips when volatility is HIGH
+input bool BE_Silver_UseVolatility = true;   // Use ATR to switch: low vol = LowVol pips, high vol = HighVol pips
+input double BE_Silver_ATR_Ratio = 1.05;    // ATR(14) > ATR(50)*this = high vol (use HighVol pips)
 input double BE_FVG_Pips = 30.0;             // BE pips for FVG entries
 input double BE_OB_Pips = 30.0;              // BE pips for Order Block entries
 input double BE_SR_Pips = 30.0;              // BE pips for Support/Resistance tap & bounce
@@ -96,8 +100,12 @@ input double RunnerSizePercent = 15.0;       // % to keep as runner - DEFAULT: 1
 input bool RunnerTo1H_SR = true;             // Runner targets 1H support/resistance
 input bool UseTrailSL = true;                // Trail SL when profit >= TrailStartPips (Gold & Silver)
 input double TrailStartPips = 100.0;         // Start trailing when profit >= this (pips)
-input double TrailDistancePips = 20.0;      // Trail SL this many pips behind price
-input bool UseDynamicTrail = true;            // Close on structure reversal (BOS/CHoCH) to exit with a win
+input double TrailDistancePips = 20.0;      // Trail SL this many pips behind price (fallback if no structure)
+input bool UseStructureTrail = true;         // Trail at swing high/low (above structure SELL, below BUY) – avoids wick-outs
+input int StructureTrail_Lookback = 15;      // Bars to find recent swing high/low
+input double StructureTrail_BufferPips = 3.0; // Buffer beyond swing (pips)
+input bool UseDynamicTrail = false;           // Close on structure reversal – set true only if you want early exit on BOS/CHoCH
+input double DynamicTrailMinPips = 80.0;    // Only close on reversal if profit >= this (avoids closing too early)
 #ifndef PLUG_SYMBOL_SILVER
 enum ENUM_SYMBOL_FILTER_PLUG { SYMBOL_BOTH_P = 0, SYMBOL_GOLD_ONLY_P = 1, SYMBOL_SILVER_ONLY_P = 2 };
 input ENUM_SYMBOL_FILTER_PLUG SymbolFilter = SYMBOL_BOTH_P; // Gold only / Silver only = one pair per chart (best for BE). Set Gold only on XAU chart, Silver only on XAG chart.
@@ -153,6 +161,9 @@ input double EntryZonePips = 20.0;          // Entry zone size (pips)
 input double EntryTouchTolerance = 5.0;     // Tolerance for zone touch (pips) - allows entries near zones
 input bool WaitForConfirmation = false;      // Wait for candle close
 input double MinOppositeDistancePips = 10.0; // Minimum distance from opposite trades (pips) - Set to 0 to disable - PREVENTS CONFLICTS
+input bool AllowReentryAfterBE = true;        // Re-enter same zone with reduced risk if trade closed at BE and confluence still there
+input double ReentryRiskPercent = 1.2;       // Risk % for re-entry after BE (smaller than normal)
+input int ReentryAfterBE_MaxMinutes = 60;    // Allow re-entry only within this many minutes after BE close
 
 input group "=== Scaling Entries (Add to Losing Trades) ==="
 input bool AllowScalingEntries = true;      // Allow scaling into losing positions with confluence
@@ -177,9 +188,21 @@ input bool TradeFVG_Retest = true;            // Trade FVG retests (50% of FVG h
 input double FVG_RetestPercent = 50.0;        // FVG retest percentage (50% = middle of FVG)
 input double SR_TouchTolerance = 5.0;         // Tolerance for S/R touch detection (pips)
 input bool UseSessionSweeps = true;           // Session high/low sweeps (Asia, London, NY) with confluence
+input bool SessionSweep_UseM1Engulfing = true; // Session sweep: accept M1/M3 engulfing (not only PrimaryTF) – e.g. London low + 1min engulf = BUY
+input bool SessionSweep_RequireSweptFirst = true; // Only BUY/SELL after low/high was swept then rejected (close above low / below high) – retest = entry
 input double SessionSweep_SL_Pips = 25.0;   // SL (pips) for session sweep - min 25 (was 15; too tight)
 input bool UseHTFSweeps = true;               // H1/H4/Daily/Weekly/Monthly sweep highs/lows for entries
 input int SessionSweepLookbackBars = 50;      // Bars to find session high/low
+input bool UseBreakoutEntries = true;         // Enter on BREAKOUT of session low/high (catch big moves)
+input bool Breakout_UseRangeWhenNoLondon = true; // When London not set, use last N-bar range so breakouts work before London
+input int Breakout_LookbackBars = 20;         // Bars for range high/low when London not available
+input double Breakout_SL_Pips = 25.0;         // SL (pips) beyond broken level for breakout trades
+input int Breakout_MaxPerDirection = 2;       // Max breakout BUYs per day AND max SELLs per day (2 and 2)
+input double BO_ClosePct_At20 = 30.0;         // Breakout: close this % at 20 pips and set BE
+input double BO_ClosePct_At50 = 30.0;         // Breakout: close this % at 50 pips
+input double BO_HoldToPips = 200.0;           // Breakout: hold remainder to this many pips
+input bool Breakout_AllowPullbackReentry = true;  // Allow re-entry when price pulls back to breakout level
+input double Breakout_PullbackZonePips = 15.0;   // Pips from level to count as pullback for re-entry
 input double FVG_SLBuffer_Pips = 2.0;        // Buffer (pips) below/above FVG for SL (FVG SL = zone + buffer)
 
 input group "=== Timeframes ==="
@@ -285,6 +308,7 @@ double originalVolume[]; // Track original position size for accurate partial cl
 
 // Session sweep levels (Asia, London, NY) - Goldmine Nexus style
 double asiaHigh = 0, asiaLow = 0, londonHigh = 0, londonLow = 0, nyHigh = 0, nyLow = 0;
+bool londonLowSwept = false, londonHighSwept = false;  // true when a closed bar swept level but closed above/below (rejection) – buy retest after
 datetime lastSessionDate = 0;
 
 // HTF sweep levels (H1, H4, D1, W1, MN1) - recent swing high/low per TF
@@ -292,6 +316,14 @@ double htfSweepHigh_H1 = 0, htfSweepLow_H1 = 0, htfSweepHigh_H4 = 0, htfSweepLow
 double htfSweepHigh_D1 = 0, htfSweepLow_D1 = 0, htfSweepHigh_W1 = 0, htfSweepLow_W1 = 0;
 double htfSweepHigh_MN1 = 0, htfSweepLow_MN1 = 0;
 datetime lastHTFSweep_H1 = 0, lastHTFSweep_H4 = 0, lastHTFSweep_D1 = 0, lastHTFSweep_W1 = 0, lastHTFSweep_MN1 = 0;
+
+// Re-entry after BE
+double g_BEClosedEntryPrice = 0;
+int    g_BEClosedDirection = 0;
+datetime g_BEClosedTime = 0;
+bool   g_BEClosedUsed = false;
+string g_BEClosedSymbol = "";
+bool   g_BEClosedWasBreakout = false;
 
 // Track tickets to avoid collisions (ticket % 10000 was unsafe and can collide)
 ulong trackedTickets[];
@@ -867,19 +899,60 @@ void OnTick() {
 }
 
 //+------------------------------------------------------------------+
+//| Detect position closed at/near BE – allow re-entry in same zone   |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction& trans, const MqlTradeRequest& request, const MqlTradeResult& result) {
+    if(!AllowReentryAfterBE || trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+    if(trans.deal == 0) return;
+    if(!HistoryDealSelect(trans.deal)) return;
+    if(HistoryDealGetInteger(trans.deal, DEAL_ENTRY) != DEAL_ENTRY_OUT) return;
+    if(HistoryDealGetInteger(trans.deal, DEAL_MAGIC) != MagicNumber) return;
+    string sym = HistoryDealGetString(trans.deal, DEAL_SYMBOL);
+    if(sym != _Symbol) return;
+    ulong posId = HistoryDealGetInteger(trans.deal, DEAL_POSITION_ID);
+    if(posId == 0) return;
+    if(!HistorySelectByPosition(posId)) return;
+    double closePrice = HistoryDealGetDouble(trans.deal, DEAL_PRICE);
+    int dir = (int)HistoryDealGetInteger(trans.deal, DEAL_TYPE);
+    double entryPrice = 0;
+    string entryComment = "";
+    for(int i = HistoryDealsTotal() - 1; i >= 0; i--) {
+        ulong ticket = HistoryDealGetTicket(i);
+        if(ticket == 0) continue;
+        if(HistoryDealGetInteger(ticket, DEAL_ENTRY) != DEAL_ENTRY_IN) continue;
+        entryPrice = HistoryDealGetDouble(ticket, DEAL_PRICE);
+        entryComment = HistoryDealGetString(ticket, DEAL_COMMENT);
+        break;
+    }
+    if(entryPrice <= 0) return;
+    double pipSize = (StringFind(sym, "XAU") >= 0 || StringFind(sym, "GOLD") >= 0) ? 0.1 : 0.01;
+    double diffPips = MathAbs(closePrice - entryPrice) / pipSize;
+    if(diffPips > 5.0) return;
+    g_BEClosedEntryPrice = entryPrice;
+    g_BEClosedDirection = (dir == DEAL_TYPE_BUY) ? 1 : -1;
+    g_BEClosedTime = TimeCurrent();
+    g_BEClosedUsed = false;
+    g_BEClosedSymbol = sym;
+    g_BEClosedWasBreakout = (StringFind(entryComment, "_BO") >= 0);
+    Print("*** RE-ENTRY: Position closed at BE (", DoubleToString(diffPips, 1), " pips) | Entry was ", entryPrice, (g_BEClosedWasBreakout ? " | BO" : ""), " | Re-entry allowed for ", ReentryAfterBE_MaxMinutes, " min ***");
+}
+
+//+------------------------------------------------------------------+
 //| Update Session High/Low (Asia 0-8, London 8-16, NY 14-22 server) |
+//| London: use last closed M15 bar only; detect rejection sweep (low below level but close above = buy retest). |
 //+------------------------------------------------------------------+
 void UpdateSessionLevels() {
     MqlDateTime dt;
     TimeToStruct(TimeCurrent(), dt);
     int h = dt.hour;
     static int lastSessionHour = -1;
+    static datetime lastLondonBar = 0;
     
     double high0 = iHigh(_Symbol, PERIOD_M15, 0);
     double low0 = iLow(_Symbol, PERIOD_M15, 0);
     
     if(h == 0 && lastSessionHour != 0) { asiaHigh = 0; asiaLow = 0; }
-    if(h == 8 && lastSessionHour < 8) { londonHigh = 0; londonLow = 0; }
+    if(h == 8 && lastSessionHour < 8) { londonHigh = 0; londonLow = 0; londonLowSwept = false; londonHighSwept = false; lastLondonBar = 0; }
     if(h == 14 && lastSessionHour < 14) { nyHigh = 0; nyLow = 0; }
     lastSessionHour = h;
     
@@ -887,8 +960,20 @@ void UpdateSessionLevels() {
         if(asiaHigh == 0 || asiaLow == 0) { asiaHigh = high0; asiaLow = low0; }
         else { asiaHigh = MathMax(asiaHigh, high0); asiaLow = MathMin(asiaLow, low0); }
     } else if(h >= 8 && h < 16) {
-        if(londonHigh == 0 || londonLow == 0) { londonHigh = high0; londonLow = low0; }
-        else { londonHigh = MathMax(londonHigh, high0); londonLow = MathMin(londonLow, low0); }
+        datetime bar0Time = iTime(_Symbol, PERIOD_M15, 0);
+        if(bar0Time != lastLondonBar) {
+            lastLondonBar = bar0Time;
+            double high1 = iHigh(_Symbol, PERIOD_M15, 1);
+            double low1 = iLow(_Symbol, PERIOD_M15, 1);
+            double close1 = iClose(_Symbol, PERIOD_M15, 1);
+            if(londonHigh == 0 || londonLow == 0) {
+                londonHigh = high1; londonLow = low1;
+            } else {
+                if(londonLow > 0 && low1 < londonLow && close1 > londonLow) londonLowSwept = true;   // rejection: swept low, didn't close below
+                if(londonHigh > 0 && high1 > londonHigh && close1 < londonHigh) londonHighSwept = true;
+                londonHigh = MathMax(londonHigh, high1); londonLow = MathMin(londonLow, low1);
+            }
+        }
     } else if(h >= 14 && h < 22) {
         if(nyHigh == 0 || nyLow == 0) { nyHigh = high0; nyLow = low0; }
         else { nyHigh = MathMax(nyHigh, high0); nyLow = MathMin(nyLow, low0); }
@@ -2100,9 +2185,18 @@ void CheckEntrySignals() {
                     
                     if(!canEnter) continue;
                     
+                    // Re-entry after BE: same zone, confluence still there, reduced risk
+                    bool isReentryAfterBE = false;
+                    if(AllowReentryAfterBE && !g_BEClosedUsed && g_BEClosedSymbol == _Symbol && g_BEClosedDirection == 1 && g_BEClosedTime > 0 &&
+                       (TimeCurrent() - g_BEClosedTime) <= ReentryAfterBE_MaxMinutes * 60) {
+                        double zoneTol = EntryTouchTolerance * pipValue;
+                        if(g_BEClosedEntryPrice >= orderBlocks[i].bottom - zoneTol && g_BEClosedEntryPrice <= orderBlocks[i].top + zoneTol)
+                            isReentryAfterBE = true;
+                    }
+                    
                     // CRITICAL: Check total risk (use equity when enabled - blocks new trades when equity drops)
                     double currentTotalRisk = CalculateTotalRisk(UseEquityForRiskLimit);
-                    double newTradeRisk = canScale ? ScalingEntryRisk : (AllowLayeredEntries ? GetRiskPercentForLayer(buyPositions) : (isFirstTrade ? FirstTradeRisk : RiskPercent));
+                    double newTradeRisk = isReentryAfterBE ? ReentryRiskPercent : (canScale ? ScalingEntryRisk : (AllowLayeredEntries ? GetRiskPercentForLayer(buyPositions) : (isFirstTrade ? FirstTradeRisk : RiskPercent)));
                     double totalRiskAfter = currentTotalRisk + newTradeRisk;
                     
                     if(totalRiskAfter > MaxTotalRisk) {
@@ -2120,8 +2214,8 @@ void CheckEntrySignals() {
                     Print("  Market Structure: ", marketStruct.trend);
                     Print("  Price Status: ", (priceInZone ? "IN ZONE" : "NEAR ZONE"));
                     Print("  Current BUY positions: ", buyPositions, "/", MaxEntries);
-                    Print("  Entry Type: ", (isFirstTrade ? "FIRST TRADE" : (canScale ? "SCALING (losing position + confluence)" : "ADDITIONAL")));
-                    Print("  Risk: ", newTradeRisk, "% (", (isFirstTrade ? "FirstTradeRisk" : (canScale ? "ScalingEntryRisk" : "RiskPercent")), ")");
+                    Print("  Entry Type: ", (isReentryAfterBE ? "RE-ENTRY AFTER BE" : (isFirstTrade ? "FIRST TRADE" : (canScale ? "SCALING (losing position + confluence)" : "ADDITIONAL"))));
+                    Print("  Risk: ", newTradeRisk, "% (", (isReentryAfterBE ? "ReentryRiskPercent" : (isFirstTrade ? "FirstTradeRisk" : (canScale ? "ScalingEntryRisk" : "RiskPercent"))), ")");
                     
                     // Open order: SR type when support tap & bounce, else OB
                     string buyEntryType = supportWithEngulfing ? "SR" : "OB";
@@ -2130,6 +2224,7 @@ void CheckEntrySignals() {
                     } else {
                         OpenBuyOrder(orderBlocks[i], 0, newTradeRisk, buyEntryType);
                     }
+                    if(isReentryAfterBE) g_BEClosedUsed = true;
                     lastBuyEntryTime = TimeCurrent();
                     tradeOpenedThisTick = true; // Mark that a trade was opened this tick
                     
@@ -2379,9 +2474,18 @@ void CheckEntrySignals() {
                     
                     if(!canEnter) continue;
                     
+                    // Re-entry after BE: same zone, confluence still there, reduced risk
+                    bool isReentryAfterBE = false;
+                    if(AllowReentryAfterBE && !g_BEClosedUsed && g_BEClosedSymbol == _Symbol && g_BEClosedDirection == -1 && g_BEClosedTime > 0 &&
+                       (TimeCurrent() - g_BEClosedTime) <= ReentryAfterBE_MaxMinutes * 60) {
+                        double zoneTol = EntryTouchTolerance * pipValue;
+                        if(g_BEClosedEntryPrice >= orderBlocks[i].bottom - zoneTol && g_BEClosedEntryPrice <= orderBlocks[i].top + zoneTol)
+                            isReentryAfterBE = true;
+                    }
+                    
                     // CRITICAL: Check total risk (use equity when enabled)
                     double currentTotalRisk = CalculateTotalRisk(UseEquityForRiskLimit);
-                    double newTradeRisk = canScale ? ScalingEntryRisk : (AllowLayeredEntries ? GetRiskPercentForLayer(sellPositions) : (isFirstTrade ? FirstTradeRisk : RiskPercent));
+                    double newTradeRisk = isReentryAfterBE ? ReentryRiskPercent : (canScale ? ScalingEntryRisk : (AllowLayeredEntries ? GetRiskPercentForLayer(sellPositions) : (isFirstTrade ? FirstTradeRisk : RiskPercent)));
                     double totalRiskAfter = currentTotalRisk + newTradeRisk;
                     
                     if(totalRiskAfter > MaxTotalRisk) {
@@ -2399,8 +2503,8 @@ void CheckEntrySignals() {
                     Print("  Market Structure: ", marketStruct.trend);
                     Print("  Price Status: ", (priceInZone ? "IN ZONE" : "NEAR ZONE"));
                     Print("  Current SELL positions: ", sellPositions, "/", MaxEntries);
-                    Print("  Entry Type: ", (isFirstTrade ? "FIRST TRADE" : (canScale ? "SCALING (losing position + confluence)" : "ADDITIONAL")));
-                    Print("  Risk: ", newTradeRisk, "% (", (isFirstTrade ? "FirstTradeRisk" : (canScale ? "ScalingEntryRisk" : "RiskPercent")), ")");
+                    Print("  Entry Type: ", (isReentryAfterBE ? "RE-ENTRY AFTER BE" : (isFirstTrade ? "FIRST TRADE" : (canScale ? "SCALING (losing position + confluence)" : "ADDITIONAL"))));
+                    Print("  Risk: ", newTradeRisk, "% (", (isReentryAfterBE ? "ReentryRiskPercent" : (isFirstTrade ? "FirstTradeRisk" : (canScale ? "ScalingEntryRisk" : "RiskPercent"))), ")");
                     
                     // Open order with scaling SL if available, and pass risk percentage
                     string sellEntryType = resistanceWithEngulfing ? "SR" : "OB";
@@ -2409,6 +2513,7 @@ void CheckEntrySignals() {
                     } else {
                         OpenSellOrder(orderBlocks[i], 0, newTradeRisk, sellEntryType);
                     }
+                    if(isReentryAfterBE) g_BEClosedUsed = true;
                     lastSellEntryTime = TimeCurrent();
                     tradeOpenedThisTick = true; // Mark that a trade was opened this tick
                     
@@ -2438,6 +2543,10 @@ void CheckEntrySignals() {
         }
     }
     
+    // Breakout entries (enter when price BREAKS London high/low - catch big moves)
+    if(UseBreakoutEntries && CheckBreakoutEntries(ask, buyPositions, sellPositions, globalBlockBUY, globalBlockSELL)) {
+        return;
+    }
     // Session sweep entries (Asia/London/NY retest with confluence) - Goldmine Nexus style
     if(UseSessionSweeps && CheckSessionSweepEntries(currentPrice, ask, buyPositions, sellPositions, globalBlockBUY, globalBlockSELL)) {
         return;
@@ -2579,7 +2688,134 @@ void CheckEntrySignals() {
 }
 
 //+------------------------------------------------------------------+
+//| Breakout entries: enter when price BREAKS session low/high (catch big moves) |
+//+------------------------------------------------------------------+
+bool CheckBreakoutEntries(double ask, int buyPositions, int sellPositions, bool globalBlockBUY, bool globalBlockSELL) {
+    if(!UseBreakoutEntries || (globalBlockBUY && globalBlockSELL)) return false;
+    double rangeHigh = 0, rangeLow = 0;
+    if(Breakout_UseRangeWhenNoLondon && Breakout_LookbackBars >= 2) {
+        int n = MathMin(Breakout_LookbackBars, 500);
+        for(int i = 1; i <= n; i++) {
+            double hi = iHigh(_Symbol, PrimaryTF, i);
+            double lo = iLow(_Symbol, PrimaryTF, i);
+            if(rangeHigh <= 0) rangeHigh = hi; else if(hi > rangeHigh) rangeHigh = hi;
+            if(rangeLow <= 0) rangeLow = lo; else if(lo < rangeLow) rangeLow = lo;
+        }
+    }
+    double breakoutHigh = (londonHigh > 0) ? londonHigh : rangeHigh;
+    double breakoutLow  = (londonLow > 0)  ? londonLow  : rangeLow;
+    if(breakoutHigh <= 0 && breakoutLow <= 0) return false;
+    double c1 = iClose(_Symbol, PrimaryTF, 1);
+    double o1 = iOpen(_Symbol, PrimaryTF, 1);
+    double h1 = iHigh(_Symbol, PrimaryTF, 1);
+    double l1 = iLow(_Symbol, PrimaryTF, 1);
+    MqlDateTime dt;
+    TimeToStruct(TimeCurrent(), dt);
+    dt.hour = 0; dt.min = 0; dt.sec = 0;
+    datetime today = StructToTime(dt);
+    static int breakoutSellCountToday = 0, breakoutBuyCountToday = 0;
+    static datetime lastBreakoutDate = 0;
+    if(today != lastBreakoutDate) { breakoutSellCountToday = 0; breakoutBuyCountToday = 0; lastBreakoutDate = today; }
+    double buf = 3.0 * pipValue;
+    double reentryZonePips = 15.0 * pipValue;
+    if(breakoutLow > 0 && !globalBlockSELL && sellPositions < MaxEntries && c1 < o1 && c1 < breakoutLow && l1 <= breakoutLow + buf) {
+        bool isReentryBO = AllowReentryAfterBE && !g_BEClosedUsed && g_BEClosedWasBreakout && g_BEClosedSymbol == _Symbol && g_BEClosedDirection == -1 &&
+                           g_BEClosedTime > 0 && (TimeCurrent() - g_BEClosedTime) <= ReentryAfterBE_MaxMinutes * 60 &&
+                           MathAbs(g_BEClosedEntryPrice - breakoutLow) <= reentryZonePips && ask <= breakoutLow + reentryZonePips;
+        bool underLimit = isReentryBO ? true : (breakoutSellCountToday < Breakout_MaxPerDirection);
+        if(underLimit) {
+            double risk = isReentryBO ? ReentryRiskPercent : (AllowLayeredEntries ? GetRiskPercentForLayer(sellPositions) : (sellPositions == 0 ? FirstTradeRisk : RiskPercent));
+            if(CalculateTotalRisk(UseEquityForRiskLimit) + risk <= MaxTotalRisk) {
+                double sl = NormalizeDouble(breakoutLow + Breakout_SL_Pips * pipValue, symbolDigits);
+                OrderBlock ob;
+                ob.top = breakoutLow + 10.0 * pipValue; ob.bottom = breakoutLow - 10.0 * pipValue;
+                ob.time = TimeCurrent(); ob.isBullish = false; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
+                if(!HasOppositeTradeNearby(false, ask, ob.bottom, ob.top)) {
+                    OpenSellOrder(ob, sl, risk, "BO");
+                    if(isReentryBO) g_BEClosedUsed = true; else breakoutSellCountToday++;
+                    Print("*** BREAKOUT SELL: ", (londonLow > 0 ? "London" : "Range"), " low broken at ", breakoutLow, (isReentryBO ? " | RE-ENTRY AFTER BE" : ""), " | SL ", sl, " ***");
+                    return true;
+                }
+            }
+        }
+    }
+    if(breakoutHigh > 0 && !globalBlockBUY && buyPositions < MaxEntries && c1 > o1 && c1 > breakoutHigh && h1 >= breakoutHigh - buf) {
+        bool isReentryBO = AllowReentryAfterBE && !g_BEClosedUsed && g_BEClosedWasBreakout && g_BEClosedSymbol == _Symbol && g_BEClosedDirection == 1 &&
+                           g_BEClosedTime > 0 && (TimeCurrent() - g_BEClosedTime) <= ReentryAfterBE_MaxMinutes * 60 &&
+                           MathAbs(g_BEClosedEntryPrice - breakoutHigh) <= reentryZonePips && ask >= breakoutHigh - reentryZonePips;
+        bool underLimit = isReentryBO ? true : (breakoutBuyCountToday < Breakout_MaxPerDirection);
+        if(underLimit) {
+            double risk = isReentryBO ? ReentryRiskPercent : (AllowLayeredEntries ? GetRiskPercentForLayer(buyPositions) : (buyPositions == 0 ? FirstTradeRisk : RiskPercent));
+            if(CalculateTotalRisk(UseEquityForRiskLimit) + risk <= MaxTotalRisk) {
+                double sl = NormalizeDouble(breakoutHigh - Breakout_SL_Pips * pipValue, symbolDigits);
+                OrderBlock ob;
+                ob.top = breakoutHigh + 10.0 * pipValue; ob.bottom = breakoutHigh - 10.0 * pipValue;
+                ob.time = TimeCurrent(); ob.isBullish = true; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
+                if(!HasOppositeTradeNearby(true, ask, ob.bottom, ob.top)) {
+                    OpenBuyOrder(ob, sl, risk, "BO");
+                    if(isReentryBO) g_BEClosedUsed = true; else breakoutBuyCountToday++;
+                    Print("*** BREAKOUT BUY: ", (londonHigh > 0 ? "London" : "Range"), " high broken at ", breakoutHigh, (isReentryBO ? " | RE-ENTRY AFTER BE" : ""), " | SL ", sl, " ***");
+                    return true;
+                }
+            }
+        }
+    }
+    // Pullback re-entry: price retraced to breakout level – don't miss the move
+    double pullbackZone = Breakout_PullbackZonePips * pipValue;
+    if(Breakout_AllowPullbackReentry && pullbackZone > 0) {
+        if(breakoutLow > 0 && !globalBlockSELL && sellPositions < MaxEntries && breakoutSellCountToday < Breakout_MaxPerDirection &&
+           ask <= breakoutLow + pullbackZone && ask >= breakoutLow - pullbackZone && c1 < o1) {
+            double risk = AllowLayeredEntries ? GetRiskPercentForLayer(sellPositions) : (sellPositions == 0 ? FirstTradeRisk : RiskPercent);
+            if(CalculateTotalRisk(UseEquityForRiskLimit) + risk <= MaxTotalRisk) {
+                double sl = NormalizeDouble(breakoutLow + Breakout_SL_Pips * pipValue, symbolDigits);
+                OrderBlock ob;
+                ob.top = breakoutLow + 10.0 * pipValue; ob.bottom = breakoutLow - 10.0 * pipValue;
+                ob.time = TimeCurrent(); ob.isBullish = false; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
+                if(!HasOppositeTradeNearby(false, ask, ob.bottom, ob.top)) {
+                    OpenSellOrder(ob, sl, risk, "BO");
+                    breakoutSellCountToday++;
+                    Print("*** BREAKOUT SELL PULLBACK: price at level ", breakoutLow, " | SL ", sl, " ***");
+                    return true;
+                }
+            }
+        }
+        if(breakoutHigh > 0 && !globalBlockBUY && buyPositions < MaxEntries && breakoutBuyCountToday < Breakout_MaxPerDirection &&
+           ask >= breakoutHigh - pullbackZone && ask <= breakoutHigh + pullbackZone && c1 > o1) {
+            double risk = AllowLayeredEntries ? GetRiskPercentForLayer(buyPositions) : (buyPositions == 0 ? FirstTradeRisk : RiskPercent);
+            if(CalculateTotalRisk(UseEquityForRiskLimit) + risk <= MaxTotalRisk) {
+                double sl = NormalizeDouble(breakoutHigh - Breakout_SL_Pips * pipValue, symbolDigits);
+                OrderBlock ob;
+                ob.top = breakoutHigh + 10.0 * pipValue; ob.bottom = breakoutHigh - 10.0 * pipValue;
+                ob.time = TimeCurrent(); ob.isBullish = true; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
+                if(!HasOppositeTradeNearby(true, ask, ob.bottom, ob.top)) {
+                    OpenBuyOrder(ob, sl, risk, "BO");
+                    breakoutBuyCountToday++;
+                    Print("*** BREAKOUT BUY PULLBACK: price at level ", breakoutHigh, " | SL ", sl, " ***");
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| Session sweep: bullish engulfing on PrimaryTF or (if enabled) M1/M3 |
+//+------------------------------------------------------------------+
+bool SessionSweepHasBullishEngulfing() {
+    if(IsBullishEngulfing(PrimaryTF)) return true;
+    if(SessionSweep_UseM1Engulfing && (IsBullishEngulfing(PERIOD_M1) || IsBullishEngulfing(PERIOD_M3))) return true;
+    return false;
+}
+bool SessionSweepHasBearishEngulfing() {
+    if(IsBearishEngulfing(PrimaryTF)) return true;
+    if(SessionSweep_UseM1Engulfing && (IsBearishEngulfing(PERIOD_M1) || IsBearishEngulfing(PERIOD_M3))) return true;
+    return false;
+}
+
+//+------------------------------------------------------------------+
 //| Session sweep entries: Asia/London/NY high-low retest + confluence |
+//| Sessions use SERVER time: Asia 0-8, London 8-16, NY 14-22. Adjust broker TZ or use VPS in desired TZ. |
 //+------------------------------------------------------------------+
 bool CheckSessionSweepEntries(double currentPrice, double ask, int buyPositions, int sellPositions, bool globalBlockBUY, bool globalBlockSELL) {
     if(globalBlockBUY && globalBlockSELL) return false;
@@ -2588,7 +2824,7 @@ bool CheckSessionSweepEntries(double currentPrice, double ask, int buyPositions,
     
     if(asiaHigh > 0 && asiaLow > 0) {
         if(!globalBlockSELL && sellPositions < MaxEntries && MathAbs(currentPrice - asiaHigh) <= tol) {
-            bool confluence = (nyHigh > asiaHigh) || IsBearishEngulfing(PrimaryTF);
+            bool confluence = (nyHigh > asiaHigh) || SessionSweepHasBearishEngulfing();
             if(confluence) {
                 OrderBlock ob;
                 ob.top = asiaHigh + zonePips; ob.bottom = asiaHigh - zonePips;
@@ -2602,7 +2838,7 @@ bool CheckSessionSweepEntries(double currentPrice, double ask, int buyPositions,
             }
         }
         if(!globalBlockBUY && buyPositions < MaxEntries && MathAbs(currentPrice - asiaLow) <= tol) {
-            bool confluence = (nyLow < asiaLow) || IsBullishEngulfing(PrimaryTF);
+            bool confluence = (nyLow < asiaLow) || SessionSweepHasBullishEngulfing();
             if(confluence) {
                 OrderBlock ob;
                 ob.top = asiaLow + zonePips; ob.bottom = asiaLow - zonePips;
@@ -2617,25 +2853,27 @@ bool CheckSessionSweepEntries(double currentPrice, double ask, int buyPositions,
         }
     }
     if(londonHigh > 0 && londonLow > 0) {
-        if(!globalBlockSELL && sellPositions < MaxEntries && MathAbs(currentPrice - londonHigh) <= tol && IsBearishEngulfing(PrimaryTF)) {
+        bool londonSellOk = !SessionSweep_RequireSweptFirst || londonHighSwept;
+        if(!globalBlockSELL && sellPositions < MaxEntries && MathAbs(currentPrice - londonHigh) <= tol && londonSellOk && SessionSweepHasBearishEngulfing()) {
             OrderBlock ob;
             ob.top = londonHigh + zonePips; ob.bottom = londonHigh - zonePips;
             ob.time = TimeCurrent(); ob.isBullish = false; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
             double risk = AllowLayeredEntries ? GetRiskPercentForLayer(sellPositions) : ((sellPositions == 0) ? FirstTradeRisk : RiskPercent);
             if(CalculateTotalRisk(UseEquityForRiskLimit) + risk <= MaxTotalRisk && !HasOppositeTradeNearby(false, ask, ob.bottom, ob.top)) {
                 OpenSellOrder(ob, 0, risk, "SS");
-                Print("*** SESSION SWEEP SELL: London High retest ***");
+                Print("*** SESSION SWEEP SELL: London High retest", (SessionSweep_RequireSweptFirst ? " (after rejection sweep)" : ""), " ***");
                 return true;
             }
         }
-        if(!globalBlockBUY && buyPositions < MaxEntries && MathAbs(currentPrice - londonLow) <= tol && IsBullishEngulfing(PrimaryTF)) {
+        bool londonBuyOk = !SessionSweep_RequireSweptFirst || londonLowSwept;
+        if(!globalBlockBUY && buyPositions < MaxEntries && MathAbs(currentPrice - londonLow) <= tol && londonBuyOk && SessionSweepHasBullishEngulfing()) {
             OrderBlock ob;
             ob.top = londonLow + zonePips; ob.bottom = londonLow - zonePips;
             ob.time = TimeCurrent(); ob.isBullish = true; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
             double risk = AllowLayeredEntries ? GetRiskPercentForLayer(buyPositions) : ((buyPositions == 0) ? FirstTradeRisk : RiskPercent);
             if(CalculateTotalRisk(UseEquityForRiskLimit) + risk <= MaxTotalRisk && !HasOppositeTradeNearby(true, ask, ob.bottom, ob.top)) {
                 OpenBuyOrder(ob, 0, risk, "SS");
-                Print("*** SESSION SWEEP BUY: London Low retest ***");
+                Print("*** SESSION SWEEP BUY: London Low retest (sweep + engulf then retest)", (SessionSweep_RequireSweptFirst ? "" : ""), " ***");
                 return true;
             }
         }
@@ -2768,7 +3006,7 @@ void OpenBuyOrder(OrderBlock &ob, double useSL = 0, double riskPercent = 0, stri
     double actualRisk = (riskPercent > 0) ? riskPercent : (AllowLayeredEntries ? (TotalLayeredRiskPercent / (double)MathMax(1, MaxEntries)) : RiskPercent);
     double riskAmount = accountBalance * (actualRisk / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_BUY);
     
     // Normalize prices
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
@@ -2851,7 +3089,7 @@ void OpenSellOrder(OrderBlock &ob, double useSL = 0, double riskPercent = 0, str
     double slDistance = MathAbs(entryPrice - sl);
     double pvSell = (StringFind(_Symbol, "XAU") >= 0 || StringFind(_Symbol, "GOLD") >= 0) ? 0.1 : pipValue;
     if(slDistance < 20.0 * pvSell) slDistance = 20.0 * pvSell;
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_SELL);
     
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
@@ -3434,7 +3672,7 @@ void OpenBuyOrderFromFVG(FVG &fvg, double riskPercent = 0) {
     double actualRisk = (riskPercent > 0) ? riskPercent : (AllowLayeredEntries ? (TotalLayeredRiskPercent / (double)MathMax(1, MaxEntries)) : RiskPercent);
     double riskAmount = accountBalance * (actualRisk / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_BUY);
     
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
@@ -3476,7 +3714,7 @@ void OpenSellOrderFromFVG(FVG &fvg, double riskPercent = 0) {
     double slDistance = MathAbs(entryPrice - sl);
     double pvSell = (StringFind(_Symbol, "XAU") >= 0 || StringFind(_Symbol, "GOLD") >= 0) ? 0.1 : pipValue;
     if(slDistance < 20.0 * pvSell) slDistance = 20.0 * pvSell;
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_SELL);
     
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
@@ -3498,26 +3736,38 @@ void OpenSellOrderFromFVG(FVG &fvg, double riskPercent = 0) {
 }
 
 //+------------------------------------------------------------------+
-//| Calculate Lot Size Based on Risk                                 |
+//| Calculate Lot Size Based on Risk (uses OrderCalcProfit for exact $ risk) |
 //+------------------------------------------------------------------+
-double CalculateLotSize(double riskAmount, double slDistance) {
-    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-    double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+double CalculateLotSize(double riskAmount, double slDistance, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY) {
     double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
     double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
     double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
     
     if(slDistance == 0) return minLot;
     
+    double riskPerLot = 0;
+    double priceOpen = (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double priceClose = (orderType == ORDER_TYPE_BUY) ? priceOpen - slDistance : priceOpen + slDistance;
+    double profit = 0;
+    if(OrderCalcProfit(orderType, _Symbol, 1.0, priceOpen, priceClose, profit)) {
+        riskPerLot = -profit; // loss when SL hit is negative
+        if(riskPerLot > 0) {
+            double lotSize = riskAmount / riskPerLot;
+            lotSize = MathFloor(lotSize / lotStep) * lotStep;
+            if(lotSize < minLot) lotSize = minLot;
+            if(lotSize > maxLot) lotSize = maxLot;
+            Print("Lot calc: riskAmount=", DoubleToString(riskAmount, 2), " riskPerLot(1.0)=", DoubleToString(riskPerLot, 2), " lots=", DoubleToString(lotSize, 2));
+            return lotSize;
+        }
+    }
+    // Fallback: tick-value formula (if OrderCalcProfit fails or broker quirk)
+    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+    double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
     double lotSize = riskAmount / (slDistance / tickSize * tickValue);
-    
-    // Normalize to lot step
     lotSize = MathFloor(lotSize / lotStep) * lotStep;
-    
-    // Clamp to min/max
     if(lotSize < minLot) lotSize = minLot;
     if(lotSize > maxLot) lotSize = maxLot;
-    
+    Print("Lot calc (tick fallback): riskAmount=", DoubleToString(riskAmount, 2), " lots=", DoubleToString(lotSize, 2));
     return lotSize;
 }
 
@@ -3563,12 +3813,32 @@ double GetBreakEvenPipsForComment(string comment) {
     if(StringFind(comment, "_SS") >= 0 || StringFind(comment, "_SESSION") >= 0) return BE_Session_Pips;
     if(StringFind(comment, "_FVG") >= 0) return BE_FVG_Pips;
     if(StringFind(comment, "_SR") >= 0) return BE_SR_Pips;
+    if(StringFind(comment, "_BO") >= 0) return BE_OB_Pips;   // breakout uses same as OB
     if(StringFind(comment, "_OB") >= 0 || StringFind(comment, "Goldmine Nexus") >= 0) return BE_OB_Pips; // default OB/base
 #ifdef PLUG_SYMBOL_SILVER
-    return BreakEvenPips_Silver;
+    return GetSilverBEPips();
 #else
     return BreakEvenPips;
 #endif
+}
+
+//+------------------------------------------------------------------+
+//| Silver: BE pips from volatility (low vol = sooner BE, high vol = 30 pips) |
+//+------------------------------------------------------------------+
+double GetSilverBEPips() {
+    if(!BE_Silver_UseVolatility) return BreakEvenPips_Silver;
+    static int atr14Handle = INVALID_HANDLE, atr50Handle = INVALID_HANDLE;
+    if(atr14Handle == INVALID_HANDLE) atr14Handle = iATR(_Symbol, PERIOD_CURRENT, 14);
+    if(atr50Handle == INVALID_HANDLE) atr50Handle = iATR(_Symbol, PERIOD_CURRENT, 50);
+    if(atr14Handle == INVALID_HANDLE || atr50Handle == INVALID_HANDLE) return BreakEvenPips_Silver;
+    double atr14Buf[], atr50Buf[];
+    ArraySetAsSeries(atr14Buf, true);
+    ArraySetAsSeries(atr50Buf, true);
+    if(CopyBuffer(atr14Handle, 0, 0, 1, atr14Buf) < 1 || CopyBuffer(atr50Handle, 0, 0, 1, atr50Buf) < 1) return BreakEvenPips_Silver;
+    if(atr50Buf[0] <= 0) return BreakEvenPips_Silver;
+    double ratio = atr14Buf[0] / atr50Buf[0];
+    if(ratio >= BE_Silver_ATR_Ratio) return BE_Pips_Silver_HighVol;  // high vol → 30 pips
+    return BE_Pips_Silver_LowVol;  // low vol → 25 pips (BE triggers sooner)
 }
 
 //+------------------------------------------------------------------+
@@ -3578,9 +3848,34 @@ double GetPipValueForSymbol(string sym) {
     string s = sym;
     StringToUpper(s);
     if(StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0) return 0.1;
-    // Silver: 1 pip = 0.01 always (2-digit 81.44 or 3-digit 81.442 - second decimal is pip)
     if(StringFind(s, "XAG") >= 0 || StringFind(s, "SILVER") >= 0) return 0.01;
     return 0.1;
+}
+
+//+------------------------------------------------------------------+
+//| Get recent swing high for structure-based trail (SELL: SL above) |
+//+------------------------------------------------------------------+
+double GetRecentSwingHigh(string sym, ENUM_TIMEFRAMES tf, int lookback) {
+    if(lookback < 2) return 0;
+    double high[];
+    ArraySetAsSeries(high, true);
+    if(CopyHigh(sym, tf, 0, lookback + 2, high) != lookback + 2) return 0;
+    double swing = high[1];
+    for(int i = 2; i < lookback + 1; i++) { if(high[i] > swing) swing = high[i]; }
+    return swing;
+}
+
+//+------------------------------------------------------------------+
+//| Get recent swing low for structure-based trail (BUY: SL below)   |
+//+------------------------------------------------------------------+
+double GetRecentSwingLow(string sym, ENUM_TIMEFRAMES tf, int lookback) {
+    if(lookback < 2) return 0;
+    double low[];
+    ArraySetAsSeries(low, true);
+    if(CopyLow(sym, tf, 0, lookback + 2, low) != lookback + 2) return 0;
+    double swing = low[1];
+    for(int i = 2; i < lookback + 1; i++) { if(low[i] < swing) swing = low[i]; }
+    return swing;
 }
 
 //+------------------------------------------------------------------+
@@ -3802,7 +4097,7 @@ void ManagePositions() {
         string posComment = position.Comment();
         double bePips = GetBreakEvenPipsForComment(posComment);
         if(isSilver)
-            bePips = BreakEvenPips_Silver;
+            bePips = GetSilverBEPips();
         if(UseDynamicBE && currentSL > 0 && posPipValue > 0) {
             // Use fixed pip size for Silver (0.01) / Gold (0.1) so SL distance is correct regardless of broker digits
             double pipForSL = isSilver ? 0.01 : (isGoldSym ? 0.1 : posPipValue);
@@ -3812,9 +4107,10 @@ void ManagePositions() {
             if(slDistancePips > 0) {
                 double dynamicBE = MathMax(slDistancePips, bePips);
 #ifdef PLUG_SYMBOL_SILVER
-                double maxBEPips = MathMax(50.0, BreakEvenPips_Silver * 2.0);
+                double silverMaxBE = BE_Silver_UseVolatility ? BE_Pips_Silver_HighVol : BreakEvenPips_Silver;
+                double maxBEPips = MathMax(50.0, silverMaxBE * 2.0);
                 bePips = MathMin(dynamicBE, maxBEPips);
-                bePips = MathMin(bePips, BreakEvenPips_Silver);
+                bePips = MathMin(bePips, silverMaxBE);
 #else
                 double maxBEPips = MathMax(50.0, BreakEvenPips * 2.0);
                 if(isSilver) maxBEPips = MathMax(50.0, BreakEvenPips_Silver * 2.0);
@@ -3823,9 +4119,9 @@ void ManagePositions() {
 #endif
             }
         }
-        // Cap BE at user setting (30 pips) so we never wait longer than BreakEvenPips / BreakEvenPips_Silver
+        // Cap BE at user setting so we never wait longer than max BE pips
 #ifdef PLUG_SYMBOL_SILVER
-        bePips = MathMin(bePips, BreakEvenPips_Silver);
+        bePips = MathMin(bePips, BE_Silver_UseVolatility ? BE_Pips_Silver_HighVol : BreakEvenPips_Silver);
 #else
         bePips = MathMin(bePips, isSilver ? BreakEvenPips_Silver : BreakEvenPips);
 #endif
@@ -4086,20 +4382,63 @@ void ManagePositions() {
         // FIXED: TP system now works independently of BE - if profit is high enough, take TP even if BE hasn't been set
         if(currentProfitPips > 0) {
             // CRITICAL: If BE hasn't been set yet but we're past BE threshold, mark it as hit IMMEDIATELY
-            // This allows TP system to work even if BE physically failed to move
-            // FIXED: Especially important for SELL trades where BE might fail more often
             if(!tp1Hit[ticketIndex] && currentProfitPips >= bePips) {
                 tp1Hit[ticketIndex] = true;
                 tp1HitPrice[ticketIndex] = currentPrice;
                 if(posType == POSITION_TYPE_SELL) {
                     Print("*** SELL TRADE: AUTO-MARKING BE AS HIT (profit=", currentProfitPips, " pips >= ", bePips, " pips) - TP system can now proceed ***");
-                    Print("  Entry: ", openPrice, " | Current ASK: ", currentASK, " | Profit: ", currentProfitPips, " pips");
-                    Print("  This ensures TP1/TP2/TP3 will trigger for SELL trades even if BE SL move failed!");
                 } else {
                     Print("*** AUTO-MARKING BE AS HIT (profit=", currentProfitPips, " pips >= ", bePips, " pips) - TP system can now proceed ***");
-                    Print("  This allows TP to trigger even if BE SL move failed!");
                 }
             }
+            // CRITICAL: Also allow TP1 at TP1_Pips even if BE never triggered - prevents "TP delayed to 90 pips"
+            if(!tp1Hit[ticketIndex] && currentProfitPips >= TP1_Pips) {
+                tp1Hit[ticketIndex] = true;
+                tp1HitPrice[ticketIndex] = currentPrice;
+                Print("*** TP UNBLOCK: profit ", DoubleToString(currentProfitPips, 1), " >= TP1 ", TP1_Pips, " pips - TP1/TP2/TP3 can now trigger (no BE wait) ***");
+            }
+            
+            bool canCloseMore = (currentVolume > runnerSize + minLot * 0.5);
+            // BREAKOUT-ONLY EXIT: 30% at 20 pips + BE, 30% at 50 pips, hold rest to 200. No FVG/OB TP or structure trail.
+            bool isBreakoutTrade = (StringFind(posComment, "_BO") >= 0);
+            if(isBreakoutTrade && canCloseMore) {
+                int boLevel = partialCloseLevel[ticketIndex];
+                if(boLevel == 0 && currentProfitPips >= 20.0) {
+                    double closeVol = NormalizeDouble(origVol * (BO_ClosePct_At20 / 100.0), 2);
+                    if(closeVol < minLot) closeVol = minLot;
+                    double maxClose = currentVolume - minLot;
+                    if(closeVol > maxClose) closeVol = maxClose;
+                    closeVol = MathFloor(closeVol / lotStep) * lotStep;
+                    closeVol = NormalizeDouble(MathMax(minLot, MathMin(closeVol, currentVolume - minLot)), 2);
+                    if(closeVol >= minLot && (currentVolume - closeVol) >= minLot) {
+                        if(trade.PositionClosePartial(ticket, closeVol)) {
+                            partialCloseLevel[ticketIndex] = 1;
+                            if(UseBreakEven) {
+                                double newSL = openPrice;
+                                if(currentSL == 0 || (posType == POSITION_TYPE_BUY && newSL > currentSL) || (posType == POSITION_TYPE_SELL && newSL < currentSL))
+                                    trade.PositionModify(ticket, newSL, 0);
+                            }
+                            Print("*** BO: 20 pips – closed ", closeVol, " lots (", BO_ClosePct_At20, "%) + BE set | Hold rest to ", BO_HoldToPips, " pips ***");
+                        }
+                    }
+                } else if(boLevel == 1 && currentProfitPips >= 50.0) {
+                    double closeVol = NormalizeDouble(origVol * (BO_ClosePct_At50 / 100.0), 2);
+                    if(closeVol < minLot) closeVol = minLot;
+                    closeVol = MathFloor(closeVol / lotStep) * lotStep;
+                    closeVol = NormalizeDouble(MathMax(minLot, MathMin(closeVol, currentVolume - minLot)), 2);
+                    if(closeVol >= minLot && (currentVolume - closeVol) >= minLot) {
+                        if(trade.PositionClosePartial(ticket, closeVol)) {
+                            partialCloseLevel[ticketIndex] = 2;
+                            Print("*** BO: 50 pips – closed ", closeVol, " lots (", BO_ClosePct_At50, "%) | Runner to ", BO_HoldToPips, " pips ***");
+                        }
+                    }
+                } else if(boLevel == 2 && currentProfitPips >= BO_HoldToPips) {
+                    if(trade.PositionClose(ticket)) {
+                        Print("*** BO: ", BO_HoldToPips, " pips – closed runner ***");
+                    }
+                }
+            }
+            if(isBreakoutTrade) continue; // BO trades: only BO exit rules above; skip normal TP/trail/FVG
             
             // CRITICAL: For Silver, log EVERY profitable trade to diagnose TP issues
             if(isSilver && currentProfitPips > 0) {
@@ -4132,7 +4471,6 @@ void ManagePositions() {
             
             // CRITICAL: Remove hasRunner check - TP should work even if we're at runner size
             // Only skip if we're actually at the minimum runner size (can't close more)
-            bool canCloseMore = (currentVolume > runnerSize + minLot * 0.5);
             
             // TP1: 10 pips - Close 25% OR close smallest position first (layered)
             // CRITICAL: TP1 requires tp1Hit to be true (either BE was moved, or auto-marked)
@@ -4517,8 +4855,8 @@ void ManagePositions() {
             }
         }
         
-        // Step 5a: Dynamic Trail - close on structure reversal (BOS/CHoCH) to exit with a win (same logic Gold & Silver)
-        if(UseDynamicTrail && UseMarketStructure && currentProfitPips > 0 && posSymbol == _Symbol) {
+        // Step 5a: Dynamic Trail - close on structure reversal only if profit already >= DynamicTrailMinPips (avoids early full close)
+        if(UseDynamicTrail && UseMarketStructure && currentProfitPips >= DynamicTrailMinPips && currentProfitPips > 0 && posSymbol == _Symbol) {
             bool reversalAgainstBuy  = (posType == POSITION_TYPE_BUY  && marketStruct.trend == -1);
             bool reversalAgainstSell  = (posType == POSITION_TYPE_SELL && marketStruct.trend == 1);
             if(reversalAgainstBuy || reversalAgainstSell) {
@@ -4529,21 +4867,32 @@ void ManagePositions() {
             }
         }
         
-        // Step 5b: Trail SL when profit >= TrailStartPips (Gold & Silver)
+        // Step 5b: Trail SL – structure-based (above swing high SELL, below swing low BUY) or fixed distance
         if(UseTrailSL && currentProfitPips >= TrailStartPips && currentProfitPips > 0) {
             double trailPipValue = isSilver ? 0.01 : (isGold ? 0.1 : posPipValue);
             double newSL = 0;
+            bool useStructure = UseStructureTrail;
             if(posType == POSITION_TYPE_BUY) {
-                newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPipValue, posDigits);
-                if(newSL > openPrice && (currentSL == 0 || newSL > currentSL)) {
+                if(useStructure) {
+                    double swingLow = GetRecentSwingLow(posSymbol, PrimaryTF, StructureTrail_Lookback);
+                    if(swingLow > 0)
+                        newSL = NormalizeDouble(swingLow - StructureTrail_BufferPips * trailPipValue, posDigits);
+                }
+                if(newSL <= 0) newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPipValue, posDigits);
+                if(newSL > openPrice && newSL < currentPrice && (currentSL == 0 || newSL > currentSL)) {
                     if(trade.PositionModify(ticket, newSL, 0))
-                        Print("*** Trail SL (BUY): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                        Print("*** Trail SL (BUY): ", DoubleToString(currentProfitPips, 1), " pips | SL ", (useStructure && GetRecentSwingLow(posSymbol, PrimaryTF, 2) > 0 ? "below structure " : ""), "→ ", newSL, " ***");
                 }
             } else {
-                newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPipValue, posDigits);
-                if(newSL < openPrice && (currentSL == 0 || newSL < currentSL)) {
+                if(useStructure) {
+                    double swingHigh = GetRecentSwingHigh(posSymbol, PrimaryTF, StructureTrail_Lookback);
+                    if(swingHigh > 0)
+                        newSL = NormalizeDouble(swingHigh + StructureTrail_BufferPips * trailPipValue, posDigits);
+                }
+                if(newSL <= 0) newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPipValue, posDigits);
+                if(newSL < openPrice && newSL > currentPrice && (currentSL == 0 || newSL < currentSL)) {
                     if(trade.PositionModify(ticket, newSL, 0))
-                        Print("*** Trail SL (SELL): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                        Print("*** Trail SL (SELL): ", DoubleToString(currentProfitPips, 1), " pips | SL ", (useStructure && GetRecentSwingHigh(posSymbol, PrimaryTF, 2) > 0 ? "above structure " : ""), "→ ", newSL, " ***");
                 }
             }
         }

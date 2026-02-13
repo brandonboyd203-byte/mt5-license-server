@@ -95,7 +95,8 @@ input double MinPipsBeforeFullClose = 0;     // Min pips before ANY full-close (
 input bool UseTrailSL = true;                // Trail SL when profit reaches TrailStartPips
 input double TrailStartPips = 100.0;         // Start trailing SL when profit >= this (pips)
 input double TrailDistancePips = 20.0;       // Trail SL this many pips behind price
-input bool UseDynamicTrail = true;            // Close on structure reversal (BOS/CHoCH) to exit with a win
+input bool UseDynamicTrail = false;           // Close on structure reversal – set true only if you want early exit on BOS/CHoCH
+input double DynamicTrailMinPips = 80.0;    // Only close on reversal if profit >= this (avoids closing too early)
 #ifndef SMC_SYMBOL_SILVER
 enum ENUM_SYMBOL_FILTER { SYMBOL_BOTH = 0, SYMBOL_GOLD_ONLY = 1, SYMBOL_SILVER_ONLY = 2 };
 input ENUM_SYMBOL_FILTER SymbolFilter = SYMBOL_BOTH; // Gold only / Silver only = one pair per chart (best for BE). Set Gold only on XAU chart, Silver only on XAG chart.
@@ -153,6 +154,11 @@ input int TrendLine_MinTouches = 2;           // Min swing touches for valid tre
 input double TrendLine_TouchTolerancePips = 5.0;  // Tolerance for price on trendline (pips)
 input bool TradeTrendLineStandalone = true;   // Allow standalone TL entry (no OB/FVG) at reduced risk
 input double TrendLine_StandaloneRiskPercent = 1.5; // Risk % for standalone trendline entries (smaller than normal)
+
+input group "=== Breakout (catch big moves) ==="
+input bool UseBreakoutEntries = true;         // Enter when price BREAKS last N-bar high/low
+input double Breakout_SL_Pips = 30.0;         // SL (pips) beyond broken level (Silver)
+input int Breakout_LookbackBars = 20;        // N bars for range high/low (break level)
 
 input group "=== Timeframes ==="
 input ENUM_TIMEFRAMES PrimaryTF = PERIOD_M15; // Primary timeframe
@@ -1773,6 +1779,11 @@ void CheckEntrySignals() {
     // Calculate touch tolerance in points
     double touchTolerance = EntryTouchTolerance * pipValue;
     
+    // Breakout entries (enter when price BREAKS last N-bar high/low - catch big moves)
+    if(UseBreakoutEntries && CheckBreakoutEntries(ask, buyPositions, sellPositions, globalBlockBUY, globalBlockSELL)) {
+        return;
+    }
+    
     for(int i = size - 1; i >= 0; i--) {
         if(!orderBlocks[i].isActive) continue;
         
@@ -2461,6 +2472,59 @@ void CheckEntrySignals() {
         }
         lastSummaryLog = TimeCurrent();
     }
+}
+
+//+------------------------------------------------------------------+
+//| Breakout entries: enter when price BREAKS last N-bar high/low (catch big moves) |
+//+------------------------------------------------------------------+
+bool CheckBreakoutEntries(double ask, int buyPositions, int sellPositions, bool globalBlockBUY, bool globalBlockSELL) {
+    if(!UseBreakoutEntries || (globalBlockBUY && globalBlockSELL)) return false;
+    int N = MathMax(5, Breakout_LookbackBars);
+    if(iBars(_Symbol, PrimaryTF) < N + 3) return false;
+    double rangeHigh = iHigh(_Symbol, PrimaryTF, 2);
+    double rangeLow = iLow(_Symbol, PrimaryTF, 2);
+    for(int i = 3; i <= N + 1; i++) {
+        rangeHigh = MathMax(rangeHigh, iHigh(_Symbol, PrimaryTF, i));
+        rangeLow = MathMin(rangeLow, iLow(_Symbol, PrimaryTF, i));
+    }
+    double c1 = iClose(_Symbol, PrimaryTF, 1);
+    double o1 = iOpen(_Symbol, PrimaryTF, 1);
+    double h1 = iHigh(_Symbol, PrimaryTF, 1);
+    double l1 = iLow(_Symbol, PrimaryTF, 1);
+    MqlDateTime dt;
+    TimeToStruct(TimeCurrent(), dt);
+    dt.hour = 0; dt.min = 0; dt.sec = 0;
+    datetime today = StructToTime(dt);
+    static datetime lastBreakoutSellDate = 0;
+    static datetime lastBreakoutBuyDate = 0;
+    double buf = 3.0 * pipValue;
+    if(!globalBlockSELL && sellPositions < MaxEntries && c1 < o1 && c1 < rangeLow && l1 <= rangeLow + buf && lastBreakoutSellDate != today) {
+        double risk = (sellPositions == 0 ? FirstTradeRisk : RiskPercent);
+        if(CalculateTotalRisk() + risk <= MaxTotalRisk) {
+            double sl = NormalizeDouble(rangeLow + Breakout_SL_Pips * pipValue, symbolDigits);
+            OrderBlock ob;
+            ob.top = rangeLow + 10.0 * pipValue; ob.bottom = rangeLow - 10.0 * pipValue;
+            ob.time = TimeCurrent(); ob.isBullish = false; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
+            OpenSellOrder(ob, sl, risk);
+            lastBreakoutSellDate = today;
+            Print("*** BREAKOUT SELL: Range low broken at ", rangeLow, " | SL ", sl, " ***");
+            return true;
+        }
+    }
+    if(!globalBlockBUY && buyPositions < MaxEntries && c1 > o1 && c1 > rangeHigh && h1 >= rangeHigh - buf && lastBreakoutBuyDate != today) {
+        double risk = (buyPositions == 0 ? FirstTradeRisk : RiskPercent);
+        if(CalculateTotalRisk() + risk <= MaxTotalRisk) {
+            double sl = NormalizeDouble(rangeHigh - Breakout_SL_Pips * pipValue, symbolDigits);
+            OrderBlock ob;
+            ob.top = rangeHigh + 10.0 * pipValue; ob.bottom = rangeHigh - 10.0 * pipValue;
+            ob.time = TimeCurrent(); ob.isBullish = true; ob.isActive = true; ob.barIndex = 0; ob.tf = PrimaryTF;
+            OpenBuyOrder(ob, sl, risk);
+            lastBreakoutBuyDate = today;
+            Print("*** BREAKOUT BUY: Range high broken at ", rangeHigh, " | SL ", sl, " ***");
+            return true;
+        }
+    }
+    return false;
 }
 
 //+------------------------------------------------------------------+
@@ -4364,8 +4428,8 @@ void ManagePositions() {
             }
         }
         
-        // Step 5a: Dynamic Trail - close on structure reversal (BOS/CHoCH) to exit with a win
-        if(UseDynamicTrail && UseMarketStructure && currentProfitPips > 0 && posSymbol == _Symbol) {
+        // Step 5a: Dynamic Trail - close on structure reversal only if profit already >= DynamicTrailMinPips (avoids early full close)
+        if(UseDynamicTrail && UseMarketStructure && currentProfitPips >= DynamicTrailMinPips && currentProfitPips > 0 && posSymbol == _Symbol) {
             bool reversalAgainstBuy  = (posType == POSITION_TYPE_BUY  && marketStruct.trend == -1);
             bool reversalAgainstSell  = (posType == POSITION_TYPE_SELL && marketStruct.trend == 1);
             if(reversalAgainstBuy || reversalAgainstSell) {
