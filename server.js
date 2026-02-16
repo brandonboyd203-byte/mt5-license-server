@@ -123,12 +123,46 @@ app.get('/assets/logo.png', (req, res) => {
 // Middleware
 app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
-// Parse JSON - capture raw body for /validate so we can retry if MT5 sends odd encoding
-app.use(express.json({
-    type: ['application/json', 'text/plain', 'text/json', '*/*'],
-    strict: false,
-    verify: (req, res, buf) => { req.rawBody = buf; }
-}));
+
+// POST /validate: read body ourselves and tolerate bad chars (MT5 broker names etc.) so we never throw SyntaxError
+app.use((req, res, next) => {
+    if (req.method !== 'POST' || (req.path !== '/validate' && req.originalUrl.split('?')[0] !== '/validate')) return next();
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+        const raw = Buffer.concat(chunks);
+        req.rawBody = raw;
+        let str = raw.toString('utf8');
+        try {
+            req.body = JSON.parse(str);
+            next();
+            return;
+        } catch (e) {
+            // Strip control chars; replace non-printable ASCII with space so JSON parses (MT5 can send bad bytes)
+            const sanitized = str.replace(/[\x00-\x1f]/g, ' ').replace(/[^\x20-\x7e]/g, ' ');
+            try {
+                req.body = JSON.parse(sanitized);
+                console.log('[validate] Body parsed after stripping control chars (len=' + raw.length + ')');
+                next();
+                return;
+            } catch (e2) {
+                console.error('[validate] JSON parse failed. len=', str.length, 'around pos 90:', JSON.stringify(str.slice(70, 115)), 'charCode(90)=', str.length > 90 ? str.charCodeAt(90) : 'n/a');
+                res.status(400).json({ valid: false, error: 'Invalid JSON', message: e2.message });
+            }
+        }
+    });
+    req.on('error', (err) => { next(err); });
+});
+
+// Parse JSON for all other routes - capture raw body for debugging
+app.use((req, res, next) => {
+    if (req.method === 'POST' && (req.path === '/validate' || req.originalUrl.split('?')[0] === '/validate')) return next();
+    express.json({
+        type: ['application/json', 'text/plain', 'text/json', '*/*'],
+        strict: false,
+        verify: (req, res, buf) => { req.rawBody = buf; }
+    })(req, res, next);
+});
 
 // Serve admin.html
 app.get('/admin.html', (req, res) => {
