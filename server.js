@@ -123,10 +123,11 @@ app.get('/assets/logo.png', (req, res) => {
 // Middleware
 app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
-// Parse JSON - handle both with and without Content-Type header
-app.use(express.json({ 
+// Parse JSON - capture raw body for /validate so we can retry if MT5 sends odd encoding
+app.use(express.json({
     type: ['application/json', 'text/plain', 'text/json', '*/*'],
-    strict: false 
+    strict: false,
+    verify: (req, res, buf) => { req.rawBody = buf; }
 }));
 
 // Serve admin.html
@@ -746,29 +747,41 @@ app.post('/validate', async (req, res) => {
                 // Already parsed or invalid
             }
         }
+        // If body is empty or missing fields, try parsing raw body (MT5 sometimes sends so express.json() leaves body empty)
+        if ((!body || typeof body !== 'object' || (!body.accountNumber && !body.account) || !body.broker || !body.eaName) && req.rawBody && req.rawBody.length > 0) {
+            try {
+                const raw = req.rawBody.toString('utf8');
+                body = JSON.parse(raw);
+                console.log('[validate] Parsed body from rawBody (len=' + req.rawBody.length + ')');
+            } catch (e) {
+                console.error('[validate] Raw body parse failed:', e.message, 'first 200 chars:', String(req.rawBody.slice(0, 200)));
+            }
+        }
+        body = body || {};
+        // Accept "account" as alias for "accountNumber" (some EAs send account)
+        const accountNumber = (body.accountNumber != null ? String(body.accountNumber) : (body.account != null ? String(body.account) : '')).trim();
+        const broker = (body.broker != null ? String(body.broker) : '').trim();
+        const eaName = (body.eaName != null ? String(body.eaName) : '').trim();
+        const licenseKey = (body.licenseKey != null ? String(body.licenseKey) : '').trim();
         
         // Log incoming request for debugging
         console.log(`[${new Date().toISOString()}] /validate request received:`, {
-            headers: req.headers,
-            body: body,
             contentType: req.headers['content-type'],
-            bodyType: typeof req.body
+            bodyKeys: Object.keys(body),
+            accountNumber: accountNumber ? accountNumber : '(empty)',
+            broker: broker ? broker : '(empty)',
+            eaName: eaName ? eaName : '(empty)'
         });
-        
-        const accountNumber = body.accountNumber != null ? String(body.accountNumber).trim() : '';
-        const broker = body.broker != null ? String(body.broker).trim() : '';
-        const eaName = body.eaName != null ? String(body.eaName).trim() : '';
-        const licenseKey = body.licenseKey != null ? String(body.licenseKey).trim() : '';
         
         // Validate required fields
         if (!accountNumber || !broker || !eaName) {
-            console.error('Missing required fields:', { accountNumber, broker, eaName, body: body, rawBody: req.body });
+            console.error('Missing required fields:', { accountNumber, broker, eaName, bodyKeys: Object.keys(body), rawBodyLength: req.rawBody ? req.rawBody.length : 0 });
             return res.status(400).json({
                 valid: false,
                 error: 'Missing required fields',
                 message: 'accountNumber, broker, and eaName are required',
                 received: { accountNumber, broker, eaName, licenseKey },
-                debug: { bodyType: typeof body, bodyKeys: body ? Object.keys(body) : 'null' }
+                debug: { bodyKeys: Object.keys(body), rawBodyLen: req.rawBody ? req.rawBody.length : 0 }
             });
         }
         

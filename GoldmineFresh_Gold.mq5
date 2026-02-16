@@ -32,6 +32,10 @@ input double RiskPercent   = 1.0;   // Risk per trade (%)
 input double SL_Pips       = 25.0;  // Stop loss (pips)
 input int    MaxPositionsPerSide = 2; // Max BUY and max SELL
 input int    MaxTotalPositions = 8;   // Hard cap total open (stops margin blowout from many entries)
+input double MinPipsForOppositeDirection = 150.0; // Allow opposite side only when 150+ pips away (0 = never). That trade = scalp.
+input double ScalpBE_Pips = 20.0;   // Scalp: BE at this many pips
+input double ScalpPartial_Pips = 50.0;  // Scalp: 50% closed at this many pips
+input double ScalpTP_Pips = 100.0;  // Scalp: full close at this many pips
 
 input group "=== Break-even & Take profit ==="
 input bool   UseBreakEven  = true;  // Set BE at BreakEvenPips (turn off for pure reversal style)
@@ -86,6 +90,7 @@ input int    REV_MaxEntries = 4;               // Max FVG/reversal entries per s
 input double REV_EntrySpacingPips = 5.0;      // Min pips between FVG entries
 input bool   REV_SLBelowFVG = true;            // SL below FVG (long) / above FVG (short)
 input double REV_SLBufferPips = 5.0;          // Pips beyond FVG edge for SL
+input double REV_MaxSL_Pips = 50.0;           // Cap reversal SL (stops 150+ pip SL when FVG is huge)
 input double REV_BEPips = 50.0;               // BE at this many pips for _REV (when UseBreakEven)
 input bool   Reversal_RequireM5Rejection = false; // Reversal: M5 last close above low (BUY) / below high (SELL)
 input bool   UseEntry_DoubleConfluence = true; // Trend line tap + OB (e.g. Asia open support) – target London open
@@ -145,14 +150,28 @@ struct MarketStructure { int trend; double lastBOS; double lastCHoCH; };
 MarketStructure marketStruct;
 
 //+------------------------------------------------------------------+
+//| Escape string for JSON (so broker/server name cannot break request) |
+//+------------------------------------------------------------------+
+string EscapeJsonString(string s) {
+    string out = "";
+    for(int i = 0; i < StringLen(s); i++) {
+        string c = StringSubstr(s, i, 1);
+        if(c == "\\") out += "\\\\";
+        else if(c == "\"") out += "\\\"";
+        else out += c;
+    }
+    return out;
+}
+
+//+------------------------------------------------------------------+
 //| License validation (remote)                                      |
 //+------------------------------------------------------------------+
 bool ValidateLicenseRemote() {
     if(StringLen(LicenseServerURL) == 0) return false;
     long acc = account.Login();
-    string srv = account.Server();
+    string srv = EscapeJsonString(account.Server());
     string json = "{\"accountNumber\":\"" + IntegerToString(acc) + "\",\"broker\":\"" + srv + "\",\"eaName\":\"Goldmine Fresh - Gold\"";
-    if(StringLen(LicenseKey) > 0) json += ",\"licenseKey\":\"" + LicenseKey + "\"";
+    if(StringLen(LicenseKey) > 0) json += ",\"licenseKey\":\"" + EscapeJsonString(LicenseKey) + "\"";
     json += "}";
     string url = LicenseServerURL;
     if(StringFind(url, "http") != 0) url = "https://" + url;
@@ -499,6 +518,23 @@ double MinPipsFromRevOpens(double price, bool isBuy) {
 }
 
 //+------------------------------------------------------------------+
+//| Min pips from current price to nearest opposite-side position (for 150-pip rule + scalp) |
+//+------------------------------------------------------------------+
+double MinPipsFromOppositePositions(bool forBuy) {
+    double price = forBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    ENUM_POSITION_TYPE opposite = forBuy ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+    double minPips = 9999;
+    for(int i = PositionsTotal() - 1; i >= 0; i--) {
+        if(!position.SelectByIndex(i)) continue;
+        if(position.Symbol() != _Symbol || position.Magic() != MagicNumber || (ENUM_POSITION_TYPE)position.Type() != opposite) continue;
+        double op = position.PriceOpen();
+        double pips = forBuy ? (price - op) / pipValue : (op - price) / pipValue;
+        if(pips < minPips && pips >= 0) minPips = pips;
+    }
+    return (minPips >= 9999 || minPips < 0) ? 0 : minPips;
+}
+
+//+------------------------------------------------------------------+
 //| Ensure tracking arrays have slot for ticket                       |
 //+------------------------------------------------------------------+
 int GetOrCreateTicketIndex(ulong ticket) {
@@ -622,9 +658,9 @@ bool IsBearishEngulfing() {
 }
 
 //+------------------------------------------------------------------+
-//| Open BUY with optional setup comment (e.g. _OB, _SS, _TL_BR, _TL_OB, _REV, _DC) |
+//| Open BUY with optional setup comment; asScalp=true appends _SCALP (100 pip TP) |
 //+------------------------------------------------------------------+
-bool OpenBuyEx(double slPrice, string setupSuffix) {
+bool OpenBuyEx(double slPrice, string setupSuffix, bool asScalp = false) {
     double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
     double sl  = (slPrice > 0) ? NormalizeDouble(slPrice, symbolDigits) : NormalizeDouble(ask - SL_Pips * pipValue, symbolDigits);
     long stopsLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
@@ -634,16 +670,16 @@ bool OpenBuyEx(double slPrice, string setupSuffix) {
     }
     double riskAmt = accountBalance * (RiskPercent / 100.0);
     double lot     = CalculateLotSize(riskAmt, ask - sl);
-    string cmt = TradeComment + setupSuffix;
+    string cmt = TradeComment + setupSuffix + (asScalp ? "_SCALP" : "");
     if(StringLen(UserName) > 0) cmt += "|U:" + UserName;
     if(trade.Buy(lot, _Symbol, ask, sl, 0, cmt)) {
-        Print("Fresh BUY ", setupSuffix, " @ ", ask, " SL ", sl, " lots ", lot);
+        Print("Fresh BUY ", setupSuffix, (asScalp ? " SCALP" : ""), " @ ", ask, " SL ", sl, " lots ", lot);
         return true;
     }
     return false;
 }
 
-bool OpenSellEx(double slPrice, string setupSuffix) {
+bool OpenSellEx(double slPrice, string setupSuffix, bool asScalp = false) {
     double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
     double sl  = (slPrice > 0) ? NormalizeDouble(slPrice, symbolDigits) : NormalizeDouble(bid + SL_Pips * pipValue, symbolDigits);
     long stopsLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
@@ -653,17 +689,17 @@ bool OpenSellEx(double slPrice, string setupSuffix) {
     }
     double riskAmt = accountBalance * (RiskPercent / 100.0);
     double lot     = CalculateLotSize(riskAmt, sl - bid);
-    string cmt = TradeComment + setupSuffix;
+    string cmt = TradeComment + setupSuffix + (asScalp ? "_SCALP" : "");
     if(StringLen(UserName) > 0) cmt += "|U:" + UserName;
     if(trade.Sell(lot, _Symbol, bid, sl, 0, cmt)) {
-        Print("Fresh SELL ", setupSuffix, " @ ", bid, " SL ", sl, " lots ", lot);
+        Print("Fresh SELL ", setupSuffix, (asScalp ? " SCALP" : ""), " @ ", bid, " SL ", sl, " lots ", lot);
         return true;
     }
     return false;
 }
 
-void OpenBuy(OrderBlock &ob) { OpenBuyEx(0, "_OB"); }
-void OpenSell(OrderBlock &ob) { OpenSellEx(0, "_OB"); }
+void OpenBuy(OrderBlock &ob, bool asScalp = false) { OpenBuyEx(0, "_OB", asScalp); }
+void OpenSell(OrderBlock &ob, bool asScalp = false) { OpenSellEx(0, "_OB", asScalp); }
 
 //+------------------------------------------------------------------+
 //| Try all entry models (same entry model – order of priority)       |
@@ -675,6 +711,14 @@ void TryEntries() {
     double tlTouch = TL_TouchPips * pipValue;
     int buys  = CountPositions(POSITION_TYPE_BUY);
     int sells = CountPositions(POSITION_TYPE_SELL);
+    double minPipsFromSells = MinPipsFromOppositePositions(true);   // pips from ask to nearest SELL (allow BUY when 150+)
+    double minPipsFromBuys  = MinPipsFromOppositePositions(false);   // pips from bid to nearest BUY (allow SELL when 150+)
+    bool allowOppositeBuy  = (sells == 0) || (MinPipsForOppositeDirection > 0 && minPipsFromSells >= MinPipsForOppositeDirection);
+    bool allowOppositeSell = (buys == 0)  || (MinPipsForOppositeDirection > 0 && minPipsFromBuys  >= MinPipsForOppositeDirection);
+    if(!allowOppositeBuy)  buys  = MaxPositionsPerSide;
+    if(!allowOppositeSell) sells = MaxPositionsPerSide;
+    bool thisBuyIsScalp  = false;  // only scalp the OPPOSITE side (SELLs); never close BUYs at 100 pips
+    bool thisSellIsScalp = (buys > 0 && MinPipsForOppositeDirection > 0 && minPipsFromBuys  >= MinPipsForOppositeDirection);
     int total = buys + sells;
     if(total >= MaxTotalPositions) return;   // Hard cap so we don’t max out margin
     if(buys >= MaxPositionsPerSide && sells >= MaxPositionsPerSide) return;
@@ -706,7 +750,7 @@ void TryEntries() {
             if(!g_obList[i].isActive || !g_obList[i].isBullish) continue;
             if(OB_RequireHTFAlignment && !OrderBlockAlignsWithHTFSupport(g_obList[i].bottom, g_obList[i].top)) continue;
             bool atOB = (ask >= g_obList[i].bottom - touch && ask <= g_obList[i].top + touch);
-            if(atOB && OpenBuyEx(0, "_DC")) return;
+            if(atOB && OpenBuyEx(0, "_DC", thisBuyIsScalp)) return;
         }
     }
     if(UseEntry_DoubleConfluence && UseSessionLevels && sells < MaxPositionsPerSide && londonOpenPrice > 0 &&
@@ -715,7 +759,7 @@ void TryEntries() {
             if(!g_obList[i].isActive || g_obList[i].isBullish) continue;
             if(OB_RequireHTFAlignment && !OrderBlockAlignsWithHTFResistance(g_obList[i].bottom, g_obList[i].top)) continue;
             bool atOB = (bid >= g_obList[i].bottom - touch && bid <= g_obList[i].top + touch);
-            if(atOB && OpenSellEx(0, "_DC")) return;
+            if(atOB && OpenSellEx(0, "_DC", thisSellIsScalp)) return;
         }
     }
 
@@ -723,10 +767,10 @@ void TryEntries() {
     if(UseEntry_HKCloseRetest && UseSessionLevels && hkClosePrice > 0) {
         double hkTol = OB_TouchPips * pipValue;
         if(buys < MaxPositionsPerSide && bosOkBuy && MathAbs(ask - hkClosePrice) <= hkTol && SessionSweepHasBullishEngulfing()) {
-            if(OpenBuyEx(0, "_HK")) return;
+            if(OpenBuyEx(0, "_HK", thisBuyIsScalp)) return;
         }
         if(sells < MaxPositionsPerSide && bosOkSell && MathAbs(bid - hkClosePrice) <= hkTol && SessionSweepHasBearishEngulfing()) {
-            if(OpenSellEx(0, "_HK")) return;
+            if(OpenSellEx(0, "_HK", thisSellIsScalp)) return;
         }
     }
 
@@ -734,10 +778,10 @@ void TryEntries() {
     if(UseEntry_SessionSweep && UseSessionLevels && londonLow > 0 && londonHigh > 0) {
         double tol = OB_TouchPips * pipValue;
         if(buys < MaxPositionsPerSide && bosOkBuy && londonLowSwept && MathAbs(ask - londonLow) <= tol && SessionSweepHasBullishEngulfing()) {
-            if(OpenBuyEx(NormalizeDouble(ask - SL_Pips * pipValue, symbolDigits), "_SS")) return;
+            if(OpenBuyEx(NormalizeDouble(ask - SL_Pips * pipValue, symbolDigits), "_SS", thisBuyIsScalp)) return;
         }
         if(sells < MaxPositionsPerSide && bosOkSell && londonHighSwept && MathAbs(bid - londonHigh) <= tol && SessionSweepHasBearishEngulfing()) {
-            if(OpenSellEx(NormalizeDouble(bid + SL_Pips * pipValue, symbolDigits), "_SS")) return;
+            if(OpenSellEx(NormalizeDouble(bid + SL_Pips * pipValue, symbolDigits), "_SS", thisSellIsScalp)) return;
         }
     }
 
@@ -764,12 +808,12 @@ void TryEntries() {
         if(breakoutHigh > 0 && buys < MaxPositionsPerSide && bosOkBuy && brokeAboveSession &&
            ask >= breakoutHigh - retestTol && ask <= breakoutHigh + retestTol && SessionSweepHasBullishEngulfing()) {
             double sl = NormalizeDouble(breakoutHigh - slBeyond, symbolDigits);
-            if(OpenBuyEx(sl, "_BO")) { brokeAboveSession = false; return; }
+            if(OpenBuyEx(sl, "_BO", thisBuyIsScalp)) { brokeAboveSession = false; return; }
         }
         if(breakoutLow > 0 && sells < MaxPositionsPerSide && bosOkSell && brokeBelowSession &&
            bid >= breakoutLow - retestTol && bid <= breakoutLow + retestTol && SessionSweepHasBearishEngulfing()) {
             double sl = NormalizeDouble(breakoutLow + slBeyond, symbolDigits);
-            if(OpenSellEx(sl, "_BO")) { brokeBelowSession = false; return; }
+            if(OpenSellEx(sl, "_BO", thisSellIsScalp)) { brokeBelowSession = false; return; }
         }
         if(breakoutHigh > 0 && ask < breakoutHigh - retestTol * 2) brokeAboveSession = false;
         if(breakoutLow > 0 && bid > breakoutLow + retestTol * 2) brokeBelowSession = false;
@@ -780,7 +824,7 @@ void TryEntries() {
         static bool brokeAbove = false;
         if(ask > g_tlResistPrice + tlTouch) brokeAbove = true;
         if(brokeAbove && nearTLResist && SessionSweepHasBullishEngulfing()) {
-            if(OpenBuyEx(0, "_TL_BR")) { brokeAbove = false; return; }
+            if(OpenBuyEx(0, "_TL_BR", thisBuyIsScalp)) { brokeAbove = false; return; }
         }
         if(ask < g_tlResistPrice - tlTouch * 2) brokeAbove = false;
     }
@@ -788,7 +832,7 @@ void TryEntries() {
         static bool brokeBelow = false;
         if(bid < g_tlSupportPrice - tlTouch) brokeBelow = true;
         if(brokeBelow && nearTLSupport && SessionSweepHasBearishEngulfing()) {
-            if(OpenSellEx(0, "_TL_BR")) { brokeBelow = false; return; }
+            if(OpenSellEx(0, "_TL_BR", thisSellIsScalp)) { brokeBelow = false; return; }
         }
         if(bid > g_tlSupportPrice + tlTouch * 2) brokeBelow = false;
     }
@@ -800,14 +844,14 @@ void TryEntries() {
         for(int i = 0; i < ArraySize(g_obList); i++) {
             if(!g_obList[i].isActive || !g_obList[i].isBullish) continue;
             if(OB_RequireHTFAlignment && !OrderBlockAlignsWithHTFSupport(g_obList[i].bottom, g_obList[i].top)) continue;
-            if(ask >= g_obList[i].bottom - touch && ask <= g_obList[i].top + touch && OpenBuyEx(0, "_TL_OB")) return;
+            if(ask >= g_obList[i].bottom - touch && ask <= g_obList[i].top + touch && OpenBuyEx(0, "_TL_OB", thisBuyIsScalp)) return;
         }
     }
     if(UseEntry_TL_OB && sells < MaxPositionsPerSide && bosOkSell && nearTLResist && tlObM1Sell && SessionSweepHasBearishEngulfing()) {
         for(int i = 0; i < ArraySize(g_obList); i++) {
             if(!g_obList[i].isActive || g_obList[i].isBullish) continue;
             if(OB_RequireHTFAlignment && !OrderBlockAlignsWithHTFResistance(g_obList[i].bottom, g_obList[i].top)) continue;
-            if(bid >= g_obList[i].bottom - touch && bid <= g_obList[i].top + touch && OpenSellEx(0, "_TL_OB")) return;
+            if(bid >= g_obList[i].bottom - touch && bid <= g_obList[i].top + touch && OpenSellEx(0, "_TL_OB", thisSellIsScalp)) return;
         }
     }
 
@@ -825,13 +869,17 @@ void TryEntries() {
                (revBuys == 0 || MinPipsFromRevOpens(ask, true) >= REV_EntrySpacingPips) &&
                ask >= g_fvgs[f].bottom && ask <= g_fvgs[f].top && SessionSweepHasBullishEngulfing()) {
                 double slRev = REV_SLBelowFVG ? NormalizeDouble(g_fvgs[f].bottom - revBuffer, symbolDigits) : 0;
-                if(OpenBuyEx(slRev, "_REV")) return;
+                if(REV_MaxSL_Pips > 0 && slRev > 0 && (ask - slRev) > REV_MaxSL_Pips * pipValue)
+                    slRev = NormalizeDouble(ask - REV_MaxSL_Pips * pipValue, symbolDigits);
+                if(OpenBuyEx(slRev, "_REV", thisBuyIsScalp)) return;
             }
             if(!g_fvgs[f].isBullish && sells < MaxPositionsPerSide && revSells < REV_MaxEntries && revSellOk &&
                (revSells == 0 || MinPipsFromRevOpens(bid, false) >= REV_EntrySpacingPips) &&
                bid >= g_fvgs[f].bottom && bid <= g_fvgs[f].top && SessionSweepHasBearishEngulfing()) {
                 double slRev = REV_SLBelowFVG ? NormalizeDouble(g_fvgs[f].top + revBuffer, symbolDigits) : 0;
-                if(OpenSellEx(slRev, "_REV")) return;
+                if(REV_MaxSL_Pips > 0 && slRev > 0 && (slRev - bid) > REV_MaxSL_Pips * pipValue)
+                    slRev = NormalizeDouble(bid + REV_MaxSL_Pips * pipValue, symbolDigits);
+                if(OpenSellEx(slRev, "_REV", thisSellIsScalp)) return;
             }
         }
     }
@@ -845,7 +893,7 @@ void TryEntries() {
                 bool inZone = (ask >= g_obList[i].bottom && ask <= g_obList[i].top);
                 bool nearZone = (ask < g_obList[i].bottom && g_obList[i].bottom - ask <= touch) || (ask > g_obList[i].top && ask - g_obList[i].top <= touch);
                 if((inZone || nearZone) && (!RequireEngulfing || IsBullishEngulfing())) {
-                    OpenBuy(g_obList[i]);
+                    OpenBuy(g_obList[i], thisBuyIsScalp);
                     return;
                 }
             }
@@ -854,7 +902,7 @@ void TryEntries() {
                 bool inZone = (bid >= g_obList[i].bottom && bid <= g_obList[i].top);
                 bool nearZone = (bid < g_obList[i].bottom && g_obList[i].bottom - bid <= touch) || (bid > g_obList[i].top && bid - g_obList[i].top <= touch);
                 if((inZone || nearZone) && (!RequireEngulfing || IsBearishEngulfing())) {
-                    OpenSell(g_obList[i]);
+                    OpenSell(g_obList[i], thisSellIsScalp);
                     return;
                 }
             }
@@ -885,9 +933,10 @@ void ManagePositions() {
         double origVol = origVolume[idx];
         int level = partialLevel[idx];
 
-        // --- BE (optional; _REV uses REV_BEPips, others use BreakEvenPips) ---
+        // --- BE (optional; _SCALP uses ScalpBE_Pips, _REV uses REV_BEPips, others use BreakEvenPips) ---
         if(UseBreakEven && profitPips > 0) {
-            double bePips = (StringFind(position.Comment(), "_REV") >= 0) ? REV_BEPips : BreakEvenPips;
+            string cmtBE = position.Comment();
+            double bePips = (StringFind(cmtBE, "_SCALP") >= 0) ? ScalpBE_Pips : ((StringFind(cmtBE, "_REV") >= 0) ? REV_BEPips : BreakEvenPips);
             if(bePips > 0 && profitPips >= bePips) {
                 double newSL = NormalizeDouble(openPrice, symbolDigits);
                 if(isBuy && (currentSL < newSL - point || currentSL == 0)) {
@@ -902,6 +951,26 @@ void ManagePositions() {
         }
 
         // --- GUARANTEED: close ANY position at cap (so reversals/sweeps don’t give back 1000 pips; breakouts already work) ---
+        if(StringFind(position.Comment(), "_SCALP") >= 0) {
+            if(ScalpPartial_Pips > 0 && level == 0 && profitPips >= ScalpPartial_Pips) {
+                double closeVol = MathFloor(currentVol * 0.5 / lotStep) * lotStep;
+                if(closeVol < minLot) closeVol = minLot;
+                if(closeVol >= currentVol - lotStep * 0.5) closeVol = currentVol;
+                if(closeVol >= minLot && closeVol <= currentVol) {
+                    if(closeVol >= currentVol - lotStep * 0.5) {
+                        if(trade.PositionClose(ticket)) { partialLevel[idx] = 1; Print("Fresh scalp 50% full close #", ticket); continue; }
+                    } else if(trade.PositionClosePartial(ticket, closeVol)) {
+                        partialLevel[idx] = 1;
+                        Print("Fresh scalp 50% partial #", ticket, " ", closeVol);
+                        continue;
+                    }
+                }
+            }
+            if(ScalpTP_Pips > 0 && profitPips >= ScalpTP_Pips * 0.95) {
+                if(trade.PositionClose(ticket)) { Print("Fresh scalp TP #", ticket, " ", profitPips, " pips"); continue; }
+            }
+            continue;
+        }
         if(UseForceCloseAtCap) {
             double capPips = (MaxSetupTargetPips > 0) ? MaxSetupTargetPips : 200.0;
             if(profitPips >= capPips * 0.95) {
