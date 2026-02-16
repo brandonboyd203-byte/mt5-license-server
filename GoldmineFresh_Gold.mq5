@@ -150,15 +150,20 @@ struct MarketStructure { int trend; double lastBOS; double lastCHoCH; };
 MarketStructure marketStruct;
 
 //+------------------------------------------------------------------+
-//| Escape string for JSON (so broker/server name cannot break request) |
+//| Escape string for JSON; strip control chars so server never gets invalid JSON |
 //+------------------------------------------------------------------+
 string EscapeJsonString(string s) {
     string out = "";
     for(int i = 0; i < StringLen(s); i++) {
-        string c = StringSubstr(s, i, 1);
-        if(c == "\\") out += "\\\\";
-        else if(c == "\"") out += "\\\"";
-        else out += c;
+        ushort c = StringGetCharacter(s, i);
+        if(c == '\\') out += "\\\\";
+        else if(c == '"') out += "\\\"";
+        else if(c >= 32 && c <= 126) out += CharToString((uchar)c);  // safe ASCII only
+        else if(c == '\n') out += "\\n";
+        else if(c == '\r') out += "\\r";
+        else if(c == '\t') out += "\\t";
+        // else drop or replace other control/unicode with space so position 90 never breaks
+        else out += " ";
     }
     return out;
 }
