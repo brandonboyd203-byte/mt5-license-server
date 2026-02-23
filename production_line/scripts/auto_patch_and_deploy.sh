@@ -29,7 +29,7 @@ git add \
   "$ROOT/scripts/deploy_to_vps.sh" \
   "$ROOT/../ops_motherboard_vps/server.js"
 
-git -c user.name="OpenClaw Auto" -c user.email="openclaw@local" commit -m "auto: enforce BE=25 for Fresh/Blueprint"
+git -c user.name="OpenClaw Auto" -c user.email="openclaw@local" commit -m "auto: apply BE/OPP sell-side rules"
 
 echo "[auto] push $branch"
 git push origin "$branch"
