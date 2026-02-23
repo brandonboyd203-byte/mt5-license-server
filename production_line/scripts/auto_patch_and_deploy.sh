@@ -34,6 +34,9 @@ git add \
 
 git -c user.name="OpenClaw Auto" -c user.email="openclaw@local" commit -m "auto: enforce BE=25 for Fresh/Blueprint"
 
+echo "[auto] push $branch"
+git push origin "$branch"
+
 echo "[auto] deploy to VPS"
 SKIP_PUSH=1 "$ROOT/scripts/deploy_to_vps.sh" "$branch"
 echo "[auto] done"
