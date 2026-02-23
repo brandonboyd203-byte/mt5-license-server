@@ -16,9 +16,9 @@ if [[ "$branch" != "mac-production-line" ]]; then
   exit 0
 fi
 
-# Only act if repo is clean before patch
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "[auto] repo not clean, skip auto patch"
+# Skip if bots are already dirty (avoid clobbering manual edits)
+if [[ -n "$(git diff --name-only -- bots_full bots_src)" ]] || [[ -n "$(git diff --cached --name-only -- bots_full bots_src)" ]]; then
+  echo "[auto] bots_full/bots_src dirty, skip auto patch"
   exit 0
 fi
 
