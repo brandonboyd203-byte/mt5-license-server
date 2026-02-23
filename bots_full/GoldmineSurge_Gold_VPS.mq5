@@ -1554,16 +1554,27 @@ void ManagePositions() {
         double currentSL = position.StopLoss();
         double currentTP = position.TakeProfit();
         double currentVolume = position.Volume();
-        double currentPrice = (position.Type() == POSITION_TYPE_BUY) ? 
-                             SymbolInfoDouble(_Symbol, SYMBOL_BID) : 
-                             SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+        bool isBuy = (position.Type() == POSITION_TYPE_BUY);
+        double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+        double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+        double currentPrice = isBuy ? bid : ask;
         
         // Calculate profit in pips
-        double profitPips = 0;
-        if(position.Type() == POSITION_TYPE_BUY) {
-            profitPips = (currentPrice - openPrice) / pipValue;
-        } else {
-            profitPips = (openPrice - currentPrice) / pipValue;
+        double profitPips = isBuy ? (currentPrice - openPrice) / pipValue : (openPrice - currentPrice) / pipValue;
+        // Type auto-correct if MT5 reports wrong side (prevents SELL being treated as BUY)
+        double profitIfBuy  = (bid - openPrice) / pipValue;
+        double profitIfSell = (openPrice - ask) / pipValue;
+        const double TYPE_CORRECT_PIP_THRESH = 5.0;
+        if(isBuy && profitIfBuy < -TYPE_CORRECT_PIP_THRESH && profitIfSell > TYPE_CORRECT_PIP_THRESH) {
+            isBuy = false;
+            currentPrice = ask;
+            profitPips = profitIfSell;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported BUY but price below entry (SELL in profit ", DoubleToString(profitPips, 1), " pips) - treating as SELL ***");
+        } else if(!isBuy && profitIfSell < -TYPE_CORRECT_PIP_THRESH && profitIfBuy > TYPE_CORRECT_PIP_THRESH) {
+            isBuy = true;
+            currentPrice = bid;
+            profitPips = profitIfBuy;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported SELL but price above entry (BUY in profit) - treating as BUY ***");
         }
         
         // Initialize tracking
@@ -1615,7 +1626,7 @@ void ManagePositions() {
         // Set TP for runner (if not already set)
         if(hasRunner && currentTP == 0) {
             double tp = 0;
-            if(position.Type() == POSITION_TYPE_BUY) {
+            if(isBuy) {
                 tp = openPrice + (TP_Pips * pipValue);
             } else {
                 tp = openPrice - (TP_Pips * pipValue);
@@ -1626,7 +1637,7 @@ void ManagePositions() {
         // Ensure SL is set
         if(currentSL == 0) {
             double newSL = 0;
-            if(position.Type() == POSITION_TYPE_BUY) {
+            if(isBuy) {
                 newSL = openPrice - (SL_Pips * pipValue);
             } else {
                 newSL = openPrice + (SL_Pips * pipValue);

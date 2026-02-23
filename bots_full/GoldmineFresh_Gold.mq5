@@ -1009,6 +1009,21 @@ void ManagePositions() {
         // BUY closes at bid; SELL closes at ask. Use side-correct price for BE/TP decisions.
         double currentPrice = isBuy ? bid : ask;
         double profitPips = isBuy ? (currentPrice - openPrice) / pipValue : (openPrice - currentPrice) / pipValue;
+        // Type auto-correct if MT5 reports wrong side (prevents SELL being treated as BUY)
+        double profitIfBuy  = (bid - openPrice) / pipValue;
+        double profitIfSell = (openPrice - ask) / pipValue;
+        const double TYPE_CORRECT_PIP_THRESH = 5.0;
+        if(isBuy && profitIfBuy < -TYPE_CORRECT_PIP_THRESH && profitIfSell > TYPE_CORRECT_PIP_THRESH) {
+            isBuy = false;
+            currentPrice = ask;
+            profitPips = profitIfSell;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported BUY but price below entry (SELL in profit ", DoubleToString(profitPips, 1), " pips) - treating as SELL ***");
+        } else if(!isBuy && profitIfSell < -TYPE_CORRECT_PIP_THRESH && profitIfBuy > TYPE_CORRECT_PIP_THRESH) {
+            isBuy = true;
+            currentPrice = bid;
+            profitPips = profitIfBuy;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported SELL but price above entry (BUY in profit) - treating as BUY ***");
+        }
         int idx = GetOrCreateTicketIndex(ticket);
         if(idx >= ArraySize(origVolume) || origVolume[idx] <= 0) origVolume[idx] = currentVol;
         double origVol = origVolume[idx];
