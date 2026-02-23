@@ -16,11 +16,8 @@ fi
 branch="$(git rev-parse --abbrev-ref HEAD)"
 echo "[auto] committing to $branch"
 git add \
-  "$ROOT/../bots_full/GoldmineFresh_Gold.mq5" \
-  "$ROOT/../bots_full/GoldmineFresh_Gold_VPS.mq5" \
-  "$ROOT/../bots_full/GoldmineBlueprint_Gold.mq5" \
-  "$ROOT/../bots_full/GoldmineBlueprint_Gold_VPS.mq5" \
-  "$ROOT/../bots_src/GoldmineFresh_Gold.mq5" \
+  "$ROOT/../bots_full" \
+  "$ROOT/../bots_src" \
   "$ROOT/scripts/auto_patch_sell_logic.py" \
   "$ROOT/scripts/auto_patch_and_deploy.sh" \
   "$ROOT/scripts/autonomous_tick.sh" \

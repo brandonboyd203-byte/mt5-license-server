@@ -5,28 +5,13 @@ import sys
 
 ROOT = "/Users/brandonboyd/.openclaw/workspace"
 
-TARGETS = {
-    "bots_full/GoldmineFresh_Gold.mq5": {
-        "ScalpBE_Pips": 25.0,
-        "BreakEvenPips": 25.0,
-        "REV_BEPips": 25.0,
-    },
-    "bots_full/GoldmineFresh_Gold_VPS.mq5": {
-        "ScalpBE_Pips": 25.0,
-        "BreakEvenPips": 25.0,
-        "REV_BEPips": 25.0,
-    },
-    "bots_src/GoldmineFresh_Gold.mq5": {
-        "ScalpBE_Pips": 25.0,
-        "BreakEvenPips": 25.0,
-        "REV_BEPips": 25.0,
-    },
-    "bots_full/GoldmineBlueprint_Gold.mq5": {
-        "BreakEvenPips": 25.0,
-    },
-    "bots_full/GoldmineBlueprint_Gold_VPS.mq5": {
-        "BreakEvenPips": 25.0,
-    },
+TARGET_INPUTS = {
+    "ScalpBE_Pips": 25.0,
+    "BreakEvenPips": 25.0,
+    "BreakEvenPips_Silver": 25.0,
+    "REV_BEPips": 25.0,
+    "OppositeTradeTP_Pips": 10.0,
+    "OppositeTradeSL_Pips": 10.0,
 }
 
 
@@ -40,7 +25,16 @@ def set_input_value(text: str, name: str, value: float) -> tuple[str, bool]:
 changed_files = []
 missing_files = []
 
-for rel_path, inputs in TARGETS.items():
+paths = []
+for base in ("bots_full", "bots_src"):
+    base_path = os.path.join(ROOT, base)
+    if not os.path.isdir(base_path):
+        continue
+    for name in os.listdir(base_path):
+        if name.endswith(".mq5"):
+            paths.append(os.path.join(base, name))
+
+for rel_path in sorted(set(paths)):
     path = os.path.join(ROOT, rel_path)
     if not os.path.exists(path):
         missing_files.append(rel_path)
@@ -48,7 +42,7 @@ for rel_path, inputs in TARGETS.items():
     with open(path, "r", errors="ignore") as f:
         text = f.read()
     original = text
-    for name, value in inputs.items():
+    for name, value in TARGET_INPUTS.items():
         text, _ = set_input_value(text, name, value)
     if text != original:
         with open(path, "w", encoding="utf-8") as f:
