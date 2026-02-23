@@ -28,6 +28,8 @@ input double RiskPercent = 3.0;              // Risk per trade (%) - DEFAULT (us
 input double FirstTradeRisk = 5.0;           // Risk for FIRST trade (%) - Higher risk on initial entry
 input double ScalingEntryRisk = 1.5;         // Risk for scaling entries (%) - Lower risk when adding to losing positions
 input double MaxTotalRisk = 9.0;             // Maximum total risk for all trades (%) - Safety limit
+input bool UseDailyLossGuard = true;         // Stop new entries when daily loss hits threshold
+input double DailyLossPctFromStart = 50.0;   // Max loss % from start-of-day equity
 input double SL_Pips = 30.0;                 // Stop Loss (pips) - Base SL (dynamic can expand)
 #ifndef SMC_SYMBOL_GOLD
 input double SL_Pips_Silver = 35.0;          // Stop Loss (pips) - Base SL for Silver (normal entry; dynamic can expand)
@@ -252,6 +254,9 @@ double point;
 int symbolDigits;  // Renamed to avoid conflict with MQL5 library
 double pipValue;
 double accountBalance;
+double dayStartEquity = 0.0;
+int    dayKey = 0;
+bool   dailyLossTripped = false;
 datetime lastBarTime = 0;
 datetime lastBarTime_M1 = 0;
 datetime lastBarTime_M3 = 0;
@@ -749,6 +754,28 @@ void OnDeinit(const int reason) {
 }
 
 //+------------------------------------------------------------------+
+//| Daily loss guard: block new entries after daily loss threshold   |
+//+------------------------------------------------------------------+
+bool DailyLossExceeded() {
+    if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
+    datetime now = TimeCurrent();
+    int key = (int)TimeYear(now) * 10000 + (int)TimeMonth(now) * 100 + (int)TimeDay(now);
+    if(key != dayKey) {
+        dayKey = key;
+        dayStartEquity = account.Equity();
+        dailyLossTripped = false;
+        Print("Blueprint VPS: Daily equity reset. StartEquity=", DoubleToString(dayStartEquity, 2));
+    }
+    if(dayStartEquity <= 0) return false;
+    double lossPct = (dayStartEquity - account.Equity()) / dayStartEquity * 100.0;
+    if(!dailyLossTripped && lossPct >= DailyLossPctFromStart) {
+        dailyLossTripped = true;
+        Print("Blueprint VPS: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(DailyLossPctFromStart, 2), "%). New entries blocked.");
+    }
+    return dailyLossTripped;
+}
+
+//+------------------------------------------------------------------+
 //| Expert tick function                                            |
 //+------------------------------------------------------------------+
 void OnTick() {
@@ -775,6 +802,9 @@ void OnTick() {
     
     // ALWAYS manage positions on every tick (critical for TP/SL management)
     ManagePositions();
+
+    // Block new entries after daily loss threshold
+    if(DailyLossExceeded()) return;
     
     // Re-entry after BE: check if tracked position closed at BE; expire reentry flag after N bars
     CheckBEClosedAndAllowReentry();
