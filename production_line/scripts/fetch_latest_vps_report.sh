@@ -34,6 +34,7 @@ vps_scp "$VPS_USER@$VPS_HOST:$VPS_PATH/reports/latest.zip" "$ROOT/run_logs/lates
 
 unzip -o "$ROOT/run_logs/latest/latest.zip" -d "$ROOT/run_logs/latest" >/dev/null || true
 unzip -o "$ROOT/run_logs/latest/latest.zip" -d "$ROOT/run_logs/history/$LATEST_NAME" >/dev/null || true
+python3 "$ROOT/scripts/normalize_vps_logs.py" "$ROOT/run_logs/latest" "$ROOT/run_logs/latest_utf8" >/dev/null 2>&1 || true
 
 echo "$LATEST_NAME" > "$STATE_FILE"
 
