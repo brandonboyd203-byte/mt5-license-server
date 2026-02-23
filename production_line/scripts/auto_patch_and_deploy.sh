@@ -27,6 +27,7 @@ git add \
   "$ROOT/scripts/vps_env.sh" \
   "$ROOT/scripts/install_autonomous_mac.sh" \
   "$ROOT/scripts/deploy_to_vps.sh" \
+  "$ROOT/RESET_START_PROMPT.md" \
   "$ROOT/../ops_motherboard_vps/server.js"
 
 git -c user.name="OpenClaw Auto" -c user.email="openclaw@local" commit -m "auto: apply BE/OPP sell-side rules"
