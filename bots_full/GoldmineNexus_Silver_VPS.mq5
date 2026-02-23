@@ -30,6 +30,8 @@ input double ScalingEntryRisk = 1.0;         // Risk for scaling entries (%) - L
 input double MaxTotalRisk = 6.0;             // Maximum total risk for all trades (%) - Safety limit - LOWERED
 input bool UseEquityForRiskLimit = true;     // Use Equity (not Balance) for risk % - blocks new trades when equity drops
 input double PauseNewTradesIfDrawdownPercent = 5.0; // Pause new trades if drawdown > this % of balance (0 = disabled)
+input bool UseDailyLossGuard = true;         // Stop new entries when daily loss hits threshold
+input double DailyLossPctFromStart = 50.0;   // Max loss % from start-of-day equity
 input bool UseDecreasingRiskPerLayer = true;  // First layer risks more, next layers less (2% then 1.5%,1.5%,1%,1%)
 #ifndef PLUG_SYMBOL_SILVER
 input double SL_Pips = 20.0;                 // Stop Loss (pips) - Base SL for Gold (used if dynamic SL disabled)
@@ -281,6 +283,9 @@ double point;
 int symbolDigits;  // Renamed to avoid conflict with MQL5 library
 double pipValue;
 double accountBalance;
+double dayStartEquity = 0.0;
+int    dayKey = 0;
+bool   dailyLossTripped = false;
 datetime lastBarTime = 0;
 datetime lastBarTime_M1 = 0;
 datetime lastBarTime_M3 = 0;
@@ -781,7 +786,29 @@ int OnInit() {
 //| Expert deinitialization function                                 |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason) {
-    Print("Goldmine Nexus – Silver EA deinitialized. Reason: ", reason);
+    Print("Goldmine Nexus - Silver EA deinitialized. Reason: ", reason);
+}
+
+//+------------------------------------------------------------------+
+//| Daily loss guard: block new entries after daily loss threshold   |
+//+------------------------------------------------------------------+
+bool DailyLossExceeded() {
+    if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
+    datetime now = TimeCurrent();
+    int key = (int)TimeYear(now) * 10000 + (int)TimeMonth(now) * 100 + (int)TimeDay(now);
+    if(key != dayKey) {
+        dayKey = key;
+        dayStartEquity = account.Equity();
+        dailyLossTripped = false;
+        Print("Nexus Silver VPS: Daily equity reset. StartEquity=", DoubleToString(dayStartEquity, 2));
+    }
+    if(dayStartEquity <= 0) return false;
+    double lossPct = (dayStartEquity - account.Equity()) / dayStartEquity * 100.0;
+    if(!dailyLossTripped && lossPct >= DailyLossPctFromStart) {
+        dailyLossTripped = true;
+        Print("Nexus Silver VPS: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(DailyLossPctFromStart, 2), "%). New entries blocked.");
+    }
+    return dailyLossTripped;
 }
 
 //+------------------------------------------------------------------+
@@ -811,6 +838,9 @@ void OnTick() {
     
     // ALWAYS manage positions on every tick (critical for TP/SL management)
     ManagePositions();
+
+    // Block new entries after daily loss threshold
+    if(DailyLossExceeded()) return;
     
     // Check for new bar (for detection only)
     datetime currentBarTime = iTime(_Symbol, PrimaryTF, 0);
