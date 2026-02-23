@@ -34,6 +34,8 @@ input int    MaxPositionsPerSide = 2; // Max BUY and max SELL
 input int    MaxTotalPositions = 8;   // Hard cap total open (stops margin blowout from many entries)
 input int    MinSecondsBetweenSameDirectionEntries = 90; // Anti-overstack cooldown per side
 input double MinPipsForOppositeDirection = 150.0; // Allow opposite side only when 150+ pips away (0 = never). That trade = scalp.
+input bool   UseDailyLossGuard = true; // Stop new entries when daily loss hits threshold
+input double DailyLossPctFromStart = 50.0; // Max loss % from start-of-day equity
 input double ScalpBE_Pips = 25.0;   // Scalp: BE at this many pips
 input double ScalpPartial_Pips = 50.0;  // Scalp: 50% closed at this many pips
 input double ScalpTP_Pips = 100.0;  // Scalp: full close at this many pips
@@ -116,6 +118,9 @@ input double FVG_MinPips = 5.0;              // Min FVG size (pips)
 double point, pipValue;
 int    symbolDigits;
 double accountBalance;
+double dayStartEquity = 0.0;
+int    dayKey = 0;
+bool   dailyLossTripped = false;
 struct OrderBlock { double top; double bottom; datetime time; bool isBullish; bool isActive; ENUM_TIMEFRAMES tf; };
 OrderBlock g_obList[];
 #define OB_MAX 200
@@ -1363,6 +1368,28 @@ void ManagePositions() {
 }
 
 //+------------------------------------------------------------------+
+//| Daily loss guard: block new entries after daily loss threshold   |
+//+------------------------------------------------------------------+
+bool DailyLossExceeded() {
+    if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
+    datetime now = TimeCurrent();
+    int key = (int)TimeYear(now) * 10000 + (int)TimeMonth(now) * 100 + (int)TimeDay(now);
+    if(key != dayKey) {
+        dayKey = key;
+        dayStartEquity = account.Equity();
+        dailyLossTripped = false;
+        Print("Fresh VPS: Daily equity reset. StartEquity=", DoubleToString(dayStartEquity, 2));
+    }
+    if(dayStartEquity <= 0) return false;
+    double lossPct = (dayStartEquity - account.Equity()) / dayStartEquity * 100.0;
+    if(!dailyLossTripped && lossPct >= DailyLossPctFromStart) {
+        dailyLossTripped = true;
+        Print("Fresh VPS: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(DailyLossPctFromStart, 2), "%). New entries blocked.");
+    }
+    return dailyLossTripped;
+}
+
+//+------------------------------------------------------------------+
 //| VPS: Adopt existing positions on restart                         |
 //+------------------------------------------------------------------+
 void AdoptExistingPositions_VPS() {
@@ -1424,5 +1451,6 @@ void OnTick() {
         DetectOrderBlocks();
     }
     ManagePositions();
+    if(DailyLossExceeded()) return;
     TryEntries();
 }

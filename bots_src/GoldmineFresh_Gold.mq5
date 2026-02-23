@@ -34,6 +34,8 @@ input int    MaxPositionsPerSide = 2; // Max BUY and max SELL
 input int    MaxTotalPositions = 8;   // Hard cap total open (stops margin blowout from many entries)
 input int    MinSecondsBetweenSameDirectionEntries = 90; // Anti-overstack cooldown per side
 input double MinPipsForOppositeDirection = 150.0; // Allow opposite side only when 150+ pips away (0 = never). That trade = scalp.
+input bool   UseDailyLossGuard = true; // Stop new entries when daily loss hits threshold
+input double DailyLossPctFromStart = 50.0; // Max loss % from start-of-day equity
 input double ScalpBE_Pips = 25.0;   // Scalp: BE at this many pips
 input double ScalpPartial_Pips = 50.0;  // Scalp: 50% closed at this many pips
 input double ScalpTP_Pips = 100.0;  // Scalp: full close at this many pips
@@ -116,6 +118,9 @@ input double FVG_MinPips = 5.0;              // Min FVG size (pips)
 double point, pipValue;
 int    symbolDigits;
 double accountBalance;
+double dayStartEquity = 0.0;
+int    dayKey = 0;
+bool   dailyLossTripped = false;
 struct OrderBlock { double top; double bottom; datetime time; bool isBullish; bool isActive; ENUM_TIMEFRAMES tf; };
 OrderBlock g_obList[];
 #define OB_MAX 200
@@ -1009,6 +1014,21 @@ void ManagePositions() {
         // BUY closes at bid; SELL closes at ask. Use side-correct price for BE/TP decisions.
         double currentPrice = isBuy ? bid : ask;
         double profitPips = isBuy ? (currentPrice - openPrice) / pipValue : (openPrice - currentPrice) / pipValue;
+        // Type auto-correct if MT5 reports wrong side (prevents SELL being treated as BUY)
+        double profitIfBuy  = (bid - openPrice) / pipValue;
+        double profitIfSell = (openPrice - ask) / pipValue;
+        const double TYPE_CORRECT_PIP_THRESH = 5.0;
+        if(isBuy && profitIfBuy < -TYPE_CORRECT_PIP_THRESH && profitIfSell > TYPE_CORRECT_PIP_THRESH) {
+            isBuy = false;
+            currentPrice = ask;
+            profitPips = profitIfSell;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported BUY but price below entry (SELL in profit ", DoubleToString(profitPips, 1), " pips) - treating as SELL ***");
+        } else if(!isBuy && profitIfSell < -TYPE_CORRECT_PIP_THRESH && profitIfBuy > TYPE_CORRECT_PIP_THRESH) {
+            isBuy = true;
+            currentPrice = bid;
+            profitPips = profitIfBuy;
+            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported SELL but price above entry (BUY in profit) - treating as BUY ***");
+        }
         int idx = GetOrCreateTicketIndex(ticket);
         if(idx >= ArraySize(origVolume) || origVolume[idx] <= 0) origVolume[idx] = currentVol;
         double origVol = origVolume[idx];
@@ -1308,6 +1328,28 @@ void ManagePositions() {
 }
 
 //+------------------------------------------------------------------+
+//| Daily loss guard: block new entries after daily loss threshold   |
+//+------------------------------------------------------------------+
+bool DailyLossExceeded() {
+    if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
+    datetime now = TimeCurrent();
+    int key = (int)TimeYear(now) * 10000 + (int)TimeMonth(now) * 100 + (int)TimeDay(now);
+    if(key != dayKey) {
+        dayKey = key;
+        dayStartEquity = account.Equity();
+        dailyLossTripped = false;
+        Print("Fresh: Daily equity reset. StartEquity=", DoubleToString(dayStartEquity, 2));
+    }
+    if(dayStartEquity <= 0) return false;
+    double lossPct = (dayStartEquity - account.Equity()) / dayStartEquity * 100.0;
+    if(!dailyLossTripped && lossPct >= DailyLossPctFromStart) {
+        dailyLossTripped = true;
+        Print("Fresh: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(DailyLossPctFromStart, 2), "%). New entries blocked.");
+    }
+    return dailyLossTripped;
+}
+
+//+------------------------------------------------------------------+
 //| OnInit                                                            |
 //+------------------------------------------------------------------+
 int OnInit() {
@@ -1340,5 +1382,6 @@ void OnTick() {
         DetectOrderBlocks();
     }
     ManagePositions();
+    if(DailyLossExceeded()) return;
     TryEntries();
 }
