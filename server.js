@@ -21,8 +21,10 @@ const DATA_DIR = '/data';
 const useDataDir = !process.env.LICENSE_FILE && fsSync.existsSync(DATA_DIR);
 const LICENSE_FILE = process.env.LICENSE_FILE || (useDataDir ? path.join(DATA_DIR, 'licenses.json') : path.join(__dirname, 'licenses.json'));
 const COPIER_SUBSCRIBERS_FILE = process.env.COPIER_SUBSCRIBERS_FILE || (useDataDir ? path.join(DATA_DIR, 'copier_subscribers.json') : path.join(__dirname, 'copier_subscribers.json'));
+const CHECKOUT_ORDERS_FILE = process.env.CHECKOUT_ORDERS_FILE || (useDataDir ? path.join(DATA_DIR, 'checkout_orders.json') : path.join(__dirname, 'checkout_orders.json'));
 const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
 const COINBASE_COMMERCE_API_KEY = process.env.COINBASE_COMMERCE_API_KEY || '';
+const COINBASE_WEBHOOK_SHARED_SECRET = process.env.COINBASE_WEBHOOK_SHARED_SECRET || '';
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL ? String(process.env.PUBLIC_BASE_URL).replace(/\/+$/, '') : '';
 // Support/contact email shown on site and in checkout error messages (e.g. support@yourdomain.com)
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || process.env.CONTACT_EMAIL || '';
@@ -38,6 +40,8 @@ const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || 'GOLDMINE';
 const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
+const MOTHERBOARD_TELEMETRY_URL = process.env.MOTHERBOARD_TELEMETRY_URL || 'http://217.15.164.104:8788/api/telemetry';
+const MOTHERBOARD_DASHBOARD_URL = process.env.MOTHERBOARD_DASHBOARD_URL || 'http://217.15.164.104:8788/';
 
 // One license in a group = valid for any EA name in that group (dash/hyphen normalized in code)
 // Include both ASCII hyphen (-) and en-dash (–) so EAs work regardless of encoding
@@ -124,6 +128,85 @@ app.get('/assets/logo.png', (req, res) => {
 app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
+let botFeedCache = { ts: 0, payload: null };
+
+async function fetchJsonWithTimeout(url, timeoutMs = 4000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: controller.signal
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function n(v, fallback = 0) {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : fallback;
+}
+
+function shapeLiveBotPayload(raw) {
+    const telemetry = raw?.telemetry || raw || {};
+    const profiles = Array.isArray(telemetry.profiles) ? telemetry.profiles : [];
+    const summary = telemetry.summary || {};
+    const day = summary.day || {};
+    const week = summary.week || {};
+
+    const rows = profiles
+        .map((p) => {
+            const dayMetrics = p?.metrics?.day || {};
+            const weekMetrics = p?.metrics?.week || {};
+            const status = p?.metrics?.status || {};
+            const dayNet = dayMetrics.netUsdLive ?? dayMetrics.netUsd;
+            const dayRet = dayMetrics.returnPctLive ?? dayMetrics.returnPct;
+            return {
+                profile: p.profile,
+                profileLabel: p.profileLabel || p.profile,
+                account: p.account || null,
+                riskPct: p.riskPct ?? null,
+                leverage: p.leverage || null,
+                leverageSource: p.leverageSource || null,
+                balance: n(p.currentBalance, 0),
+                equity: n(p.currentEquity, 0),
+                openProfit: n(p.openProfit, 0),
+                dayNetUsd: n(dayNet, 0),
+                dayReturnPct: Number.isFinite(Number(dayRet)) ? Number(dayRet) : null,
+                weekNetUsd: n(weekMetrics.netUsd, 0),
+                weekReturnPct: Number.isFinite(Number(weekMetrics.returnPct)) ? Number(weekMetrics.returnPct) : null,
+                status: status.label || 'UNKNOWN',
+                statusReason: status.reason || '',
+                updatedAt: p.lastActivityAt || p.snapshotAt || p.lastSyncAt || telemetry.generatedAt || null
+            };
+        })
+        .sort((a, b) => b.dayNetUsd - a.dayNetUsd);
+
+    return {
+        ok: true,
+        generatedAt: telemetry.generatedAt || new Date().toISOString(),
+        source: {
+            telemetryUrl: MOTHERBOARD_TELEMETRY_URL,
+            dashboardUrl: MOTHERBOARD_DASHBOARD_URL
+        },
+        summary: {
+            profilesTotal: n(summary.profilesTotal, rows.length),
+            openPositions: n(summary.totalOpenPositions, 0),
+            openOrders: n(summary.totalOpenOrders, 0),
+            dayNetUsd: n(day.netUsdLive ?? day.netUsd, 0),
+            dayReturnPct: Number.isFinite(Number(day.returnPctLive ?? day.returnPct)) ? Number(day.returnPctLive ?? day.returnPct) : null,
+            weekNetUsd: n(week.netUsd, 0),
+            weekReturnPct: Number.isFinite(Number(week.returnPct)) ? Number(week.returnPct) : null,
+            openProfitUsd: n(summary.totalOpenProfitUsd, 0)
+        },
+        profiles: rows
+    };
+}
+
 // POST /validate: read body ourselves and tolerate bad chars (MT5 broker names etc.) so we never throw SyntaxError
 app.use((req, res, next) => {
     if (req.method !== 'POST' || (req.path !== '/validate' && req.originalUrl.split('?')[0] !== '/validate')) return next();
@@ -172,6 +255,11 @@ app.get('/admin.html', (req, res) => {
 // Serve marketing homepage
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Serve V2 preview page (safe sandbox for edits)
+app.get('/v2', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index_v2.html'));
 });
 
 // Serve setup guide
@@ -285,6 +373,75 @@ async function saveCopierSubscribers(subscribers) {
     try { await fs.writeFile(COPIER_SUBSCRIBERS_FILE + '.backup', json, 'utf8'); } catch (e) { /* ignore */ }
 }
 
+async function loadCheckoutOrders() {
+    const backupPath = CHECKOUT_ORDERS_FILE + '.backup';
+    try {
+        const data = await fs.readFile(CHECKOUT_ORDERS_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (_) {}
+    try {
+        const data = await fs.readFile(backupPath, 'utf8');
+        const obj = JSON.parse(data);
+        await fs.writeFile(CHECKOUT_ORDERS_FILE, data, 'utf8');
+        return obj;
+    } catch (_) {}
+    const defaults = { orders: [], lastUpdated: new Date().toISOString() };
+    await saveCheckoutOrders(defaults);
+    return defaults;
+}
+
+async function saveCheckoutOrders(data) {
+    const json = JSON.stringify(data, null, 2);
+    await fs.writeFile(CHECKOUT_ORDERS_FILE, json, 'utf8');
+    try { await fs.writeFile(CHECKOUT_ORDERS_FILE + '.backup', json, 'utf8'); } catch (e) { /* ignore */ }
+}
+
+function resolveEaNameForPlan(planKey, botVersion) {
+    const v = String(botVersion || '').toLowerCase();
+    const pick = (goldName, silverName) => (v.includes('silver') ? silverName : goldName);
+    if (planKey.startsWith('blueprint_')) return pick('Goldmine Blueprint – Gold', 'Goldmine Blueprint – Silver');
+    if (planKey.startsWith('nexus_')) return pick('Goldmine Nexus – Gold', 'Goldmine Nexus – Silver');
+    if (planKey.startsWith('dominion_')) return 'Goldmine Dominion';
+    if (planKey === 'add_seat') return 'Goldmine Blueprint – Gold';
+    return '';
+}
+
+async function activateOrderLicense(order, override = {}) {
+    const accountNumber = String(override.accountNumber || order.accountNumber || '').trim();
+    const plan = String(order.plan || '').trim();
+    const botVersion = override.botVersion || order.botVersion || '';
+    const eaName = String(override.eaName || order.eaName || resolveEaNameForPlan(plan, botVersion)).trim();
+    if (!accountNumber || !eaName) {
+        return { ok: false, reason: 'missing_account_or_ea' };
+    }
+
+    const licenses = await loadLicenses();
+    const existing = licenses.licenses.find((l) => String(l.accountNumber).trim() === accountNumber && normalizeEaName(l.eaName) === normalizeEaName(eaName));
+    if (existing) return { ok: true, created: false, license: existing };
+
+    const build = buildLicenseEntry({
+        accountNumber,
+        userName: order.name || 'Website Buyer',
+        eaName,
+        expiryDate: null,
+        allowedBrokers: [],
+        licenseKey: ''
+    });
+    if (build.error) return { ok: false, reason: build.error };
+    licenses.licenses.push(build.entry);
+    licenses.lastUpdated = new Date().toISOString();
+    await saveLicenses(licenses);
+    return { ok: true, created: true, license: build.entry };
+}
+
+function verifyCoinbaseWebhook(req) {
+    if (!COINBASE_WEBHOOK_SHARED_SECRET) return true;
+    const sig = req.headers['x-cc-webhook-signature'];
+    if (!sig || !req.rawBody) return false;
+    const expected = crypto.createHmac('sha256', COINBASE_WEBHOOK_SHARED_SECRET).update(req.rawBody).digest('hex');
+    return sig === expected;
+}
+
 //+------------------------------------------------------------------+
 //| Generate License Hash (for validation)                           |
 //+------------------------------------------------------------------+
@@ -378,31 +535,77 @@ async function validateLicense(accountNumber, broker, licenseKey, eaName) {
 //+------------------------------------------------------------------+
 const CHECKOUT_PLANS = {
     // Goldmine bot licenses (website checkout dropdown)
-    goldmine_blueprint_gold: {
-        name: 'Goldmine Blueprint – Gold',
-        amount: 4999,
-        description: 'Bot license - Goldmine Blueprint Gold'
+    blueprint_single_full: {
+        name: 'Blueprint - 1 Version Full Pay',
+        amount: 5000,
+        description: 'Blueprint license (Gold OR Silver) - full pay'
     },
-    goldmine_blueprint_silver: {
-        name: 'Goldmine Blueprint – Silver',
-        amount: 4999,
-        description: 'Bot license - Goldmine Blueprint Silver'
+    blueprint_single_installment: {
+        name: 'Blueprint - 1 Version Installments',
+        amount: 5600,
+        description: 'Blueprint license (Gold OR Silver) - 3-month installment total'
     },
-    goldmine_nexus_gold: {
-        name: 'Goldmine Nexus – Gold',
-        amount: 4999,
-        description: 'Bot license - Goldmine Nexus Gold'
+    blueprint_bundle_full: {
+        name: 'Blueprint - Bundle Full Pay',
+        amount: 8000,
+        description: 'Blueprint bundle (Gold + Silver) - full pay'
     },
-    goldmine_nexus_silver: {
-        name: 'Goldmine Nexus – Silver',
-        amount: 4999,
-        description: 'Bot license - Goldmine Nexus Silver'
+    blueprint_bundle_installment: {
+        name: 'Blueprint - Bundle Installments',
+        amount: 8600,
+        description: 'Blueprint bundle (Gold + Silver) - 3-month installment total'
     },
-    goldmine_dominion: {
-        name: 'Goldmine Dominion',
-        amount: 4999,
-        description: 'Bot license - Goldmine Dominion'
+    nexus_single_full: {
+        name: 'Nexus - 1 Version Full Pay',
+        amount: 5000,
+        description: 'Nexus license (Gold OR Silver) - full pay'
     },
+    nexus_single_installment: {
+        name: 'Nexus - 1 Version Installments',
+        amount: 5600,
+        description: 'Nexus license (Gold OR Silver) - 3-month installment total'
+    },
+    nexus_bundle_full: {
+        name: 'Nexus - Bundle Full Pay',
+        amount: 8000,
+        description: 'Nexus bundle (Gold + Silver) - full pay'
+    },
+    nexus_bundle_installment: {
+        name: 'Nexus - Bundle Installments',
+        amount: 8600,
+        description: 'Nexus bundle (Gold + Silver) - 3-month installment total'
+    },
+    dominion_single_full: {
+        name: 'Dominion - 1 Version Full Pay',
+        amount: 5000,
+        description: 'Dominion license (Gold OR Silver) - full pay'
+    },
+    dominion_single_installment: {
+        name: 'Dominion - 1 Version Installments',
+        amount: 5600,
+        description: 'Dominion license (Gold OR Silver) - 3-month installment total'
+    },
+    dominion_bundle_full: {
+        name: 'Dominion - Bundle Full Pay',
+        amount: 8000,
+        description: 'Dominion bundle (Gold + Silver) - full pay'
+    },
+    dominion_bundle_installment: {
+        name: 'Dominion - Bundle Installments',
+        amount: 8600,
+        description: 'Dominion bundle (Gold + Silver) - 3-month installment total'
+    },
+    add_seat: {
+        name: 'Additional Account Seat',
+        amount: 1999,
+        description: 'Additional active MT5 account seat'
+    },
+    // Legacy aliases (backward compatibility)
+    goldmine_blueprint_gold: { name: 'Legacy Blueprint Gold', amount: 5000, description: 'Legacy mapped: Blueprint one-version full pay' },
+    goldmine_blueprint_silver: { name: 'Legacy Blueprint Silver', amount: 5000, description: 'Legacy mapped: Blueprint one-version full pay' },
+    goldmine_nexus_gold: { name: 'Legacy Nexus Gold', amount: 5000, description: 'Legacy mapped: Nexus one-version full pay' },
+    goldmine_nexus_silver: { name: 'Legacy Nexus Silver', amount: 5000, description: 'Legacy mapped: Nexus one-version full pay' },
+    goldmine_dominion: { name: 'Legacy Dominion', amount: 5000, description: 'Legacy mapped: Dominion one-version full pay' },
     // Copier subscriptions (monthly)
     copier_option_a: {
         name: 'Copier Option A',
@@ -687,6 +890,34 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Public live bot feed (proxied from motherboard so website can consume over HTTPS)
+app.get('/api/bots/live', async (req, res) => {
+    try {
+        const now = Date.now();
+        if (botFeedCache.payload && (now - botFeedCache.ts) < 5000) {
+            return res.json(botFeedCache.payload);
+        }
+        const raw = await fetchJsonWithTimeout(MOTHERBOARD_TELEMETRY_URL, 4500);
+        const payload = shapeLiveBotPayload(raw);
+        botFeedCache = { ts: now, payload };
+        res.json(payload);
+    } catch (error) {
+        const stale = botFeedCache.payload;
+        if (stale) {
+            return res.status(200).json({
+                ...stale,
+                stale: true,
+                staleReason: error.message || 'motherboard_unreachable'
+            });
+        }
+        res.status(502).json({
+            ok: false,
+            error: 'live_feed_unavailable',
+            message: error.message || 'Could not reach motherboard telemetry'
+        });
+    }
+});
+
 // Public config (support email for mailto links and checkout error message)
 app.get('/api/config', (req, res) => {
     res.json({
@@ -716,7 +947,7 @@ app.post('/api/coinbase/charge', async (req, res) => {
             }
         }
 
-        const { name, email, plan, accountSize, contact } = body || {};
+        const { name, email, plan, accountSize, contact, accountNumber, botVersion, eaName } = body || {};
         if (!name || !email || !plan) {
             return res.status(400).json({ error: 'Name, email, and plan are required' });
         }
@@ -743,9 +974,30 @@ app.post('/api/coinbase/charge', async (req, res) => {
                 customerEmail: email,
                 accountSize: accountSize || '',
                 contact: contact || '',
-                plan: plan
+                plan: plan,
+                accountNumber: String(accountNumber || '').trim(),
+                botVersion: String(botVersion || '').trim(),
+                eaName: String(eaName || '').trim()
             }
         });
+
+        const orders = await loadCheckoutOrders();
+        orders.orders.push({
+            id: charge?.data?.id || crypto.randomBytes(8).toString('hex'),
+            status: 'created',
+            createdAt: new Date().toISOString(),
+            name,
+            email,
+            plan,
+            accountSize: accountSize || '',
+            contact: contact || '',
+            accountNumber: String(accountNumber || '').trim(),
+            botVersion: String(botVersion || '').trim(),
+            eaName: String(eaName || '').trim(),
+            hostedUrl: charge?.data?.hosted_url || ''
+        });
+        orders.lastUpdated = new Date().toISOString();
+        await saveCheckoutOrders(orders);
 
         res.json({
             hostedUrl: charge?.data?.hosted_url,
@@ -755,6 +1007,89 @@ app.post('/api/coinbase/charge', async (req, res) => {
         console.error('Coinbase checkout error:', error.message);
         const message = error.message || 'Failed to create Coinbase checkout';
         res.status(500).json({ error: message });
+    }
+});
+
+// Coinbase webhook: confirms payment, then auto-activates if account number exists.
+app.post('/api/coinbase/webhook', async (req, res) => {
+    try {
+        if (!verifyCoinbaseWebhook(req)) {
+            return res.status(401).json({ error: 'Invalid webhook signature' });
+        }
+        const event = req.body?.event || req.body || {};
+        const eventType = String(event.type || '').toLowerCase();
+        const charge = event.data || {};
+        const chargeId = charge.id;
+        if (!chargeId) return res.status(200).json({ ok: true, ignored: 'missing_charge_id' });
+
+        const orders = await loadCheckoutOrders();
+        const order = orders.orders.find((o) => o.id === chargeId);
+        if (!order) return res.status(200).json({ ok: true, ignored: 'order_not_found' });
+
+        const paid = ['charge:confirmed', 'charge:resolved', 'charge:completed'].includes(eventType);
+        if (!paid) {
+            order.status = eventType || 'webhook_received';
+            order.updatedAt = new Date().toISOString();
+            orders.lastUpdated = new Date().toISOString();
+            await saveCheckoutOrders(orders);
+            return res.status(200).json({ ok: true, status: order.status });
+        }
+
+        order.status = 'paid';
+        order.updatedAt = new Date().toISOString();
+
+        const activation = await activateOrderLicense(order);
+        if (activation.ok) {
+            order.activationStatus = 'activated';
+            order.activatedAt = new Date().toISOString();
+            order.licenseId = activation.license?.id || null;
+        } else {
+            order.activationStatus = 'pending_account';
+        }
+
+        orders.lastUpdated = new Date().toISOString();
+        await saveCheckoutOrders(orders);
+        return res.status(200).json({ ok: true, activationStatus: order.activationStatus });
+    } catch (error) {
+        console.error('Coinbase webhook error:', error.message);
+        return res.status(500).json({ error: 'Webhook processing failed' });
+    }
+});
+
+// Customer can submit MT5 account later to complete pending activation.
+app.post('/api/activation/submit-account', async (req, res) => {
+    try {
+        const { chargeId, email, accountNumber, botVersion, eaName } = req.body || {};
+        const account = String(accountNumber || '').trim();
+        if (!chargeId || !email || !account) {
+            return res.status(400).json({ error: 'chargeId, email, and accountNumber are required' });
+        }
+
+        const orders = await loadCheckoutOrders();
+        const order = orders.orders.find((o) => o.id === String(chargeId).trim() && String(o.email || '').toLowerCase() === String(email).trim().toLowerCase());
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+
+        order.accountNumber = account;
+        if (botVersion) order.botVersion = String(botVersion).trim();
+        if (eaName) order.eaName = String(eaName).trim();
+
+        const activation = await activateOrderLicense(order, { accountNumber: account, botVersion, eaName });
+        if (!activation.ok) {
+            order.activationStatus = 'pending_account';
+            orders.lastUpdated = new Date().toISOString();
+            await saveCheckoutOrders(orders);
+            return res.status(400).json({ error: activation.reason || 'Activation failed' });
+        }
+
+        order.activationStatus = 'activated';
+        order.activatedAt = new Date().toISOString();
+        order.licenseId = activation.license?.id || null;
+        orders.lastUpdated = new Date().toISOString();
+        await saveCheckoutOrders(orders);
+        return res.json({ success: true, activationStatus: 'activated', licenseId: order.licenseId });
+    } catch (error) {
+        console.error('Submit account activation error:', error.message);
+        res.status(500).json({ error: 'Failed to activate order' });
     }
 });
 

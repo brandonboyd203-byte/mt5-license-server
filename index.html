@@ -7,16 +7,16 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #0b0f1a;
-        --panel: #111827;
-        --card: #151f32;
-        --ink: #e5e7eb;
-        --muted: #9ca3af;
-        --accent: #22c55e;
-        --accent-dark: #16a34a;
-        --gold: #fbbf24;
-        --gold-dark: #d97706;
-        --border: #1f2937;
+        --bg: #070d1a;
+        --panel: #0f1a31;
+        --card: #132242;
+        --ink: #e8efff;
+        --muted: #a5b6d8;
+        --accent: #63d4c3;
+        --accent-dark: #2aa79f;
+        --gold: #b8a5ff;
+        --gold-dark: #8e79de;
+        --border: #2a3f68;
         --shadow: 0 18px 45px rgba(6, 10, 24, 0.45);
         --radius: 18px;
       }
@@ -163,7 +163,7 @@
 
       .hero {
         padding: 80px 0 70px;
-        background: radial-gradient(circle at top, rgba(34, 197, 94, 0.15), transparent 55%);
+        background: radial-gradient(circle at top, rgba(99, 212, 195, 0.18), transparent 50%), radial-gradient(circle at 85% 0%, rgba(184, 165, 255, 0.12), transparent 40%);
       }
 
       .hero-grid {
@@ -212,6 +212,66 @@
         background: #0f172a;
         border: 1px solid #1e293b;
         font-size: 0.95rem;
+      }
+
+      .live-kpis {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        margin-top: 20px;
+      }
+
+      .live-kpi {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+
+      .live-kpi b {
+        display: block;
+        font-size: 1.1rem;
+      }
+
+      .live-kpi span {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .table-wrap {
+        margin-top: 18px;
+        overflow-x: auto;
+        border: 1px solid #1e293b;
+        border-radius: 12px;
+      }
+
+      .live-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 880px;
+        background: #0f172a;
+      }
+
+      .live-table th,
+      .live-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        text-align: left;
+        font-size: 0.9rem;
+      }
+
+      .live-table th {
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .positive {
+        color: #22c55e;
+      }
+
+      .negative {
+        color: #f87171;
       }
 
       section {
@@ -368,10 +428,54 @@
         font-size: 0.9rem;
       }
 
+      .compare-wrap {
+        margin-top: 22px;
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+
+      .compare-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+        background: #0d1730;
+      }
+
+      .compare-table th,
+      .compare-table td {
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        text-align: left;
+      }
+
+      .compare-table th {
+        background: rgba(184, 165, 255, 0.12);
+        color: #e9ddff;
+        font-size: 0.95rem;
+      }
+
+      .onboarding-list li { margin-bottom: 10px; }
+
+      .snapshot-frame {
+        margin-top: 18px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        background: #0b1224;
+      }
+
+      .snapshot-frame iframe {
+        width: 100%;
+        height: 520px;
+        border: 0;
+      }
+
       @media (max-width: 900px) {
         .nav-links {
           display: none;
         }
+        .snapshot-frame iframe { height: 420px; }
       }
     </style>
   </head>
@@ -388,6 +492,7 @@
           </div>
           <div class="nav-links">
             <a href="#bots">Bots</a>
+            <a href="#live-feed">Live Feed</a>
             <a href="#copy-trading">Copy Trading</a>
             <a href="/setup">Setup Guide</a>
             <a href="#pricing">Pricing</a>
@@ -395,7 +500,7 @@
             <a href="#faq">FAQ</a>
             <a href="#contact">Contact</a>
           </div>
-          <a class="btn btn-outline" href="#contact">Book a demo</a>
+          <a class="btn btn-outline" href="#contact">Book a consultation</a>
         </nav>
       </div>
     </header>
@@ -409,8 +514,8 @@
             <p>
               Sell your XAUUSD and XAGUSD bots with confidence and offer investors
               a transparent copy trading program. We provide risk controls,
-              onboarding support, and real-time monitoring so your strategy stays
-              consistent across accounts.
+              structured onboarding, and license-protected access so only paying
+              clients can run the bots on approved MT5 accounts.
             </p>
             <div class="hero-actions">
               <a class="btn btn-primary" href="#pricing">View plans</a>
@@ -435,6 +540,45 @@
               Need a custom integration? We can connect to your existing license
               server or dashboard.
             </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="live-feed">
+        <div class="container">
+          <h2>Live Bot Feed</h2>
+          <p class="section-intro">
+            Real-time bot profit feed from the live motherboard. Values refresh automatically.
+          </p>
+          <div class="live-kpis">
+            <div class="live-kpi"><b id="liveDayNet">$0.00</b><span>Day P/L</span></div>
+            <div class="live-kpi"><b id="liveWeekNet">$0.00</b><span>Week P/L</span></div>
+            <div class="live-kpi"><b id="liveOpenPnl">$0.00</b><span>Open P/L</span></div>
+            <div class="live-kpi"><b id="liveProfiles">0</b><span>Profiles</span></div>
+            <div class="live-kpi"><b id="liveUpdated">-</b><span>Last update</span></div>
+          </div>
+          <div class="table-wrap">
+            <table class="live-table">
+              <thead>
+                <tr>
+                  <th>Bot</th>
+                  <th>Account</th>
+                  <th>Risk%</th>
+                  <th>Leverage</th>
+                  <th>Balance</th>
+                  <th>Equity</th>
+                  <th>Open P/L</th>
+                  <th>Day P/L</th>
+                  <th>Day %</th>
+                  <th>Week P/L</th>
+                  <th>Week %</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="liveFeedRows">
+                <tr><td colspan="12">Loading live data...</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -523,77 +667,60 @@
       </section>
 
       <section id="copy-trading">
-        <div class="container two-col">
-          <div>
-            <h2>Copier service (MT5 only)</h2>
-            <p class="section-intro">
-              Clients fund a crypto wallet and we load funds to a dedicated Exness
-              MT5 account created in their name. They receive investor access to
-              monitor performance in real time and returns are paid out in USDT.
-            </p>
-            <div class="grid" style="margin-top: 18px;">
-              <div class="card">
-                <strong>Investor access</strong>
-                <p>Watch the Exness account live with read-only investor access.</p>
-              </div>
-              <div class="card">
-                <strong>Weekly payouts</strong>
-                <p>Returns are paid weekly via USDT.</p>
-              </div>
-              <div class="card">
-                <strong>Access control</strong>
-                <p>We approve and manage who can access the copier.</p>
-              </div>
+        <div class="container">
+          <h2>Copier service (MT5 only)</h2>
+          <p class="section-intro">
+            Clients fund in crypto and we load funds to a dedicated Exness MT5 account in their name.
+            Investor (read-only) access is provided so performance can be monitored in real time.
+          </p>
+
+          <div class="grid grid-3" style="margin-top: 18px;">
+            <div class="card">
+              <strong>Investor access</strong>
+              <p>View the Exness account live using investor credentials.</p>
+            </div>
+            <div class="card">
+              <strong>Weekly payouts</strong>
+              <p>Returns are paid weekly via USDT.</p>
+            </div>
+            <div class="card">
+              <strong>Access control</strong>
+              <p>Access is approved and managed by GOLDMINE.</p>
             </div>
           </div>
-          <div class="panel">
-            <h3>Copier options</h3>
-            <p class="muted">
-              Monthly subscription (includes the $12 copier server fee).
-              Performance targets are not guaranteed. Subscription is 50%
-              refundable if the service fails.
-            </p>
-            <div class="grid" style="margin-top: 16px;">
-              <div class="card" style="background: #0f172a; border-color: #1e293b;">
-                <strong>Option A - Small accounts</strong>
-                <p class="muted">$1,000 to $4,999 balance</p>
-                <p class="price">$262 <span class="muted">/ month</span></p>
-                <ul class="feature-list">
-                  <li>Profit split: 50% GOLDMINE / 50% client</li>
-                  <li>Results are dependent on market conditions</li>
-                  <li>Investor access to the Exness account</li>
-                </ul>
-              </div>
-              <div class="card" style="background: #0f172a; border-color: #1e293b;">
-                <strong>Option B - Large accounts</strong>
-                <p class="muted">$5,000 to $20,000 balance</p>
-                <p class="price">$500 <span class="muted">/ month</span></p>
-                <ul class="feature-list">
-                  <li>Profit split: 25% GOLDMINE / 75% client</li>
-                  <li>Results are dependent on market conditions</li>
-                  <li>Investor access to the Exness account</li>
-                </ul>
-              </div>
+
+          <div class="grid" style="margin-top: 18px;">
+            <div class="card" style="background:#0f172a;border-color:#1e293b;">
+              <strong>Option A — Small accounts</strong>
+              <p class="muted">$1,000 to $5,000 balance</p>
+              <p class="price">$262 <span class="muted">/ month</span></p>
+              <ul class="feature-list">
+                <li>Profit split: 50% GOLDMINE / 50% client</li>
+                <li>Results depend on market conditions</li>
+                <li>Investor access included</li>
+              </ul>
             </div>
-            <h4 style="margin-top: 24px;">How to fund the account you copy into</h4>
-            <p class="muted">
-              Your subscription (e.g. $262/mo) is paid in crypto via the invoice link. To have a live trading balance that receives the copied trades:
-            </p>
+            <div class="card" style="background:#0f172a;border-color:#1e293b;">
+              <strong>Option B — Large accounts</strong>
+              <p class="muted">$5,000 to $20,000 balance</p>
+              <p class="price">$500 <span class="muted">/ month</span></p>
+              <ul class="feature-list">
+                <li>Profit split: 25% GOLDMINE / 75% client</li>
+                <li>Results depend on market conditions</li>
+                <li>Investor access included</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top: 18px;">
+            <h3 style="margin-top:0;">How funding works</h3>
             <ol class="feature-list" style="margin-left: 1rem;">
-              <li>We create a dedicated Exness MT5 account in your name and send you investor (read-only) login.</li>
-              <li>You fund that account by sending crypto (USDT or agreed coin) to the wallet address we provide in your welcome email.</li>
-              <li>We load the equivalent into your Exness account so copying can start. Minimum by tier: Option A $1,000–$4,999, Option B $5,000–$20,000.</li>
+              <li>We create a dedicated Exness MT5 account in your name and provide investor login.</li>
+              <li>You send crypto (USDT or agreed coin) to the wallet address in your welcome email.</li>
+              <li>We load the equivalent balance into Exness so copying can start.</li>
             </ol>
-            <p class="muted">
-              Exact wallet and timing are in the email after you subscribe. Questions: <a href="#" id="supportEmailFunding">email support</a>.
-            </p>
-            <p class="muted" style="margin-top: 12px;">
-              No guarantee on returns or refunds. If the copier service fails,
-              50% of the subscription fee is refundable.
-            </p>
-            <a class="btn btn-primary" style="margin-top: 20px;" href="#checkout">
-              Start copier service
-            </a>
+            <p class="muted">No guarantee on returns. If copier service fails, 50% of subscription fee is refundable.</p>
+            <a class="btn btn-primary" style="margin-top: 12px;" href="#checkout">Start copier service</a>
           </div>
         </div>
       </section>
@@ -622,106 +749,128 @@
         </div>
       </section>
 
+      <section id="buyers">
+        <div class="container">
+          <h2>Why GoldmineOps wins serious buyers</h2>
+          <p class="section-intro">Clear positioning against generic bot offers.</p>
+          <div class="compare-wrap">
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>GoldmineOps</th>
+                  <th>Typical Bot Sellers</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Risk-first onboarding</td>
+                  <td>✅ Included</td>
+                  <td>⚠️ Rare</td>
+                </tr>
+                <tr>
+                  <td>Structured qualification filter</td>
+                  <td>✅ Yes</td>
+                  <td>❌ Usually none</td>
+                </tr>
+                <tr>
+                  <td>Transparent compliance framing</td>
+                  <td>✅ Clear</td>
+                  <td>❌ Hype-heavy</td>
+                </tr>
+                <tr>
+                  <td>Bot family depth (Gold/Silver)</td>
+                  <td>✅ Blueprint / Nexus / Dominion</td>
+                  <td>⚠️ Single strategy</td>
+                </tr>
+                <tr>
+                  <td>Support quality</td>
+                  <td>✅ Guided rollout</td>
+                  <td>⚠️ File + goodbye</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="onboarding">
+        <div class="container two-col">
+          <div>
+            <h2>Onboarding & activation (required)</h2>
+            <p class="section-intro">These steps are mandatory before bot activation on live MT5 accounts.</p>
+            <ol class="feature-list onboarding-list" style="margin-left: 1rem;">
+              <li><b>MT5 setup:</b> Tools → Options → Expert Advisors → enable <b>Allow WebRequest for listed URL</b>.</li>
+              <li><b>Add URL exactly:</b> <code>https://mt5-license-server-production.up.railway.app</code>.</li>
+              <li><b>Submit:</b> Bot license key, MT5 account number, and checkout email.</li>
+              <li><b>Attach EA:</b> enable Algo Trading and confirm no WebRequest/license errors in Experts/Journal.</li>
+            </ol>
+            <p class="muted">If MT5 account number is missing at purchase, activation stays pending until provided.</p>
+          </div>
+          <div class="card">
+            <h3>Account seat policy</h3>
+            <ul class="feature-list">
+              <li>1 active MT5 account included per license</li>
+              <li>Additional account seat: +$1,999 each</li>
+              <li>Seat is linked to the bot license</li>
+              <li>Sharing/resale is prohibited and enforced</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <section id="pricing">
         <div class="container">
           <h2>Bot pricing</h2>
           <p class="section-intro">
-            One-time pricing per bot with license management and onboarding
-            support for gold and silver strategies.
+            For Blueprint, Nexus, and Dominion you can choose one version (Gold or Silver) or both versions.
+            Installments add $600 total over 3 months.
           </p>
+
           <div class="grid grid-3" style="margin-top: 26px;">
-            <div class="card">
-              <h3>Goldmine Blueprint – Gold</h3>
-              <p class="price">$4,999</p>
-              <ul class="feature-list">
-                <li>XAUUSD – order blocks + FVGs + market structure</li>
-                <li>Partial TPs + auto break-even</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Blueprint – Silver</h3>
-              <p class="price">$4,999</p>
-              <ul class="feature-list">
-                <li>XAGUSD – order blocks + FVGs + market structure</li>
-                <li>Partial TPs + auto break-even</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Blueprint – Gold & Silver</h3>
-              <p class="price">$7,999</p>
-              <ul class="feature-list">
-                <li>Both XAUUSD + XAGUSD – save when you buy both</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Nexus – Gold</h3>
-              <p class="price">$4,999</p>
-              <ul class="feature-list">
-                <li>XAUUSD – TP ladder + runner + break-even</li>
-                <li>Multi-timeframe swing entries</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Nexus – Silver</h3>
-              <p class="price">$4,999</p>
-              <ul class="feature-list">
-                <li>XAGUSD – TP ladder + runner + break-even</li>
-                <li>Multi-timeframe swing entries</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Nexus – Gold & Silver</h3>
-              <p class="price">$7,999</p>
-              <ul class="feature-list">
-                <li>Both XAUUSD + XAGUSD – save when you buy both</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Edge – Gold</h3>
-              <p class="price">Coming soon</p>
-              <ul class="feature-list">
-                <li>Multi-confluence scalper, session sweeps</li>
-                <li>Join the waitlist for launch</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Surge – Gold</h3>
-              <p class="price">Coming soon</p>
-              <ul class="feature-list">
-                <li>Channel breakouts + volume OB</li>
-                <li>Join the waitlist for launch</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Dominion – Gold</h3>
-              <p class="price">$4,999</p>
-              <ul class="feature-list">
-                <li>XAUUSD – one EA, attach to Gold chart</li>
-                <li>Reversal + OB + FVG + session sweeps</li>
-              </ul>
-            </div>
-            <div class="card">
-              <h3>Goldmine Dominion – Silver</h3>
-              <p class="price">$4,999</p>
-              <ul class="feature-list">
-                <li>XAGUSD – same EA, attach to Silver chart</li>
-              </ul>
-            </div>
             <div class="card pricing-card">
-              <h3>Goldmine Dominion – Gold & Silver</h3>
-              <p class="price">$7,999</p>
+              <h3>Goldmine Blueprint</h3>
+              <p class="price">$5,000 <span class="muted">(one version)</span></p>
+              <p class="muted">Gold OR Silver</p>
+              <p class="price">$8,000 <span class="muted">(bundle)</span></p>
+              <p class="muted">Gold + Silver</p>
               <ul class="feature-list">
-                <li>Both XAUUSD + XAGUSD with one license</li>
+                <li>Installment one-version: $5,600 total (3 × $1,866.67)</li>
+                <li>Installment bundle: $8,600 total (3 × $2,866.67)</li>
+              </ul>
+            </div>
+
+            <div class="card pricing-card">
+              <h3>Goldmine Nexus</h3>
+              <p class="price">$5,000 <span class="muted">(one version)</span></p>
+              <p class="muted">Gold OR Silver</p>
+              <p class="price">$8,000 <span class="muted">(bundle)</span></p>
+              <p class="muted">Gold + Silver</p>
+              <ul class="feature-list">
+                <li>Installment one-version: $5,600 total (3 × $1,866.67)</li>
+                <li>Installment bundle: $8,600 total (3 × $2,866.67)</li>
+              </ul>
+            </div>
+
+            <div class="card pricing-card">
+              <h3>Goldmine Dominion</h3>
+              <p class="price">$5,000 <span class="muted">(one version)</span></p>
+              <p class="muted">Gold OR Silver</p>
+              <p class="price">$8,000 <span class="muted">(bundle)</span></p>
+              <p class="muted">Gold + Silver</p>
+              <ul class="feature-list">
+                <li>Installment one-version: $5,600 total (3 × $1,866.67)</li>
+                <li>Installment bundle: $8,600 total (3 × $2,866.67)</li>
               </ul>
             </div>
           </div>
-          <div class="panel" style="margin-top: 26px;">
+
+          <div class="panel" style="margin-top: 20px;">
             <div class="two-col">
               <div>
-                <h3>Crypto-only payments</h3>
+                <h3>Seat add-on + payment method</h3>
                 <p class="muted">
-                  All bot licenses and copier tiers are paid in crypto only
-                  (USDT, BTC, or ETH).
+                  Additional account seat: <b>$1,999 each</b>. Payments are crypto-only via Coinbase Commerce.
                 </p>
               </div>
               <a class="btn btn-primary" href="#checkout">Go to checkout</a>
@@ -759,13 +908,36 @@
                 <label for="checkoutPlan">Choose a plan</label>
                 <select id="checkoutPlan" name="plan" required>
                   <option value="">Select one</option>
-                  <option value="goldmine_blueprint_gold">Goldmine Blueprint – Gold</option>
-                  <option value="goldmine_blueprint_silver">Goldmine Blueprint – Silver</option>
-                  <option value="goldmine_nexus_gold">Goldmine Nexus – Gold</option>
-                  <option value="goldmine_nexus_silver">Goldmine Nexus – Silver</option>
-                  <option value="goldmine_dominion">Goldmine Dominion</option>
+                  <option value="blueprint_single_full">Blueprint — 1 Version Full Pay ($5,000)</option>
+                  <option value="blueprint_single_installment">Blueprint — 1 Version Installments ($5,600)</option>
+                  <option value="blueprint_bundle_full">Blueprint — Bundle Full Pay ($8,000)</option>
+                  <option value="blueprint_bundle_installment">Blueprint — Bundle Installments ($8,600)</option>
+
+                  <option value="nexus_single_full">Nexus — 1 Version Full Pay ($5,000)</option>
+                  <option value="nexus_single_installment">Nexus — 1 Version Installments ($5,600)</option>
+                  <option value="nexus_bundle_full">Nexus — Bundle Full Pay ($8,000)</option>
+                  <option value="nexus_bundle_installment">Nexus — Bundle Installments ($8,600)</option>
+
+                  <option value="dominion_single_full">Dominion — 1 Version Full Pay ($5,000)</option>
+                  <option value="dominion_single_installment">Dominion — 1 Version Installments ($5,600)</option>
+                  <option value="dominion_bundle_full">Dominion — Bundle Full Pay ($8,000)</option>
+                  <option value="dominion_bundle_installment">Dominion — Bundle Installments ($8,600)</option>
+
+                  <option value="add_seat">Additional Account Seat ($1,999)</option>
                   <option value="copier_option_a">Copier Option A - $262/mo</option>
                   <option value="copier_option_b">Copier Option B - $500/mo</option>
+                </select>
+              </div>
+              <div>
+                <label for="checkoutMt5Account">MT5 account number (optional for now)</label>
+                <input id="checkoutMt5Account" name="mt5Account" type="text" placeholder="Enter MT5 account number for auto-activation" />
+              </div>
+              <div>
+                <label for="checkoutBotVersion">Bot version (for single-version plans)</label>
+                <select id="checkoutBotVersion" name="botVersion">
+                  <option value="">Default (Gold)</option>
+                  <option value="Gold">Gold</option>
+                  <option value="Silver">Silver</option>
                 </select>
               </div>
               <div>
@@ -812,28 +984,35 @@
         </div>
       </section>
 
+
+
       <section id="faq">
         <div class="container">
           <h2>Frequently asked questions</h2>
           <div class="grid" style="margin-top: 20px;">
             <details>
-              <summary>Can I resell the bots?</summary>
-              <p class="muted">
-                No. Bot licenses are for personal use only and cannot be resold or
-                redistributed.
-              </p>
+              <summary>How many accounts are included per license?</summary>
+              <p class="muted">Each license includes 1 active MT5 account. Extra seats are +$1,999 each.</p>
             </details>
             <details>
-              <summary>Do you help with broker setup?</summary>
-              <p class="muted">
-                Yes. We help with broker setup, MT5 onboarding, and account sizing.
-              </p>
+              <summary>Does the bot run without license validation?</summary>
+              <p class="muted">No. Active server-side license validation is required for operation.</p>
             </details>
             <details>
-              <summary>Who controls access to the bots and copier?</summary>
-              <p class="muted">
-                GOLDMINE approves and manages access. You decide who is allowed in.
-              </p>
+              <summary>What are the payment options?</summary>
+              <p class="muted">For Blueprint, Nexus, and Dominion: one-version or bundle, each available as full pay or 3-month installments.</p>
+            </details>
+            <details>
+              <summary>Can I resell or share the bots?</summary>
+              <p class="muted">No. Bot licenses are personal/account-bound and cannot be resold or redistributed.</p>
+            </details>
+            <details>
+              <summary>What if I buy a seat but don't have MT5 account number yet?</summary>
+              <p class="muted">Seat purchase can complete first; activation stays pending until MT5 account number is submitted.</p>
+            </details>
+            <details>
+              <summary>Do you help with setup?</summary>
+              <p class="muted">Yes. We help with broker setup, MT5 onboarding, and account sizing.</p>
             </details>
           </div>
         </div>
@@ -900,6 +1079,98 @@
     <script>
       const checkoutForm = document.getElementById("checkoutForm");
       const checkoutStatus = document.getElementById("checkoutStatus");
+      const liveRows = document.getElementById("liveFeedRows");
+
+      function money(v) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return "-";
+        const s = n >= 0 ? "+" : "-";
+        return `${s}$${Math.abs(n).toFixed(2)}`;
+      }
+
+      function pct(v) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return "-";
+        const s = n >= 0 ? "+" : "-";
+        return `${s}${Math.abs(n).toFixed(2)}%`;
+      }
+
+      function styleNum(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "";
+        return n >= 0 ? "positive" : "negative";
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return "-";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "-";
+        return d.toLocaleTimeString();
+      }
+
+      async function loadLiveFeed() {
+        try {
+          const response = await fetch("/api/bots/live");
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.message || "Live feed unavailable");
+
+          const s = data.summary || {};
+          document.getElementById("liveDayNet").textContent = money(s.dayNetUsd);
+          document.getElementById("liveWeekNet").textContent = money(s.weekNetUsd);
+          document.getElementById("liveOpenPnl").textContent = money(s.openProfitUsd);
+          document.getElementById("liveProfiles").textContent = String(s.profilesTotal ?? 0);
+          document.getElementById("liveUpdated").textContent = fmtTime(data.generatedAt);
+
+          const rawRows = Array.isArray(data.profiles) ? data.profiles : [];
+          const botOrder = ["blueprint", "nexus", "dominion", "edge", "surge", "fresh"];
+          const sideOrder = ["gold", "silver"];
+          const detect = (r) => {
+            const txt = `${r.profileLabel || ""} ${r.profile || ""}`.toLowerCase();
+            const hit = botOrder.findIndex((b) => txt.includes(b));
+            const botIdx = hit === -1 ? 999 : hit;
+            const sideIdx = txt.includes("silver") ? 1 : 0;
+            return { botIdx, sideIdx, txt };
+          };
+          const rows = rawRows
+            .slice()
+            .sort((a, b) => {
+              const da = detect(a);
+              const db = detect(b);
+              if (da.botIdx !== db.botIdx) return da.botIdx - db.botIdx;
+              if (da.sideIdx !== db.sideIdx) return da.sideIdx - db.sideIdx;
+              return da.txt.localeCompare(db.txt);
+            })
+            .slice(0, 20);
+          if (!rows.length) {
+            liveRows.innerHTML = '<tr><td colspan="12">No live profiles yet.</td></tr>';
+            return;
+          }
+
+          liveRows.innerHTML = rows.map((r) => {
+            const lev = r.leverage ? (r.leverageSource === "equity-tier-estimate" ? `~${r.leverage}` : r.leverage) : "-";
+            return `
+              <tr>
+                <td>${r.profileLabel || r.profile || "-"}</td>
+                <td>${r.account || "-"}</td>
+                <td>${r.riskPct ?? "-"}</td>
+                <td>${lev}</td>
+                <td>$${Number(r.balance || 0).toFixed(2)}</td>
+                <td>$${Number(r.equity || 0).toFixed(2)}</td>
+                <td class="${styleNum(r.openProfit)}">${money(r.openProfit)}</td>
+                <td class="${styleNum(r.dayNetUsd)}">${money(r.dayNetUsd)}</td>
+                <td class="${styleNum(r.dayReturnPct)}">${pct(r.dayReturnPct)}</td>
+                <td class="${styleNum(r.weekNetUsd)}">${money(r.weekNetUsd)}</td>
+                <td class="${styleNum(r.weekReturnPct)}">${pct(r.weekReturnPct)}</td>
+                <td title="${r.statusReason || ""}">${r.status || "-"}</td>
+              </tr>
+            `;
+          }).join("");
+        } catch (error) {
+          if (liveRows) {
+            liveRows.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || "unavailable"}</td></tr>`;
+          }
+        }
+      }
 
       // Load support email from server (set SUPPORT_EMAIL env) and update mailto links
       fetch("/api/config")
@@ -918,6 +1189,9 @@
         })
         .catch(() => {});
 
+      loadLiveFeed();
+      setInterval(loadLiveFeed, 10000);
+
       if (checkoutForm) {
         checkoutForm.addEventListener("submit", async (event) => {
           event.preventDefault();
@@ -929,6 +1203,8 @@
             name: document.getElementById("checkoutName").value,
             email: document.getElementById("checkoutEmail").value,
             plan: document.getElementById("checkoutPlan").value,
+            accountNumber: document.getElementById("checkoutMt5Account")?.value || "",
+            botVersion: document.getElementById("checkoutBotVersion")?.value || "",
             accountSize: document.getElementById("checkoutAccount").value,
             contact: document.getElementById("checkoutContact").value,
           };
