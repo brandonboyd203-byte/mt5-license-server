@@ -1,17 +1,18 @@
 :root {
   color-scheme: light;
-  --bg: #070e1d;
-  --bg-2: #0c1628;
-  --panel: #111b2f;
-  --card: #16233b;
-  --ink: #e8edf7;
-  --muted: #9fb0c9;
-  --accent: #37d978;
-  --accent-dark: #1ab35b;
-  --gold: #f7b733;
-  --border: #243652;
+  --bg: #070d1a;
+  --bg-2: #0f1a31;
+  --panel: #0f1a31;
+  --card: #132242;
+  --ink: #e8efff;
+  --muted: #a5b6d8;
+  --accent: #63d4c3;
+  --accent-dark: #2aa79f;
+  --gold: #b8a5ff;
+  --gold-dark: #8e79de;
+  --border: #2a3f68;
   --radius: 18px;
-  --shadow: 0 18px 44px rgba(2, 9, 22, 0.45);
+  --shadow: 0 18px 45px rgba(6, 10, 24, 0.45);
 }
 
 * {
@@ -23,7 +24,7 @@ body {
   margin: 0;
   padding: 0;
   font-family: "Inter", "Segoe UI", "Avenir Next", sans-serif;
-  background: radial-gradient(circle at top right, rgba(55, 217, 120, 0.11), transparent 40%), var(--bg);
+  background: radial-gradient(circle at top, rgba(99, 212, 195, 0.18), transparent 50%), radial-gradient(circle at 85% 0%, rgba(184, 165, 255, 0.12), transparent 40%), var(--bg);
   color: var(--ink);
 }
 
@@ -46,7 +47,7 @@ header {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(7, 14, 29, 0.92);
+  background: rgba(7, 13, 26, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(8px);
 }
@@ -81,8 +82,8 @@ header {
 }
 
 .menu-btn {
-  background: #0e1930;
-  border: 1px solid #284166;
+  background: #101c35;
+  border: 1px solid #2a3f68;
   color: var(--ink);
   border-radius: 999px;
   padding: 10px 16px;
@@ -91,7 +92,7 @@ header {
 }
 
 .menu-btn:hover {
-  border-color: #3f628f;
+  border-color: #3e5f95;
 }
 
 .menu-list {
@@ -99,7 +100,7 @@ header {
   right: 0;
   top: calc(100% + 10px);
   min-width: 230px;
-  background: #0c1528;
+  background: #0f1a31;
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow);
@@ -126,7 +127,7 @@ header {
 .menu-link:hover,
 .menu-link.active {
   color: var(--ink);
-  background: #152640;
+  background: #132242;
 }
 
 .btn {
@@ -143,8 +144,8 @@ header {
 
 .btn-primary {
   background: var(--accent);
-  color: #072113;
-  box-shadow: 0 10px 28px rgba(55, 217, 120, 0.28);
+  color: #0b0f1a;
+  box-shadow: 0 12px 30px rgba(99, 212, 195, 0.3);
 }
 
 .btn-primary:hover {
@@ -167,7 +168,7 @@ main {
   display: inline-flex;
   padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(55, 217, 120, 0.35);
+  border: 1px solid rgba(99, 212, 195, 0.38);
   color: var(--accent);
   font-size: 0.82rem;
   letter-spacing: 0.3px;
@@ -244,8 +245,8 @@ h3 {
 }
 
 .live-kpi {
-  border: 1px solid #2a4065;
-  background: #0e1a31;
+  border: 1px solid #2a3f68;
+  background: #0f172a;
   border-radius: 12px;
   padding: 12px 14px;
 }
@@ -288,7 +289,7 @@ h3 {
 }
 
 .positive {
-  color: #61f1a1;
+  color: #63d4c3;
 }
 
 .negative {
@@ -320,8 +321,8 @@ h3 {
 select,
 textarea {
   width: 100%;
-  background: #0a152b;
-  border: 1px solid #2c446b;
+  background: #0f1a31;
+  border: 1px solid #2a3f68;
   color: var(--ink);
   border-radius: 10px;
   padding: 11px 12px;
@@ -345,7 +346,7 @@ label {
 details {
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #0f1a30;
+  background: #0f1a31;
   padding: 14px 16px;
 }
 
