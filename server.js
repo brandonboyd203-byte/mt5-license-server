@@ -127,6 +127,7 @@ app.get('/assets/logo.png', (req, res) => {
 // Middleware
 app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
+app.use('/site', express.static(path.join(__dirname, 'public')));
 
 let botFeedCache = { ts: 0, payload: null };
 
@@ -252,10 +253,21 @@ app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// Serve marketing homepage
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+const publicDir = path.join(__dirname, 'public');
+const servePublicPage = (fileName) => (req, res) => {
+    res.sendFile(path.join(publicDir, fileName));
+};
+
+// Serve marketing site pages
+app.get('/', servePublicPage('index.html'));
+app.get('/bots', servePublicPage('bots.html'));
+app.get('/live-feed', servePublicPage('live-feed.html'));
+app.get('/copy-trading', servePublicPage('copy-trading.html'));
+app.get('/setup-guide', servePublicPage('setup-guide.html'));
+app.get('/pricing', servePublicPage('pricing.html'));
+app.get('/checkout', servePublicPage('checkout.html'));
+app.get('/faq', servePublicPage('faq.html'));
+app.get('/contact', servePublicPage('contact.html'));
 
 // Serve V2 preview page (safe sandbox for edits)
 app.get('/v2', (req, res) => {

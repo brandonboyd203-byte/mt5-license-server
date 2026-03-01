@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GOLDMINE | Live Feed</title>
+    <link rel="stylesheet" href="/site/styles.css" />
+  </head>
+  <body data-page="live-feed">
+    <header>
+      <div class="container nav-wrap">
+        <a class="logo" href="/"><img src="/logo" alt="GOLDMINE" /></a>
+        <div class="nav-actions">
+          <div class="menu" data-menu>
+            <button class="menu-btn" type="button" data-menu-btn aria-expanded="false">Navigate</button>
+            <nav class="menu-list">
+              <a class="menu-link" href="/" data-page="home">Home</a>
+              <a class="menu-link" href="/bots" data-page="bots">Bots</a>
+              <a class="menu-link" href="/live-feed" data-page="live-feed">Live Feed</a>
+              <a class="menu-link" href="/copy-trading" data-page="copy-trading">Copy Trading</a>
+              <a class="menu-link" href="/setup-guide" data-page="setup-guide">Setup Guide</a>
+              <a class="menu-link" href="/pricing" data-page="pricing">Pricing</a>
+              <a class="menu-link" href="/checkout" data-page="checkout">Checkout</a>
+              <a class="menu-link" href="/faq" data-page="faq">FAQ</a>
+              <a class="menu-link" href="/contact" data-page="contact">Contact</a>
+            </nav>
+          </div>
+          <a class="btn btn-outline consult" href="/contact">Book a consultation</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="kicker">Live Bot Telemetry</span>
+          <h1>Live Feed</h1>
+          <p class="section-intro">Real-time metrics from your motherboard telemetry endpoint.</p>
+          <div class="live-kpis">
+            <div class="live-kpi"><b id="liveDayNet">$0.00</b><span>Day P/L</span></div>
+            <div class="live-kpi"><b id="liveWeekNet">$0.00</b><span>Week P/L</span></div>
+            <div class="live-kpi"><b id="liveOpenPnl">$0.00</b><span>Open P/L</span></div>
+            <div class="live-kpi"><b id="liveProfiles">0</b><span>Profiles</span></div>
+            <div class="live-kpi"><b id="liveUpdated">-</b><span>Last Update</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container panel">
+          <h2>Profiles</h2>
+          <div class="table-wrap">
+            <table class="live-table">
+              <thead>
+                <tr>
+                  <th>Bot</th>
+                  <th>Account</th>
+                  <th>Risk%</th>
+                  <th>Leverage</th>
+                  <th>Balance</th>
+                  <th>Equity</th>
+                  <th>Open P/L</th>
+                  <th>Day P/L</th>
+                  <th>Day %</th>
+                  <th>Week P/L</th>
+                  <th>Week %</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="liveFeedRows">
+                <tr><td colspan="12">Loading live data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>Feed updates every 5 seconds.</p>
+      </div>
+    </footer>
+
+    <script src="/site/main.js"></script>
+  </body>
+</html>

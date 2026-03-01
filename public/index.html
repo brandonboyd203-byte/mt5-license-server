@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GOLDMINE | Home</title>
+    <link rel="stylesheet" href="/site/styles.css" />
+  </head>
+  <body data-page="home">
+    <header>
+      <div class="container nav-wrap">
+        <a class="logo" href="/" aria-label="GOLDMINE Home">
+          <img src="/logo" alt="GOLDMINE" />
+        </a>
+        <div class="nav-actions">
+          <div class="menu" data-menu>
+            <button class="menu-btn" type="button" data-menu-btn aria-expanded="false">Navigate</button>
+            <nav class="menu-list" aria-label="Site navigation">
+              <a class="menu-link" href="/" data-page="home">Home</a>
+              <a class="menu-link" href="/bots" data-page="bots">Bots</a>
+              <a class="menu-link" href="/live-feed" data-page="live-feed">Live Feed</a>
+              <a class="menu-link" href="/copy-trading" data-page="copy-trading">Copy Trading</a>
+              <a class="menu-link" href="/setup-guide" data-page="setup-guide">Setup Guide</a>
+              <a class="menu-link" href="/pricing" data-page="pricing">Pricing</a>
+              <a class="menu-link" href="/checkout" data-page="checkout">Checkout</a>
+              <a class="menu-link" href="/faq" data-page="faq">FAQ</a>
+              <a class="menu-link" href="/contact" data-page="contact">Contact</a>
+            </nav>
+          </div>
+          <a class="btn btn-outline consult" href="/contact">Book a consultation</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container two-col">
+          <div>
+            <span class="kicker">Bot Lab + Copy Trading</span>
+            <h1>GOLDMINE Trading Infrastructure</h1>
+            <p class="section-intro">
+              Multi-bot MT5 execution across gold and silver with live telemetry, licensing,
+              and crypto checkout. Use the dropdown menu to jump to each dedicated page.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="/live-feed">Open Live Feed</a>
+              <a class="btn btn-outline" href="/pricing">View Pricing</a>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>What Changed</h3>
+            <p class="muted">The website is now split into dedicated pages instead of a single crowded page.</p>
+            <ul class="feature-list">
+              <li>Dropdown navigation for every section</li>
+              <li>Dedicated pages for Bots, Pricing, Checkout, FAQ, and Contact</li>
+              <li>Live feed page with real-time profile stats</li>
+              <li>Setup guide separated into its own route</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container grid grid-3">
+          <article class="card">
+            <span class="badge">Execution</span>
+            <h3>Bots</h3>
+            <p class="muted">Blueprint, Nexus, Dominion, Edge, and Fresh product pages with direct plan mapping.</p>
+            <p><a class="btn btn-outline" href="/bots">Open bots page</a></p>
+          </article>
+          <article class="card">
+            <span class="badge">Monitoring</span>
+            <h3>Live Feed</h3>
+            <p class="muted">Live profile telemetry from the motherboard API including day/week returns.</p>
+            <p><a class="btn btn-outline" href="/live-feed">Open live feed</a></p>
+          </article>
+          <article class="card">
+            <span class="badge">Payments</span>
+            <h3>Checkout</h3>
+            <p class="muted">Coinbase Commerce crypto checkout connected to your existing charge endpoint.</p>
+            <p><a class="btn btn-outline" href="/checkout">Open checkout</a></p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>GOLDMINE Bots + Copy Trading</p>
+        <p>Support: <a data-support-email href="mailto:goldminebotsltd@gmail.com">goldminebotsltd@gmail.com</a></p>
+      </div>
+    </footer>
+
+    <script src="/site/main.js"></script>
+  </body>
+</html>

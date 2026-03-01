@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GOLDMINE | Checkout</title>
+    <link rel="stylesheet" href="/site/styles.css" />
+  </head>
+  <body data-page="checkout">
+    <header>
+      <div class="container nav-wrap">
+        <a class="logo" href="/"><img src="/logo" alt="GOLDMINE" /></a>
+        <div class="nav-actions">
+          <div class="menu" data-menu>
+            <button class="menu-btn" type="button" data-menu-btn aria-expanded="false">Navigate</button>
+            <nav class="menu-list">
+              <a class="menu-link" href="/" data-page="home">Home</a>
+              <a class="menu-link" href="/bots" data-page="bots">Bots</a>
+              <a class="menu-link" href="/live-feed" data-page="live-feed">Live Feed</a>
+              <a class="menu-link" href="/copy-trading" data-page="copy-trading">Copy Trading</a>
+              <a class="menu-link" href="/setup-guide" data-page="setup-guide">Setup Guide</a>
+              <a class="menu-link" href="/pricing" data-page="pricing">Pricing</a>
+              <a class="menu-link" href="/checkout" data-page="checkout">Checkout</a>
+              <a class="menu-link" href="/faq" data-page="faq">FAQ</a>
+              <a class="menu-link" href="/contact" data-page="contact">Contact</a>
+            </nav>
+          </div>
+          <a class="btn btn-outline consult" href="/contact">Book a consultation</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container two-col">
+          <div>
+            <span class="kicker">Crypto Payments</span>
+            <h1>Checkout</h1>
+            <p class="section-intro">Pay securely with Coinbase Commerce. You will be redirected to complete payment.</p>
+            <ul class="feature-list">
+              <li>Crypto only (USDT, BTC, ETH)</li>
+              <li>MT5 license activation post-payment</li>
+              <li>Manual invoice fallback via support if needed</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Start Payment</h3>
+            <form id="checkoutForm">
+              <div class="form-row">
+                <label for="checkoutName">Full name</label>
+                <input class="input" id="checkoutName" name="name" type="text" required />
+              </div>
+              <div class="form-row">
+                <label for="checkoutEmail">Email</label>
+                <input class="input" id="checkoutEmail" name="email" type="email" required />
+              </div>
+              <div class="form-row">
+                <label for="checkoutPlan">Choose a plan</label>
+                <select id="checkoutPlan" name="plan" required>
+                  <option value="">Select one</option>
+                  <option value="goldmine_blueprint_gold">Goldmine Blueprint - Gold</option>
+                  <option value="goldmine_blueprint_silver">Goldmine Blueprint - Silver</option>
+                  <option value="goldmine_nexus_gold">Goldmine Nexus - Gold</option>
+                  <option value="goldmine_nexus_silver">Goldmine Nexus - Silver</option>
+                  <option value="goldmine_dominion">Goldmine Dominion</option>
+                  <option value="copier_option_a">Copier Option A - $262/mo</option>
+                  <option value="copier_option_b">Copier Option B - $500/mo</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="checkoutAccount">Account size (optional)</label>
+                <input class="input" id="checkoutAccount" name="account" type="text" placeholder="$250 - $4000 or $5000+" />
+              </div>
+              <div class="form-row">
+                <label for="checkoutContact">Telegram or WhatsApp</label>
+                <input class="input" id="checkoutContact" name="contact" type="text" placeholder="@goldminebots or +61..." />
+              </div>
+              <button class="btn btn-primary" type="submit">Continue to Crypto Payment</button>
+            </form>
+            <p class="muted" id="checkoutStatus" style="margin-top: 12px;">
+              You will be redirected to Coinbase Commerce to complete payment.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>Support: <a data-support-email href="mailto:goldminebotsltd@gmail.com">goldminebotsltd@gmail.com</a></p>
+      </div>
+    </footer>
+
+    <script src="/site/main.js"></script>
+  </body>
+</html>
