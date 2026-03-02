@@ -259,16 +259,17 @@
       setFeedHealth('vpsHealthLabel', vps.stale ? 'warn' : 'ok', `VPS: ${vps.stale ? 'STALE' : 'LIVE'} • ${vps.summary?.profilesTotal ?? 0} profiles`);
       setFeedHealth('vdsHealthLabel', vds.stale ? 'warn' : 'ok', `VDS: ${vds.stale ? 'STALE' : 'LIVE'} • ${vds.summary?.profilesTotal ?? 0} profiles`);
 
-      const summary = vps.summary || {};
+      const vpsSummary = vps.summary || {};
+      const vdsSummary = vds.summary || {};
       const day = document.getElementById('liveDayNet');
       const week = document.getElementById('liveWeekNet');
       const open = document.getElementById('liveOpenPnl');
       const profiles = document.getElementById('liveProfiles');
       const updated = document.getElementById('liveUpdated');
-      if (day) day.textContent = money(summary.dayNetUsd);
-      if (week) week.textContent = money(summary.weekNetUsd);
-      if (open) open.textContent = money(summary.openProfitUsd);
-      if (profiles) profiles.textContent = `${vps.summary?.profilesTotal ?? 0}/${vds.summary?.profilesTotal ?? 0}`;
+      if (day) day.textContent = money(vpsSummary.dayNetUsd);
+      if (week) week.textContent = money(vpsSummary.weekNetUsd);
+      if (open) open.textContent = money(vdsSummary.openProfitUsd);
+      if (profiles) profiles.textContent = `${vpsSummary.profilesTotal ?? 0}/${vdsSummary.profilesTotal ?? 0}`;
       if (updated) updated.textContent = `${fmtTime(vps.generatedAt)} / ${fmtTime(vds.generatedAt)}`;
 
       const vpsRows = Array.isArray(vps.profiles) ? vps.profiles : [];
