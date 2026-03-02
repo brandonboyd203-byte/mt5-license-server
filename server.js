@@ -40,8 +40,12 @@ const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || 'GOLDMINE';
 const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
-const MOTHERBOARD_TELEMETRY_URL = process.env.MOTHERBOARD_TELEMETRY_URL || 'http://217.15.164.104:8788/api/telemetry';
-const MOTHERBOARD_DASHBOARD_URL = process.env.MOTHERBOARD_DASHBOARD_URL || 'http://217.15.164.104:8788/';
+const MOTHERBOARD_VPS_TELEMETRY_URL = process.env.MOTHERBOARD_VPS_TELEMETRY_URL || process.env.MOTHERBOARD_TELEMETRY_URL || 'http://217.15.164.104:8788/api/telemetry';
+const MOTHERBOARD_VPS_DASHBOARD_URL = process.env.MOTHERBOARD_VPS_DASHBOARD_URL || process.env.MOTHERBOARD_DASHBOARD_URL || 'http://217.15.164.104:8788/';
+const MOTHERBOARD_VPS_CHARTS_URL = process.env.MOTHERBOARD_VPS_CHARTS_URL || MOTHERBOARD_VPS_TELEMETRY_URL.replace(/\/api\/telemetry$/i, '/api/charts/live');
+const MOTHERBOARD_VDS_TELEMETRY_URL = process.env.MOTHERBOARD_VDS_TELEMETRY_URL || 'http://46.250.244.188:8788/api/telemetry';
+const MOTHERBOARD_VDS_DASHBOARD_URL = process.env.MOTHERBOARD_VDS_DASHBOARD_URL || 'http://46.250.244.188:8788/';
+const MOTHERBOARD_VDS_CHARTS_URL = process.env.MOTHERBOARD_VDS_CHARTS_URL || MOTHERBOARD_VDS_TELEMETRY_URL.replace(/\/api\/telemetry$/i, '/api/charts/live');
 
 // One license in a group = valid for any EA name in that group (dash/hyphen normalized in code)
 // Include both ASCII hyphen (-) and en-dash (–) so EAs work regardless of encoding
@@ -129,7 +133,8 @@ app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 app.use('/site', express.static(path.join(__dirname, 'public')));
 
-let botFeedCache = { ts: 0, payload: null };
+let botFeedCache = { bySource: new Map() };
+let botChartCache = { bySourceKey: new Map() };
 
 async function fetchJsonWithTimeout(url, timeoutMs = 4000) {
     const controller = new AbortController();
@@ -152,7 +157,25 @@ function n(v, fallback = 0) {
     return Number.isFinite(x) ? x : fallback;
 }
 
-function shapeLiveBotPayload(raw) {
+function getMotherboardConfig(sourceRaw) {
+    const source = String(sourceRaw || 'vps').toLowerCase() === 'vds' ? 'vds' : 'vps';
+    if (source === 'vds') {
+        return {
+            source,
+            telemetryUrl: MOTHERBOARD_VDS_TELEMETRY_URL,
+            dashboardUrl: MOTHERBOARD_VDS_DASHBOARD_URL,
+            chartsUrl: MOTHERBOARD_VDS_CHARTS_URL
+        };
+    }
+    return {
+        source,
+        telemetryUrl: MOTHERBOARD_VPS_TELEMETRY_URL,
+        dashboardUrl: MOTHERBOARD_VPS_DASHBOARD_URL,
+        chartsUrl: MOTHERBOARD_VPS_CHARTS_URL
+    };
+}
+
+function shapeLiveBotPayload(raw, cfg) {
     const telemetry = raw?.telemetry || raw || {};
     const profiles = Array.isArray(telemetry.profiles) ? telemetry.profiles : [];
     const summary = telemetry.summary || {};
@@ -191,8 +214,9 @@ function shapeLiveBotPayload(raw) {
         ok: true,
         generatedAt: telemetry.generatedAt || new Date().toISOString(),
         source: {
-            telemetryUrl: MOTHERBOARD_TELEMETRY_URL,
-            dashboardUrl: MOTHERBOARD_DASHBOARD_URL
+            node: cfg?.source || 'vps',
+            telemetryUrl: cfg?.telemetryUrl || null,
+            dashboardUrl: cfg?.dashboardUrl || null
         },
         summary: {
             profilesTotal: n(summary.profilesTotal, rows.length),
@@ -904,17 +928,20 @@ app.get('/health', (req, res) => {
 
 // Public live bot feed (proxied from motherboard so website can consume over HTTPS)
 app.get('/api/bots/live', async (req, res) => {
+    const cfg = getMotherboardConfig(req.query.source);
+    const cacheKey = cfg.source;
     try {
         const now = Date.now();
-        if (botFeedCache.payload && (now - botFeedCache.ts) < 5000) {
-            return res.json(botFeedCache.payload);
+        const cached = botFeedCache.bySource.get(cacheKey);
+        if (cached?.payload && (now - cached.ts) < 5000) {
+            return res.json(cached.payload);
         }
-        const raw = await fetchJsonWithTimeout(MOTHERBOARD_TELEMETRY_URL, 4500);
-        const payload = shapeLiveBotPayload(raw);
-        botFeedCache = { ts: now, payload };
+        const raw = await fetchJsonWithTimeout(cfg.telemetryUrl, 4500);
+        const payload = shapeLiveBotPayload(raw, cfg);
+        botFeedCache.bySource.set(cacheKey, { ts: now, payload });
         res.json(payload);
     } catch (error) {
-        const stale = botFeedCache.payload;
+        const stale = botFeedCache.bySource.get(cacheKey)?.payload;
         if (stale) {
             return res.status(200).json({
                 ...stale,
@@ -925,7 +952,57 @@ app.get('/api/bots/live', async (req, res) => {
         res.status(502).json({
             ok: false,
             error: 'live_feed_unavailable',
-            message: error.message || 'Could not reach motherboard telemetry'
+            message: error.message || 'Could not reach motherboard telemetry',
+            source: cfg.source
+        });
+    }
+});
+
+// Public live charts feed (proxied from motherboard live chart API)
+app.get('/api/bots/charts', async (req, res) => {
+    const cfg = getMotherboardConfig(req.query.source || 'vds');
+    try {
+        const symbolsRaw = String(req.query.symbols || 'XAUUSD,XAGUSD');
+        const limit = Math.max(30, Math.min(320, Number(req.query.limit || 180)));
+        const key = `${cfg.source}|${symbolsRaw}|${limit}`;
+        const now = Date.now();
+        const cached = botChartCache.bySourceKey.get(key);
+        if (cached && (now - cached.ts) < 4000) {
+            return res.json(cached.payload);
+        }
+
+        const q = new URLSearchParams({ symbols: symbolsRaw, limit: String(limit) });
+        const url = `${cfg.chartsUrl}?${q.toString()}`;
+        const raw = await fetchJsonWithTimeout(url, 4500);
+        const payload = {
+            ok: true,
+            generatedAt: raw?.generatedAt || new Date().toISOString(),
+            source: {
+                node: cfg.source,
+                chartsUrl: cfg.chartsUrl,
+                dashboardUrl: cfg.dashboardUrl
+            },
+            charts: Array.isArray(raw?.charts) ? raw.charts : []
+        };
+        botChartCache.bySourceKey.set(key, { ts: now, payload });
+        res.json(payload);
+    } catch (error) {
+        const symbolsRaw = String(req.query.symbols || 'XAUUSD,XAGUSD');
+        const limit = Math.max(30, Math.min(320, Number(req.query.limit || 180)));
+        const key = `${cfg.source}|${symbolsRaw}|${limit}`;
+        const stale = botChartCache.bySourceKey.get(key)?.payload || null;
+        if (stale) {
+            return res.status(200).json({
+                ...stale,
+                stale: true,
+                staleReason: error.message || 'motherboard_chart_unreachable'
+            });
+        }
+        res.status(502).json({
+            ok: false,
+            error: 'live_chart_unavailable',
+            message: error.message || 'Could not reach motherboard chart feed',
+            source: cfg.source
         });
     }
 });

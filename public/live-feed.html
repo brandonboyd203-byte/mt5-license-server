@@ -48,7 +48,7 @@
 
       <section>
         <div class="container panel">
-          <h2>Profiles</h2>
+          <h2>VPS Live Feed</h2>
           <div class="table-wrap">
             <table class="live-table">
               <thead>
@@ -67,10 +67,49 @@
                   <th>Status</th>
                 </tr>
               </thead>
-              <tbody id="liveFeedRows">
-                <tr><td colspan="12">Loading live data...</td></tr>
+              <tbody id="liveFeedRowsVps">
+                <tr><td colspan="12">Loading VPS live data...</td></tr>
               </tbody>
             </table>
+          </div>
+
+          <h2 style="margin-top:20px;">VDS Live Feed</h2>
+          <div class="table-wrap">
+            <table class="live-table">
+              <thead>
+                <tr>
+                  <th>Bot</th>
+                  <th>Account</th>
+                  <th>Risk%</th>
+                  <th>Leverage</th>
+                  <th>Balance</th>
+                  <th>Equity</th>
+                  <th>Open P/L</th>
+                  <th>Day P/L</th>
+                  <th>Day %</th>
+                  <th>Week P/L</th>
+                  <th>Week %</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="liveFeedRowsVds">
+                <tr><td colspan="12">Loading VDS live data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 style="margin-top:20px;">VDS Chart View</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="background:#fff;border-radius:10px;overflow:hidden;">
+              <b id="liveChartTitle1" style="display:block;padding:8px 10px;color:#0f2540;background:#f7fbff;">XAUUSD M5</b>
+              <canvas id="liveChartCanvas1" height="260" style="display:block;width:100%;height:260px;"></canvas>
+              <div id="liveChartMeta1" style="padding:7px 10px;border-top:1px solid #d9e5fa;background:#f7fbff;color:#17365d;font-size:12px;font-family:monospace;">Connecting...</div>
+            </div>
+            <div style="background:#fff;border-radius:10px;overflow:hidden;">
+              <b id="liveChartTitle2" style="display:block;padding:8px 10px;color:#0f2540;background:#f7fbff;">XAGUSD M5</b>
+              <canvas id="liveChartCanvas2" height="260" style="display:block;width:100%;height:260px;"></canvas>
+              <div id="liveChartMeta2" style="padding:7px 10px;border-top:1px solid #d9e5fa;background:#f7fbff;color:#17365d;font-size:12px;font-family:monospace;">Connecting...</div>
+            </div>
           </div>
         </div>
       </section>

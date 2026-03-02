@@ -557,6 +557,7 @@
             <div class="live-kpi"><b id="liveProfiles">0</b><span>Profiles</span></div>
             <div class="live-kpi"><b id="liveUpdated">-</b><span>Last update</span></div>
           </div>
+          <h3 style="margin-top:22px">VPS Live Feed</h3>
           <div class="table-wrap">
             <table class="live-table">
               <thead>
@@ -575,10 +576,49 @@
                   <th>Status</th>
                 </tr>
               </thead>
-              <tbody id="liveFeedRows">
-                <tr><td colspan="12">Loading live data...</td></tr>
+              <tbody id="liveFeedRowsVps">
+                <tr><td colspan="12">Loading VPS live data...</td></tr>
               </tbody>
             </table>
+          </div>
+
+          <h3 style="margin-top:22px">VDS Live Feed</h3>
+          <div class="table-wrap">
+            <table class="live-table">
+              <thead>
+                <tr>
+                  <th>Bot</th>
+                  <th>Account</th>
+                  <th>Risk%</th>
+                  <th>Leverage</th>
+                  <th>Balance</th>
+                  <th>Equity</th>
+                  <th>Open P/L</th>
+                  <th>Day P/L</th>
+                  <th>Day %</th>
+                  <th>Week P/L</th>
+                  <th>Week %</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="liveFeedRowsVds">
+                <tr><td colspan="12">Loading VDS live data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style="margin-top:22px">VDS Chart View (M5)</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="background:#fff;border-radius:10px;overflow:hidden;">
+              <b id="liveChartTitle1" style="display:block;padding:8px 10px;color:#0f2540;background:#f7fbff;">XAUUSD M5</b>
+              <canvas id="liveChartCanvas1" height="260" style="display:block;width:100%;height:260px;"></canvas>
+              <div id="liveChartMeta1" style="padding:7px 10px;border-top:1px solid #d9e5fa;background:#f7fbff;color:#17365d;font-size:12px;font-family:monospace;">Connecting...</div>
+            </div>
+            <div style="background:#fff;border-radius:10px;overflow:hidden;">
+              <b id="liveChartTitle2" style="display:block;padding:8px 10px;color:#0f2540;background:#f7fbff;">XAGUSD M5</b>
+              <canvas id="liveChartCanvas2" height="260" style="display:block;width:100%;height:260px;"></canvas>
+              <div id="liveChartMeta2" style="padding:7px 10px;border-top:1px solid #d9e5fa;background:#f7fbff;color:#17365d;font-size:12px;font-family:monospace;">Connecting...</div>
+            </div>
           </div>
         </div>
       </section>
@@ -1079,7 +1119,8 @@
     <script>
       const checkoutForm = document.getElementById("checkoutForm");
       const checkoutStatus = document.getElementById("checkoutStatus");
-      const liveRows = document.getElementById("liveFeedRows");
+      const liveRowsVps = document.getElementById("liveFeedRowsVps");
+      const liveRowsVds = document.getElementById("liveFeedRowsVds");
 
       function money(v) {
         const n = Number(v);
@@ -1108,67 +1149,172 @@
         return d.toLocaleTimeString();
       }
 
+      function n(v, fallback = 0) {
+        const x = Number(v);
+        return Number.isFinite(x) ? x : fallback;
+      }
+
+      function resolveLiveSymbol(row) {
+        const name = `${row?.profile || ""} ${row?.profileLabel || ""}`.toUpperCase();
+        if (name.includes("SILVER")) return "XAGUSD";
+        return "XAUUSD";
+      }
+
+      function drawLiveCandles(canvas, candles) {
+        const ctx = canvas?.getContext?.("2d");
+        if (!ctx) return;
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.max(280, canvas.clientWidth || 280);
+        const height = Math.max(220, canvas.clientHeight || 260);
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+
+        const bars = Array.isArray(candles) ? candles.filter((c) => Number.isFinite(n(c?.open, NaN))) : [];
+        if (!bars.length) {
+          ctx.fillStyle = "#5e6b76";
+          ctx.font = "12px monospace";
+          ctx.fillText("Waiting for live candles...", 12, 24);
+          return;
+        }
+
+        let min = Infinity;
+        let max = -Infinity;
+        bars.forEach((b) => {
+          min = Math.min(min, n(b.low, b.open));
+          max = Math.max(max, n(b.high, b.open));
+        });
+        if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+        if (max === min) { max += 0.1; min -= 0.1; }
+
+        const padTop = 10;
+        const padBottom = 16;
+        const padLeft = 8;
+        const padRight = 8;
+        const plotH = height - padTop - padBottom;
+        const plotW = width - padLeft - padRight;
+        const step = plotW / Math.max(bars.length, 1);
+        const bodyW = Math.max(2, Math.floor(step * 0.56));
+        const toY = (p) => padTop + ((max - p) / (max - min)) * plotH;
+
+        bars.forEach((b, i) => {
+          const open = n(b.open);
+          const high = n(b.high, open);
+          const low = n(b.low, open);
+          const close = n(b.close, open);
+          const x = Math.floor(padLeft + i * step + step / 2);
+          const up = close >= open;
+          const color = up ? "#2ea67d" : "#d75b5b";
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, toY(high));
+          ctx.lineTo(x, toY(low));
+          ctx.stroke();
+          const yOpen = toY(open);
+          const yClose = toY(close);
+          const top = Math.min(yOpen, yClose);
+          const bodyH = Math.max(1, Math.abs(yClose - yOpen));
+          ctx.fillStyle = color;
+          ctx.fillRect(Math.floor(x - bodyW / 2), top, bodyW, bodyH);
+        });
+      }
+
+      async function loadLiveCharts(rows) {
+        const t1 = document.getElementById("liveChartTitle1");
+        const t2 = document.getElementById("liveChartTitle2");
+        const c1 = document.getElementById("liveChartCanvas1");
+        const c2 = document.getElementById("liveChartCanvas2");
+        const m1 = document.getElementById("liveChartMeta1");
+        const m2 = document.getElementById("liveChartMeta2");
+        if (!c1 || !c2 || !m1 || !m2) return;
+
+        const top = Array.isArray(rows) ? rows.slice(0, 2) : [];
+        const symbols = top.map(resolveLiveSymbol);
+        while (symbols.length < 2) symbols.push(symbols.length === 0 ? "XAUUSD" : "XAGUSD");
+        const [s1, s2] = symbols;
+        if (t1) t1.textContent = `${s1} M5`;
+        if (t2) t2.textContent = `${s2} M5`;
+
+        try {
+          const q = new URLSearchParams({ symbols: `${s1},${s2}`, limit: "180", source: "vds" });
+          const response = await fetch(`/api/bots/charts?${q.toString()}`);
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.message || "Live chart feed unavailable");
+          const map = (Array.isArray(data.charts) ? data.charts : []).reduce((acc, r) => {
+            acc[String(r?.symbol || "").toUpperCase()] = r;
+            return acc;
+          }, {});
+          const a = map[s1] || { candles: [], updatedAt: null, lastPrice: null };
+          const b = map[s2] || { candles: [], updatedAt: null, lastPrice: null };
+          drawLiveCandles(c1, a.candles || []);
+          drawLiveCandles(c2, b.candles || []);
+          m1.textContent = `Updated ${fmtTime(a.updatedAt)} | Last ${Number.isFinite(n(a.lastPrice, NaN)) ? Number(a.lastPrice).toFixed(3) : "-"} | Bars ${(a.candles || []).length}`;
+          m2.textContent = `Updated ${fmtTime(b.updatedAt)} | Last ${Number.isFinite(n(b.lastPrice, NaN)) ? Number(b.lastPrice).toFixed(3) : "-"} | Bars ${(b.candles || []).length}`;
+        } catch (error) {
+          drawLiveCandles(c1, []);
+          drawLiveCandles(c2, []);
+          m1.textContent = `Chart feed unavailable: ${error.message || "unavailable"}`;
+          m2.textContent = `Chart feed unavailable: ${error.message || "unavailable"}`;
+        }
+      }
+
+      function renderLiveRows(targetEl, rows, emptyText = "No live profiles yet.") {
+        if (!targetEl) return;
+        const list = Array.isArray(rows) ? rows.slice(0, 20) : [];
+        if (!list.length) {
+          targetEl.innerHTML = `<tr><td colspan="12">${emptyText}</td></tr>`;
+          return;
+        }
+        targetEl.innerHTML = list.map((r) => {
+          const lev = r.leverage ? (r.leverageSource === "equity-tier-estimate" ? `~${r.leverage}` : r.leverage) : "-";
+          return `
+            <tr>
+              <td>${r.profileLabel || r.profile || "-"}</td>
+              <td>${r.account || "-"}</td>
+              <td>${r.riskPct ?? "-"}</td>
+              <td>${lev}</td>
+              <td>$${Number(r.balance || 0).toFixed(2)}</td>
+              <td>$${Number(r.equity || 0).toFixed(2)}</td>
+              <td class="${styleNum(r.openProfit)}">${money(r.openProfit)}</td>
+              <td class="${styleNum(r.dayNetUsd)}">${money(r.dayNetUsd)}</td>
+              <td class="${styleNum(r.dayReturnPct)}">${pct(r.dayReturnPct)}</td>
+              <td class="${styleNum(r.weekNetUsd)}">${money(r.weekNetUsd)}</td>
+              <td class="${styleNum(r.weekReturnPct)}">${pct(r.weekReturnPct)}</td>
+              <td title="${r.statusReason || ""}">${r.status || "-"}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
       async function loadLiveFeed() {
         try {
-          const response = await fetch("/api/bots/live");
-          const data = await response.json();
-          if (!response.ok || !data.ok) throw new Error(data.message || "Live feed unavailable");
+          const [vpsResp, vdsResp] = await Promise.all([
+            fetch("/api/bots/live?source=vps"),
+            fetch("/api/bots/live?source=vds")
+          ]);
+          const [vps, vds] = await Promise.all([vpsResp.json(), vdsResp.json()]);
+          if (!vpsResp.ok || !vps.ok) throw new Error(vps.message || "VPS live feed unavailable");
+          if (!vdsResp.ok || !vds.ok) throw new Error(vds.message || "VDS live feed unavailable");
 
-          const s = data.summary || {};
+          const s = vps.summary || {};
           document.getElementById("liveDayNet").textContent = money(s.dayNetUsd);
           document.getElementById("liveWeekNet").textContent = money(s.weekNetUsd);
           document.getElementById("liveOpenPnl").textContent = money(s.openProfitUsd);
-          document.getElementById("liveProfiles").textContent = String(s.profilesTotal ?? 0);
-          document.getElementById("liveUpdated").textContent = fmtTime(data.generatedAt);
+          document.getElementById("liveProfiles").textContent = `${vps.summary?.profilesTotal ?? 0}/${vds.summary?.profilesTotal ?? 0}`;
+          document.getElementById("liveUpdated").textContent = `${fmtTime(vps.generatedAt)} / ${fmtTime(vds.generatedAt)}`;
 
-          const rawRows = Array.isArray(data.profiles) ? data.profiles : [];
-          const botOrder = ["blueprint", "nexus", "dominion", "edge", "surge", "fresh"];
-          const sideOrder = ["gold", "silver"];
-          const detect = (r) => {
-            const txt = `${r.profileLabel || ""} ${r.profile || ""}`.toLowerCase();
-            const hit = botOrder.findIndex((b) => txt.includes(b));
-            const botIdx = hit === -1 ? 999 : hit;
-            const sideIdx = txt.includes("silver") ? 1 : 0;
-            return { botIdx, sideIdx, txt };
-          };
-          const rows = rawRows
-            .slice()
-            .sort((a, b) => {
-              const da = detect(a);
-              const db = detect(b);
-              if (da.botIdx !== db.botIdx) return da.botIdx - db.botIdx;
-              if (da.sideIdx !== db.sideIdx) return da.sideIdx - db.sideIdx;
-              return da.txt.localeCompare(db.txt);
-            })
-            .slice(0, 20);
-          if (!rows.length) {
-            liveRows.innerHTML = '<tr><td colspan="12">No live profiles yet.</td></tr>';
-            return;
-          }
-
-          liveRows.innerHTML = rows.map((r) => {
-            const lev = r.leverage ? (r.leverageSource === "equity-tier-estimate" ? `~${r.leverage}` : r.leverage) : "-";
-            return `
-              <tr>
-                <td>${r.profileLabel || r.profile || "-"}</td>
-                <td>${r.account || "-"}</td>
-                <td>${r.riskPct ?? "-"}</td>
-                <td>${lev}</td>
-                <td>$${Number(r.balance || 0).toFixed(2)}</td>
-                <td>$${Number(r.equity || 0).toFixed(2)}</td>
-                <td class="${styleNum(r.openProfit)}">${money(r.openProfit)}</td>
-                <td class="${styleNum(r.dayNetUsd)}">${money(r.dayNetUsd)}</td>
-                <td class="${styleNum(r.dayReturnPct)}">${pct(r.dayReturnPct)}</td>
-                <td class="${styleNum(r.weekNetUsd)}">${money(r.weekNetUsd)}</td>
-                <td class="${styleNum(r.weekReturnPct)}">${pct(r.weekReturnPct)}</td>
-                <td title="${r.statusReason || ""}">${r.status || "-"}</td>
-              </tr>
-            `;
-          }).join("");
+          const vpsRows = Array.isArray(vps.profiles) ? vps.profiles : [];
+          const vdsRows = Array.isArray(vds.profiles) ? vds.profiles : [];
+          renderLiveRows(liveRowsVps, vpsRows, "No VPS live profiles yet.");
+          renderLiveRows(liveRowsVds, vdsRows, "No VDS live profiles yet.");
+          loadLiveCharts(vdsRows);
         } catch (error) {
-          if (liveRows) {
-            liveRows.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || "unavailable"}</td></tr>`;
-          }
+          if (liveRowsVps) liveRowsVps.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || "unavailable"}</td></tr>`;
+          if (liveRowsVds) liveRowsVds.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || "unavailable"}</td></tr>`;
+          loadLiveCharts([]);
         }
       }
 
