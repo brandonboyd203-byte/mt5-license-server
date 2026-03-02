@@ -1007,6 +1007,42 @@ app.get('/api/bots/charts', async (req, res) => {
     }
 });
 
+// Public VDS chart snapshots (exact motherboard terminal captures)
+app.get('/api/bots/vds-snapshots', async (req, res) => {
+    try {
+        const url = `${MOTHERBOARD_VDS_DASHBOARD_URL.replace(/\/+$/,'')}/api/snapshots/terminal`;
+        const raw = await fetchJsonWithTimeout(url, 4500);
+        const list = Array.isArray(raw?.snapshots) ? raw.snapshots : [];
+        const snapshots = list.slice(0, 2).map((s, i) => ({
+            index: i,
+            account: s?.account || null,
+            title: s?.title || null,
+            updatedAt: s?.updatedAt || null,
+            imageUrl: `/api/bots/vds-snapshot-image?path=${encodeURIComponent(String(s?.url || ''))}`
+        }));
+        res.json({ ok: true, source: 'vds', count: snapshots.length, snapshots });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: 'vds_snapshots_unavailable', message: error.message || 'Could not reach VDS snapshots' });
+    }
+});
+
+app.get('/api/bots/vds-snapshot-image', async (req, res) => {
+    try {
+        const p = String(req.query.path || '');
+        if (!p.startsWith('/snapshots/')) return res.status(400).json({ ok: false, error: 'invalid_path' });
+        const target = `${MOTHERBOARD_VDS_DASHBOARD_URL.replace(/\/+$/,'')}${p}`;
+        const response = await fetch(target, { headers: { Accept: 'image/*' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const ct = response.headers.get('content-type') || 'image/png';
+        const buf = Buffer.from(await response.arrayBuffer());
+        res.setHeader('Content-Type', ct);
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(200).send(buf);
+    } catch (error) {
+        res.status(502).json({ ok: false, error: 'vds_snapshot_image_unavailable', message: error.message || 'Could not fetch snapshot image' });
+    }
+});
+
 // Public config (support email for mailto links and checkout error message)
 app.get('/api/config', (req, res) => {
     res.json({

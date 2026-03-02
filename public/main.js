@@ -148,38 +148,41 @@
   async function loadLiveCharts() {
     const t1 = document.getElementById('liveChartTitle1');
     const t2 = document.getElementById('liveChartTitle2');
-    const c1 = document.getElementById('liveChartCanvas1');
-    const c2 = document.getElementById('liveChartCanvas2');
+    const i1 = document.getElementById('liveChartImg1');
+    const i2 = document.getElementById('liveChartImg2');
     const m1 = document.getElementById('liveChartMeta1');
     const m2 = document.getElementById('liveChartMeta2');
-    if (!c1 || !c2 || !m1 || !m2) return;
-
-    // Lock to the exact VDS live-feed chart pair/order.
-    const s1 = 'XAUUSD';
-    const s2 = 'XAGUSD';
-    if (t1) t1.textContent = `${s1} M5`;
-    if (t2) t2.textContent = `${s2} M5`;
+    if (!i1 || !i2 || !m1 || !m2) return;
 
     try {
-      const q = new URLSearchParams({ symbols: `${s1},${s2}`, limit: '320', source: 'vds' });
-      const response = await fetch(`/api/bots/charts?${q.toString()}`);
+      const response = await fetch('/api/bots/vds-snapshots');
       const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.message || 'Live chart feed unavailable');
-      const map = (Array.isArray(data.charts) ? data.charts : []).reduce((acc, r) => {
-        acc[String(r?.symbol || '').toUpperCase()] = r;
-        return acc;
-      }, {});
-      const a = map[s1] || { candles: [], updatedAt: null, lastPrice: null };
-      const b = map[s2] || { candles: [], updatedAt: null, lastPrice: null };
-      drawLiveCandles(c1, a.candles || []);
-      drawLiveCandles(c2, b.candles || []);
-      m1.textContent = `Updated ${fmtTime(a.updatedAt)} | Last ${Number.isFinite(n(a.lastPrice, NaN)) ? Number(a.lastPrice).toFixed(3) : '-'} | Bars ${(a.candles || []).length}`;
-      m2.textContent = `Updated ${fmtTime(b.updatedAt)} | Last ${Number.isFinite(n(b.lastPrice, NaN)) ? Number(b.lastPrice).toFixed(3) : '-'} | Bars ${(b.candles || []).length}`;
+      if (!response.ok || !data.ok) throw new Error(data.message || 'VDS snapshots unavailable');
+      const a = (data.snapshots || [])[0] || null;
+      const b = (data.snapshots || [])[1] || null;
+
+      if (a) {
+        if (t1) t1.textContent = a.account ? `VDS ${a.account}` : 'VDS Terminal Snapshot #1';
+        i1.src = `${a.imageUrl}&_t=${Date.now()}`;
+        m1.textContent = `Updated ${fmtTime(a.updatedAt)}${a.title ? ` | ${a.title}` : ''}`;
+      } else {
+        i1.removeAttribute('src');
+        m1.textContent = 'Snapshot unavailable.';
+      }
+
+      if (b) {
+        if (t2) t2.textContent = b.account ? `VDS ${b.account}` : 'VDS Terminal Snapshot #2';
+        i2.src = `${b.imageUrl}&_t=${Date.now()}`;
+        m2.textContent = `Updated ${fmtTime(b.updatedAt)}${b.title ? ` | ${b.title}` : ''}`;
+      } else {
+        i2.removeAttribute('src');
+        m2.textContent = 'Snapshot unavailable.';
+      }
     } catch (error) {
-      drawLiveCandles(c1, []);
-      drawLiveCandles(c2, []);
-      m1.textContent = `Chart feed unavailable: ${error.message || 'unavailable'}`;
-      m2.textContent = `Chart feed unavailable: ${error.message || 'unavailable'}`;
+      i1.removeAttribute('src');
+      i2.removeAttribute('src');
+      m1.textContent = `Snapshot feed unavailable: ${error.message || 'unavailable'}`;
+      m2.textContent = `Snapshot feed unavailable: ${error.message || 'unavailable'}`;
     }
   }
 
