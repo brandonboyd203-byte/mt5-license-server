@@ -1029,6 +1029,9 @@ app.get('/api/bots/vds-snapshots', async (req, res) => {
                     account: String(p?.account || ''),
                     profile: p?.profile || '',
                     profileLabel: p?.profileLabel || p?.profile || '',
+                    botName: p?.botName || '',
+                    symbols: p?.symbols || '',
+                    riskPct: Number.isFinite(Number(p?.riskPct)) ? Number(p.riskPct) : null,
                     dayNetUsd: Number.isFinite(pnl) ? pnl : 0
                 };
             })
@@ -1056,6 +1059,9 @@ app.get('/api/bots/vds-snapshots', async (req, res) => {
             account: s?.account || null,
             profile: r?.profile || null,
             profileLabel: r?.profileLabel || null,
+            botName: r?.botName || null,
+            symbols: r?.symbols || null,
+            riskPct: r?.riskPct ?? null,
             dayNetUsd: r?.dayNetUsd ?? null,
             title: s?.title || null,
             updatedAt: s?.updatedAt || null,

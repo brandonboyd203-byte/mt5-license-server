@@ -163,19 +163,23 @@
 
       const fmtPnl = (v) => {
         const n = Number(v);
-        if (!Number.isFinite(n)) return 'P/L -';
-        return `P/L ${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
+        if (!Number.isFinite(n)) return 'Day -';
+        return `Day ${n >= 0 ? '+' : '-'}${Math.abs(n).toFixed(2)}`;
       };
-      const cleanTitle = (txt) => String(txt || '')
-        .replace(/\s*Demo Account\s*/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const fmtRisk = (v) => Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '-';
+      const maskAcc = (a) => {
+        const s = String(a || '');
+        if (!/^\d{6,}$/.test(s)) return s || '-';
+        return `${s.slice(0,3)}***${s.slice(-3)}`;
+      };
 
       if (a) {
         const bot = a.profileLabel || a.profile || 'Best Bot #1';
-        if (t1) t1.textContent = `#1 ${bot} | Acc ${a.account || '-'}`;
+        const ea = a.botName || '-';
+        const sym = (a.symbols || '-').replace(/\+/g, ',');
+        if (t1) t1.textContent = `#1 ${bot} | EA ${ea} | ${sym} M5 | Acct ${maskAcc(a.account)} | Risk ${fmtRisk(a.riskPct)}% | ${fmtPnl(a.dayNetUsd)}`;
         i1.src = `${a.imageUrl}&_t=${Date.now()}`;
-        m1.textContent = `Updated ${fmtTime(a.updatedAt)} | ${fmtPnl(a.dayNetUsd)} | Acc ${a.account || '-'}${a.title ? ` | ${cleanTitle(a.title)}` : ''}`;
+        m1.textContent = `Updated ${fmtTime(a.updatedAt)} | P/L ${Number(a.dayNetUsd||0) >= 0 ? '+' : '-'}$${Math.abs(Number(a.dayNetUsd||0)).toFixed(2)} | Acc ${a.account || '-'}`;
       } else {
         i1.removeAttribute('src');
         m1.textContent = 'Snapshot unavailable.';
@@ -183,9 +187,11 @@
 
       if (b) {
         const bot = b.profileLabel || b.profile || 'Best Bot #2';
-        if (t2) t2.textContent = `#2 ${bot} | Acc ${b.account || '-'}`;
+        const ea = b.botName || '-';
+        const sym = (b.symbols || '-').replace(/\+/g, ',');
+        if (t2) t2.textContent = `#2 ${bot} | EA ${ea} | ${sym} M5 | Acct ${maskAcc(b.account)} | Risk ${fmtRisk(b.riskPct)}% | ${fmtPnl(b.dayNetUsd)}`;
         i2.src = `${b.imageUrl}&_t=${Date.now()}`;
-        m2.textContent = `Updated ${fmtTime(b.updatedAt)} | ${fmtPnl(b.dayNetUsd)} | Acc ${b.account || '-'}${b.title ? ` | ${cleanTitle(b.title)}` : ''}`;
+        m2.textContent = `Updated ${fmtTime(b.updatedAt)} | P/L ${Number(b.dayNetUsd||0) >= 0 ? '+' : '-'}$${Math.abs(Number(b.dayNetUsd||0)).toFixed(2)} | Acc ${b.account || '-'}`;
       } else {
         i2.removeAttribute('src');
         m2.textContent = 'Snapshot unavailable.';
