@@ -1010,16 +1010,58 @@ app.get('/api/bots/charts', async (req, res) => {
 // Public VDS chart snapshots (exact motherboard terminal captures)
 app.get('/api/bots/vds-snapshots', async (req, res) => {
     try {
-        const url = `${MOTHERBOARD_VDS_DASHBOARD_URL.replace(/\/+$/,'')}/api/snapshots/terminal`;
-        const raw = await fetchJsonWithTimeout(url, 4500);
-        const list = Array.isArray(raw?.snapshots) ? raw.snapshots : [];
-        const snapshots = list.slice(0, 2).map((s, i) => ({
+        const base = MOTHERBOARD_VDS_DASHBOARD_URL.replace(/\/+$/,'');
+        const [snapRaw, teleRaw] = await Promise.all([
+            fetchJsonWithTimeout(`${base}/api/snapshots/terminal`, 4500),
+            fetchJsonWithTimeout(MOTHERBOARD_VDS_TELEMETRY_URL, 4500)
+        ]);
+
+        const snapList = Array.isArray(snapRaw?.snapshots) ? snapRaw.snapshots : [];
+        const snapByAcct = new Map(snapList.map((s) => [String(s?.account || ''), s]));
+
+        const telemetry = teleRaw?.telemetry || teleRaw || {};
+        const profiles = Array.isArray(telemetry?.profiles) ? telemetry.profiles : [];
+        const ranked = profiles
+            .map((p) => {
+                const day = p?.metrics?.day || {};
+                const pnl = Number(day.netUsdLive ?? day.netUsd ?? 0);
+                return {
+                    account: String(p?.account || ''),
+                    profile: p?.profile || '',
+                    profileLabel: p?.profileLabel || p?.profile || '',
+                    dayNetUsd: Number.isFinite(pnl) ? pnl : 0
+                };
+            })
+            .filter((r) => r.account)
+            .sort((a, b) => b.dayNetUsd - a.dayNetUsd);
+
+        const picked = [];
+        for (const r of ranked) {
+            const s = snapByAcct.get(r.account);
+            if (!s) continue;
+            picked.push({ s, r });
+            if (picked.length >= 2) break;
+        }
+
+        if (picked.length < 2) {
+            for (const s of snapList) {
+                if (picked.find((x) => String(x?.s?.account) === String(s?.account))) continue;
+                picked.push({ s, r: null });
+                if (picked.length >= 2) break;
+            }
+        }
+
+        const snapshots = picked.slice(0, 2).map(({ s, r }, i) => ({
             index: i,
             account: s?.account || null,
+            profile: r?.profile || null,
+            profileLabel: r?.profileLabel || null,
+            dayNetUsd: r?.dayNetUsd ?? null,
             title: s?.title || null,
             updatedAt: s?.updatedAt || null,
             imageUrl: `/api/bots/vds-snapshot-image?path=${encodeURIComponent(String(s?.url || ''))}`
         }));
+
         res.json({ ok: true, source: 'vds', count: snapshots.length, snapshots });
     } catch (error) {
         res.status(502).json({ ok: false, error: 'vds_snapshots_unavailable', message: error.message || 'Could not reach VDS snapshots' });

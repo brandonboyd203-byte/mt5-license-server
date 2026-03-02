@@ -161,19 +161,31 @@
       const a = (data.snapshots || [])[0] || null;
       const b = (data.snapshots || [])[1] || null;
 
+      const fmtPnl = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 'P/L -';
+        return `P/L ${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
+      };
+      const cleanTitle = (txt) => String(txt || '')
+        .replace(/\s*Demo Account\s*/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
       if (a) {
-        if (t1) t1.textContent = a.account ? `VDS ${a.account}` : 'VDS Terminal Snapshot #1';
+        const bot = a.profileLabel || a.profile || 'Best Bot #1';
+        if (t1) t1.textContent = `#1 ${bot} | Acc ${a.account || '-'}`;
         i1.src = `${a.imageUrl}&_t=${Date.now()}`;
-        m1.textContent = `Updated ${fmtTime(a.updatedAt)}${a.title ? ` | ${a.title}` : ''}`;
+        m1.textContent = `Updated ${fmtTime(a.updatedAt)} | ${fmtPnl(a.dayNetUsd)} | Acc ${a.account || '-'}${a.title ? ` | ${cleanTitle(a.title)}` : ''}`;
       } else {
         i1.removeAttribute('src');
         m1.textContent = 'Snapshot unavailable.';
       }
 
       if (b) {
-        if (t2) t2.textContent = b.account ? `VDS ${b.account}` : 'VDS Terminal Snapshot #2';
+        const bot = b.profileLabel || b.profile || 'Best Bot #2';
+        if (t2) t2.textContent = `#2 ${bot} | Acc ${b.account || '-'}`;
         i2.src = `${b.imageUrl}&_t=${Date.now()}`;
-        m2.textContent = `Updated ${fmtTime(b.updatedAt)}${b.title ? ` | ${b.title}` : ''}`;
+        m2.textContent = `Updated ${fmtTime(b.updatedAt)} | ${fmtPnl(b.dayNetUsd)} | Acc ${b.account || '-'}${b.title ? ` | ${cleanTitle(b.title)}` : ''}`;
       } else {
         i2.removeAttribute('src');
         m2.textContent = 'Snapshot unavailable.';
