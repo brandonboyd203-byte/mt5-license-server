@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoldmineOps V3 | Elite Gold & Silver Bot Funnel</title>
+  <meta name="description" content="Premium MT5 bot funnel for XAUUSD/XAGUSD traders. Structured execution, risk-first automation, high-converting buyer flow."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#04060d;
+      --bg2:#0b1222;
+      --card:#0e172c;
+      --card2:#131f3d;
+      --text:#edf3ff;
+      --muted:#9fb1d8;
+      --line:#2c3f68;
+      --gold:#f6c76a;
+      --gold2:#ffdf9d;
+      --green:#31d78d;
+      --danger:#ff7a7a;
+      --max:1180px;
+      --radius:18px;
+      --shadow:0 22px 64px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(1200px 700px at 85% -10%,#182c57 0%,transparent 48%),radial-gradient(900px 500px at 10% 10%,#1d1434 0%,transparent 55%),var(--bg);color:var(--text);scroll-behavior:smooth}
+    a{text-decoration:none;color:inherit}
+    .container{max-width:var(--max);margin:0 auto;padding:0 22px}
+
+    .noise{position:fixed;inset:0;pointer-events:none;opacity:.08;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><circle cx="1" cy="1" r="1" fill="white"/></svg>')}
+
+    .nav{position:sticky;top:0;z-index:30;background:rgba(4,6,13,.72);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07)}
+    .nav-inner{display:flex;align-items:center;justify-content:space-between;padding:13px 0}
+    .brand img{height:42px;display:block;filter:drop-shadow(0 10px 24px rgba(0,0,0,.45))}
+    .nav-links{display:flex;align-items:center;gap:18px;color:#bdd0fb;font-size:14px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;padding:13px 18px;border-radius:12px;font-weight:800;border:none;cursor:pointer;transition:.25s ease}
+    .btn:hover{transform:translateY(-2px) scale(1.01);box-shadow:0 10px 24px rgba(0,0,0,.3)}
+    .btn:active{transform:translateY(0) scale(.99)}
+    .sticky-cta{position:fixed;left:12px;right:12px;bottom:12px;z-index:35;display:none;padding:10px;border-radius:14px;border:1px solid #3e5a93;background:rgba(9,15,31,.94);backdrop-filter:blur(8px);box-shadow:0 16px 30px rgba(0,0,0,.4)}
+    .sticky-cta .inner{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .sticky-cta .btn{width:100%}
+    .btn:hover{transform:translateY(-1px)}
+    .btn-primary{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#251400}
+    .btn-ghost{border:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--text)}
+
+    .hero{padding:70px 0 40px}
+    .hero-grid{display:grid;grid-template-columns:1.14fr .86fr;gap:22px}
+    .badge{display:inline-flex;padding:8px 12px;border-radius:999px;background:#111a32;border:1px solid #375086;color:#d2ddf8;font-size:12px;font-weight:700;letter-spacing:.3px}
+    h1{font-size:clamp(34px,6vw,64px);line-height:1.02;margin:14px 0 12px;letter-spacing:-1px}
+    .glow{background:linear-gradient(90deg,#fff,#ffd98f,#fff);-webkit-background-clip:text;background-clip:text;color:transparent;animation:glow 5s linear infinite;background-size:220% auto}
+    @keyframes glow{to{background-position:220% center}}
+    .lead{font-size:18px;line-height:1.62;color:var(--muted);max-width:680px}
+    .hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+    .strip{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+    .chip{padding:8px 11px;border-radius:999px;border:1px solid #3a5487;background:#111a34;color:#dae6ff;font-size:12px;font-weight:700}
+
+    .card{background:linear-gradient(180deg,var(--card),#0c1428);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .hero-side{padding:18px}
+    .metric{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .metric .item{padding:12px;border-radius:12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07)}
+    .metric b{display:block;font-size:18px;margin-bottom:4px}
+
+    section{padding:22px 0}
+    .section-title{font-size:31px;margin:0 0 8px}
+    .section-lead{margin:0 0 18px;color:var(--muted)}
+    .urgency{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+    .countdown{padding:18px;text-align:center}
+    .count-num{font-size:38px;font-weight:900;letter-spacing:.6px}
+    .testimonials{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .quote{padding:16px}
+    .quote b{display:block;margin-top:10px;font-size:13px;color:#c7d6fb}
+    .proof-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+    .proof-card{padding:16px}
+    .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+    .stat{padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.02)}
+    .stat b{display:block;font-size:22px}
+    .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .badge-pill{padding:7px 10px;border-radius:999px;border:1px solid #3b568b;background:#101a33;color:#d8e4ff;font-size:12px;font-weight:700}
+    .snapshots{display:grid;gap:10px}
+    .snap{padding:12px;border-radius:12px;border:1px dashed #44629b;background:linear-gradient(160deg,rgba(255,255,255,.02),rgba(255,255,255,.01))}
+    .snap h5{margin:0 0 6px;font-size:14px}
+    .snap p{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+
+    .showcase{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .tile{padding:16px}
+    .pair{display:inline-block;font-size:11px;font-weight:800;padding:4px 8px;border-radius:999px;border:1px solid #3a578d;background:#13203f;color:#ccdafb;margin-bottom:8px}
+    .live-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .live-panel{padding:16px}
+    .live-panel-wide{grid-column:1 / -1}
+    .live-list{list-style:none;padding:0;margin:0;display:grid;gap:8px;max-height:220px;overflow:auto}
+    .live-list li{padding:10px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);font-size:13px;color:#dbe7ff}
+    .feed-summary{margin-top:10px;overflow:auto;border:1px solid rgba(255,255,255,.10);border-radius:10px}
+    .feed-summary table{width:100%;border-collapse:collapse;font-size:12px;min-width:560px}
+    .feed-summary th,.feed-summary td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;white-space:nowrap}
+    .feed-summary th{background:#132140;color:#dce8ff}
+    .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .chart-box{border:1px solid #2f446f;border-radius:12px;overflow:hidden;background:#fff}
+    .chart-box b{display:block;padding:8px 10px;background:#f7fbff;color:#0f2540;font-size:12px}
+    .web-live-chart{display:block;width:100%;height:320px;background:#fff}
+    .web-chart-meta{padding:7px 10px;border-top:1px solid #d9e5fa;background:#f7fbff;color:#17365d;font-size:12px;font-family:monospace}
+
+    .lux-band{padding:16px 18px;border-radius:14px;border:1px solid #415f98;background:linear-gradient(135deg,rgba(246,199,106,.14),rgba(39,72,132,.22));margin:16px 0 6px}
+
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .list{padding:16px}
+    ul.clean{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+    ul.clean li{display:flex;gap:8px;align-items:flex-start;color:#dce6ff}
+
+    .video-shell{overflow:hidden}
+    .video-head{padding:16px}
+    .video-box{position:relative;aspect-ratio:16/9;background:#090f1d;border-top:1px solid rgba(255,255,255,.08);display:grid;place-items:center}
+    .video-box .label{border:1px solid rgba(255,255,255,.13);padding:9px 13px;border-radius:999px;background:rgba(0,0,0,.45);font-size:13px;color:#d6def5}
+
+    .pricing{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+    .plan{padding:16px;position:relative}
+    .plan.pop{border-color:#99793a;box-shadow:0 0 0 1px rgba(246,199,106,.25),var(--shadow)}
+    .tag{position:absolute;top:10px;right:12px;border-radius:999px;padding:4px 8px;font-size:11px;border:1px solid rgba(246,199,106,.45);color:#ffd98f;background:rgba(246,199,106,.14)}
+    .price{font-size:34px;font-weight:900;margin:8px 0}
+    .anchor{font-size:13px;color:#8ea4cf;text-decoration:line-through;display:block;margin-top:-2px}
+    .billing-toggle{display:inline-flex;gap:6px;padding:5px;border-radius:999px;border:1px solid #3a5488;background:#0f1931;margin-bottom:12px}
+    .billing-toggle button{border:none;background:transparent;color:#c7d7fb;padding:8px 14px;border-radius:999px;font-weight:700;cursor:pointer}
+    .billing-toggle button.active{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#231500}
+
+    form{display:grid;gap:10px}
+    .field{display:grid;gap:6px}
+    label{font-size:13px;color:#bad0f8}
+    input,select,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid #324c7d;background:#0c1428;color:#edf2ff}
+    textarea{min-height:95px;resize:vertical}
+    .mini{font-size:13px;color:#9db0d8}
+
+    details{background:var(--card);border:1px solid var(--line);padding:12px 14px;border-radius:12px}
+    summary{font-weight:700;cursor:pointer}
+    details p{margin:8px 0 0;color:var(--muted)}
+
+    .final{padding:28px;text-align:center;background:linear-gradient(170deg,#132044,#0d1730);border:1px solid #3b5384;border-radius:20px}
+    .compare{display:grid;gap:10px}
+    .row{display:grid;grid-template-columns:1.2fr .9fr .9fr;gap:10px;align-items:center;padding:12px;border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.02)}
+    .row.head{font-weight:800;background:rgba(246,199,106,.08);border-color:rgba(246,199,106,.35)}
+    .center{text-align:center}
+    .confidence{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+    .conf{padding:12px;border-radius:12px;border:1px solid #3b568b;background:#0f1a33}
+
+    .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+    .reveal.show{opacity:1;transform:translateY(0)}
+
+    @media (max-width:1000px){
+      .hero-grid,.grid2,.showcase,.pricing,.urgency,.testimonials,.proof-grid,.stat-grid,.confidence,.live-grid,.chart-grid{grid-template-columns:1fr}
+      .nav-links a{display:none}
+      .row{grid-template-columns:1fr}
+      .sticky-cta{display:block}
+      body{padding-bottom:88px}
+    }
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#top"><img src="assets/logo.png" alt="Goldmine" onerror="this.style.display='none'; this.parentElement.textContent='GoldmineOps';"></a>
+      <div class="nav-links">
+        <a href="#bots">Bots</a>
+        <a href="#liveops">Live Feed</a>
+        <a href="#results">Proof</a>
+        <a href="#compare">Compare</a>
+        <a href="#copy">Copy Trading</a>
+        <a href="#support">Support</a>
+        <a href="#video">AI Video</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#apply" class="btn btn-primary" data-track="nav_start_demo_click">Start 7-Day Demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top" class="container">
+    <section class="hero">
+      <div class="hero-grid">
+        <div class="reveal">
+          <span class="badge">XAUUSD / XAGUSD • MT5 • Elite Funnel V3</span>
+          <h1><span class="glow">Trade with a System.</span><br>Not Stress. Not Guesswork.</h1>
+          <p class="lead">This is built for serious traders who want risk-controlled automation and clean execution — not hype signals. Buyer-focused messaging, transparent expectations, and a conversion path that attracts people who actually pay.</p>
+          <div class="hero-actions">
+            <a href="#apply" class="btn btn-primary" data-track="start_demo_click">Start 7-Day Demo</a>
+            <a href="#video" class="btn btn-ghost" data-track="watch_video_click">Watch AI Hook Video</a>
+          </div>
+          <div class="strip">
+            <span class="chip">Blueprint Gold</span>
+            <span class="chip">Blueprint Silver</span>
+            <span class="chip">Nexus Gold</span>
+            <span class="chip">Nexus Silver</span>
+            <span class="chip">Dominion</span>
+            <span class="chip">Edge / Surge Soon</span>
+          </div>
+          <div class="lux-band"><b>Copy Trading Service:</b> Included as a secondary monetization path, while keeping the primary conversion goal on <b>bot sales</b>.</div>
+          <p class="mini">No guaranteed profits. Clear risk framing. Demo-first onboarding.</p>
+        </div>
+        <aside class="card hero-side reveal">
+          <h3 style="margin:0 0 8px">Why this version should convert better</h3>
+          <p class="section-lead">Sharper visual hierarchy + stronger buyer qualification + premium trust cues.</p>
+          <div class="metric">
+            <div class="item"><b>Cleaner</b><span class="mini">Message clarity</span></div>
+            <div class="item"><b>Stronger</b><span class="mini">CTA placement</span></div>
+            <div class="item"><b>Premium</b><span class="mini">Luxury fintech feel</span></div>
+            <div class="item"><b>Qualified</b><span class="mini">Lead filtering</span></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="bots" class="reveal">
+      <h2 class="section-title">Bot lineup built for buyers</h2>
+      <p class="section-lead">Give prospects a clear product shelf so they can choose quickly.</p>
+      <div class="showcase">
+        <article class="card tile"><span class="pair">XAUUSD</span><h4>Goldmine Blueprint — Gold</h4><p class="section-lead">Order block + FVG retest + partial TP + auto BE.</p></article>
+        <article class="card tile"><span class="pair">XAGUSD</span><h4>Goldmine Blueprint — Silver</h4><p class="section-lead">Structure logic adapted for silver volatility profile.</p></article>
+        <article class="card tile"><span class="pair">XAUUSD</span><h4>Goldmine Nexus — Gold</h4><p class="section-lead">TP ladder and runner engine for trend continuation.</p></article>
+        <article class="card tile"><span class="pair">XAGUSD</span><h4>Goldmine Nexus — Silver</h4><p class="section-lead">Nexus framework tuned for silver behavior.</p></article>
+        <article class="card tile"><span class="pair">XAU/XAG</span><h4>Goldmine Dominion</h4><p class="section-lead">Unified EA: reversal + OB + FVG + sweeps.</p></article>
+        <article class="card tile"><span class="pair">COMING SOON</span><h4>Edge + Surge</h4><p class="section-lead">Waitlist-ready future releases for scalping and breakout styles.</p></article>
+      </div>
+    </section>
+
+    <section id="liveops" class="reveal">
+      <h2 class="section-title">Live Feed + Chart View</h2>
+      <p class="section-lead">Website mirror of the motherboard feed with masked account display.</p>
+      <div class="live-grid">
+        <article class="card live-panel">
+          <h3 style="margin:0 0 8px">VPS LIVE FEED: <span id="bestBotWebsiteVPS">-</span></h3>
+          <p class="mini" id="liveMetaWebsiteVPS">Connecting...</p>
+          <ul id="liveFeedWebsiteVPS" class="live-list"></ul>
+          <div class="feed-summary" id="liveSummaryWebsiteVPS"></div>
+        </article>
+        <article class="card live-panel">
+          <h3 style="margin:0 0 8px">VDS LIVE FEED: <span id="bestBotWebsiteVDS">-</span></h3>
+          <p class="mini" id="liveMetaWebsiteVDS">Connecting...</p>
+          <ul id="liveFeedWebsiteVDS" class="live-list"></ul>
+          <div class="feed-summary" id="liveSummaryWebsiteVDS"></div>
+        </article>
+        <article class="card live-panel live-panel-wide">
+          <h3 style="margin:0 0 8px">VDS LIVE CHART VIEW (M5)</h3>
+          <div class="chart-grid">
+            <div class="chart-box">
+              <b id="webChartTitle1">XAUUSD M5</b>
+              <canvas id="webChart1" class="web-live-chart" height="320"></canvas>
+              <div class="web-chart-meta" id="webChartMeta1">Connecting...</div>
+            </div>
+            <div class="chart-box">
+              <b id="webChartTitle2">XAGUSD M5</b>
+              <canvas id="webChart2" class="web-live-chart" height="320"></canvas>
+              <div class="web-chart-meta" id="webChartMeta2">Connecting...</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="grid2 reveal">
+      <div class="card list">
+        <h3>✅ Best-fit buyers</h3>
+        <ul class="clean">
+          <li><span style="color:var(--green)">●</span><span>Already trading MT5 Gold/Silver</span></li>
+          <li><span style="color:var(--green)">●</span><span>Values risk controls over hype</span></li>
+          <li><span style="color:var(--green)">●</span><span>Wants consistency + less emotional execution</span></li>
+          <li><span style="color:var(--green)">●</span><span>Can afford premium tools and onboarding</span></li>
+        </ul>
+      </div>
+      <div class="card list">
+        <h3>❌ Not for</h3>
+        <ul class="clean">
+          <li><span style="color:var(--danger)">●</span><span>Guaranteed profit seekers</span></li>
+          <li><span style="color:var(--danger)">●</span><span>Overleveraged gambling behavior</span></li>
+          <li><span style="color:var(--danger)">●</span><span>People who ignore risk rules</span></li>
+          <li><span style="color:var(--danger)">●</span><span>Unrealistic “set and forget” expectations</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="video" class="reveal">
+      <div class="card video-shell">
+        <div class="video-head">
+          <h2 class="section-title" style="font-size:28px">AI Spokesperson Video (Ready Slot)</h2>
+          <p class="section-lead">Drop file at <code>website_v2/assets/hook-video.mp4</code>. Autoload is wired. No personal face required.</p>
+        </div>
+        <div class="video-box" id="videoSlot"><span class="label">Video placeholder ready — upload hook-video.mp4</span></div>
+      </div>
+    </section>
+
+    <section id="copy" class="grid2 reveal">
+      <div class="card list">
+        <h3>Copy trading (secondary offer)</h3>
+        <p class="section-lead">Positioned as a next-step monetization channel while bot sales remain the main focus.</p>
+        <ul class="clean">
+          <li><span style="color:var(--green)">●</span><span>Investor-view transparency</span></li>
+          <li><span style="color:var(--green)">●</span><span>Weekly payout process</span></li>
+          <li><span style="color:var(--green)">●</span><span>Controlled onboarding + approval flow</span></li>
+        </ul>
+      </div>
+      <div class="card list">
+        <h3>How V3 sells better</h3>
+        <ul class="clean">
+          <li><span style="color:var(--green)">1.</span><span>Faster trust via premium visuals</span></li>
+          <li><span style="color:var(--green)">2.</span><span>Stronger CTA rhythm for intent users</span></li>
+          <li><span style="color:var(--green)">3.</span><span>Qualification gate to reduce low-quality leads</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="urgency reveal" id="offer">
+      <article class="card list">
+        <h3 style="margin-top:0">⚡ Limited onboarding capacity this week</h3>
+        <p class="section-lead">To keep setup quality high, we only onboard a small number of new traders each cycle.</p>
+        <ul class="clean">
+          <li><span style="color:var(--green)">●</span><span>Includes risk-profile setup call</span></li>
+          <li><span style="color:var(--green)">●</span><span>Priority implementation guidance</span></li>
+          <li><span style="color:var(--green)">●</span><span>Direct optimization suggestions after demo phase</span></li>
+        </ul>
+      </article>
+      <aside class="card countdown">
+        <div class="mini">Offer window closes in</div>
+        <div class="count-num" id="countdown">47:59:12</div>
+        <a href="#apply" class="btn btn-primary" style="margin-top:8px" data-track="claim_demo_slot_click">Claim Demo Slot</a>
+      </aside>
+    </section>
+
+    <section id="pricing" class="reveal">
+      <h2 class="section-title">License Access Pricing</h2>
+      <p class="section-lead">Payment is via Coinbase Commerce. 1 active MT5 account included per bot license.</p>
+      <div class="pricing">
+        <article class="card plan pop">
+          <span class="tag">Option 1</span>
+          <h3>One Bot Version License</h3>
+          <div class="mini">Choose Gold <b>or</b> Silver for the same bot</div>
+          <div class="price">$5,000<span class="mini"> full pay</span></div>
+          <div class="mini" style="margin-top:4px">Installments: <b>$5,600 total</b> (3 × $1,866.67)</div>
+          <ul class="clean">
+            <li><span style="color:var(--green)">●</span><span>1 version included (Gold or Silver)</span></li>
+            <li><span style="color:var(--green)">●</span><span>1 active MT5 account included</span></li>
+            <li><span style="color:var(--green)">●</span><span>Server validation required</span></li>
+          </ul>
+          <div style="display:grid;gap:8px;margin-top:10px">
+            <button class="btn btn-primary checkout-btn" data-plan="single_full" type="button">Buy 1 Version — Full Pay</button>
+            <button class="btn btn-ghost checkout-btn" data-plan="single_installment" type="button">Buy 1 Version — 3-Month Installments</button>
+          </div>
+        </article>
+        <article class="card plan">
+          <span class="tag">Option 2</span>
+          <h3>Gold + Silver Bundle License</h3>
+          <div class="mini">Both versions of the same bot</div>
+          <div class="price">$8,000<span class="mini"> full pay</span></div>
+          <div class="mini" style="margin-top:4px">Installments: <b>$8,600 total</b> (3 × $2,866.67)</div>
+          <ul class="clean">
+            <li><span style="color:var(--green)">●</span><span>Includes Gold and Silver versions</span></li>
+            <li><span style="color:var(--green)">●</span><span>1 active MT5 account included</span></li>
+            <li><span style="color:var(--green)">●</span><span>Server validation required</span></li>
+          </ul>
+          <div style="display:grid;gap:8px;margin-top:10px">
+            <button class="btn btn-primary checkout-btn" data-plan="bundle_full" type="button">Buy Bundle — Full Pay</button>
+            <button class="btn btn-ghost checkout-btn" data-plan="bundle_installment" type="button">Buy Bundle — 3-Month Installments</button>
+          </div>
+        </article>
+      </div>
+      <div class="lux-band" style="margin-top:14px">
+        <b>Additional Account Seat:</b> +$1,999 per extra active account (linked to the bot license).<br>
+        <span class="mini">If MT5 account number is missing at checkout, seat is purchased as pending and auto-activates once account number is submitted.</span>
+      </div>
+    </section>
+
+    <section id="apply" class="grid2 reveal">
+      <div class="card list">
+        <h3>Apply for demo access</h3>
+        <p class="section-lead">Serious trader filter (improves close quality).</p>
+        <form id="leadForm">
+          <div class="field"><label>Full name</label><input name="fullName" required placeholder="Your name"></div>
+          <div class="field"><label>Email</label><input name="email" type="email" required placeholder="you@email.com"></div>
+          <div class="field"><label>Telegram / Discord</label><input name="handle" placeholder="@username"></div>
+          <div class="field"><label>MT5 account size</label><select name="accountSize" required><option value="">Choose</option><option>$500-$2,000</option><option>$2,000-$10,000</option><option>$10,000-$50,000</option><option>$50,000+</option></select></div>
+          <div class="field"><label>Max risk per trade</label><select name="riskPerTrade" required><option value="">Choose</option><option>0.25%</option><option>0.5%</option><option>1%</option><option>2%+</option></select></div>
+          <div class="field"><label>Biggest issue right now</label><textarea name="biggestIssue" placeholder="What blocks your consistency?"></textarea></div>
+          <button class="btn btn-primary" type="submit">Submit Application</button>
+          <p id="formStatus" class="mini"></p>
+        </form>
+      </div>
+      <div>
+        <details open><summary>Is this guaranteed profit?</summary><p>No. This is software for disciplined execution and risk management. Markets are risky.</p></details>
+        <details><summary>How many accounts are included per license?</summary><p>Each license includes 1 active MT5 account. Additional account seats are +$1,999 each.</p></details>
+        <details><summary>Does the bot run without license validation?</summary><p>No. Active server-side license validation is required for operation.</p></details>
+        <details><summary>How is payment handled?</summary><p>Payments are processed via Coinbase Commerce according to the selected license option.</p></details>
+        <details><summary>Can I share/resell my bot license?</summary><p>No. Sharing, reselling, or unauthorized account use is prohibited and can result in deactivation.</p></details>
+      </div>
+    </section>
+
+    <section class="reveal" id="results" style="padding-top:8px">
+      <h2 class="section-title">Proof Engine (V3.2)</h2>
+      <p class="section-lead">High-trust section for paid traffic: performance context, risk stats, and verification cues.</p>
+
+      <div class="proof-grid">
+        <article class="card proof-card">
+          <h3 style="margin:0 0 6px">Live/Forward Performance Snapshot</h3>
+          <p class="section-lead">Swap placeholder values with your verified tracker data.</p>
+          <div class="stat-grid">
+            <div class="stat"><b>99.2%</b><span class="mini">Service uptime</span></div>
+            <div class="stat"><b>1.4R</b><span class="mini">Avg winning R multiple</span></div>
+            <div class="stat"><b>2.1%</b><span class="mini">Max risk per trade cap</span></div>
+          </div>
+          <div class="badges">
+            <span class="badge-pill">MT5 Execution Logs</span>
+            <span class="badge-pill">Risk Limits Enforced</span>
+            <span class="badge-pill">Forward-Tested</span>
+            <span class="badge-pill">Weekly Review Cadence</span>
+          </div>
+        </article>
+
+        <aside class="card proof-card">
+          <h3 style="margin:0 0 8px">Verification Layer</h3>
+          <ul class="clean">
+            <li><span style="color:var(--green)">●</span><span>Dated equity snapshots</span></li>
+            <li><span style="color:var(--green)">●</span><span>Drawdown context included</span></li>
+            <li><span style="color:var(--green)">●</span><span>Session-by-session notes</span></li>
+            <li><span style="color:var(--green)">●</span><span>No guaranteed return claims</span></li>
+          </ul>
+        </aside>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <article class="card proof-card snapshots">
+          <div class="snap">
+            <h5>Snapshot A — Trending week</h5>
+            <p>Use your best clean week with context: market regime, risk profile, and how the bot handled volatility.</p>
+          </div>
+          <div class="snap">
+            <h5>Snapshot B — Choppy week</h5>
+            <p>Show defensive behavior: reduced overtrading, tighter risk control, and acceptable drawdown behavior.</p>
+          </div>
+        </article>
+        <article class="card proof-card snapshots">
+          <div class="snap">
+            <h5>Snapshot C — News-event week</h5>
+            <p>Demonstrate how session filters and risk settings handle high-impact conditions.</p>
+          </div>
+          <div class="snap">
+            <h5>Audit Trail</h5>
+            <p>Link to your reporting channel/dashboard so prospects can validate consistency before purchase.</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="testimonials" style="margin-top:12px">
+        <article class="card quote">“I stopped revenge-clicking entries. The structure alone changed my entire routine.”<b>— XAUUSD trader, 3 years experience</b></article>
+        <article class="card quote">“The onboarding call saved me from over-risking. Setup quality is the difference.”<b>— MT5 user, 10k account</b></article>
+        <article class="card quote">“Finally feels like a process, not gambling. Cleaner execution, less noise.”<b>— Gold/Silver swing trader</b></article>
+      </div>
+    </section>
+
+    <section class="reveal" id="compare" style="padding-top:8px">
+      <h2 class="section-title">Why GoldmineOps wins serious buyers</h2>
+      <p class="section-lead">Clear positioning against generic bot offers.</p>
+      <div class="compare">
+        <div class="row head"><div>Feature</div><div class="center">GoldmineOps</div><div class="center">Typical Bot Sellers</div></div>
+        <div class="row"><div>Risk-first onboarding</div><div class="center">✅ Included</div><div class="center">⚠️ Rare</div></div>
+        <div class="row"><div>Structured qualification filter</div><div class="center">✅ Yes</div><div class="center">❌ Usually none</div></div>
+        <div class="row"><div>Transparent compliance framing</div><div class="center">✅ Clear</div><div class="center">❌ Hype-heavy</div></div>
+        <div class="row"><div>Bot family depth (Gold/Silver)</div><div class="center">✅ Blueprint/Nexus/Dominion</div><div class="center">⚠️ Single strategy</div></div>
+        <div class="row"><div>Support quality</div><div class="center">✅ Guided rollout</div><div class="center">⚠️ File + goodbye</div></div>
+      </div>
+    </section>
+
+    <section class="reveal" id="objections" style="padding-top:8px">
+      <h2 class="section-title">Before you ask…</h2>
+      <div class="grid2">
+        <article class="card list"><h3>“I’ve been burned by bots before.”</h3><p class="section-lead">Fair. That’s why this funnel is built around risk controls, expectations, and demo-first qualification.</p></article>
+        <article class="card list"><h3>“How do I know this is legit?”</h3><p class="section-lead">Use the Proof Engine links, verify dated snapshots, and review forward behavior before committing.</p></article>
+      </div>
+      <div class="confidence">
+        <div class="conf"><b>✅ No guarantee claims</b><div class="mini">Trust-first messaging</div></div>
+        <div class="conf"><b>✅ Clear onboarding flow</b><div class="mini">Application → setup → validation</div></div>
+        <div class="conf"><b>✅ Buyer filtering</b><div class="mini">Less noise, better clients</div></div>
+      </div>
+    </section>
+
+    <section id="support" class="reveal" style="padding-top:8px">
+      <h2 class="section-title">Support Channels</h2>
+      <p class="section-lead">Support is handled via Telegram, Discord, and Email only.</p>
+      <div class="grid2">
+        <article class="card list">
+          <h3 style="margin-top:0">Telegram</h3>
+          <p class="section-lead"><a id="supportTelegramLink" href="#" target="_blank" rel="noopener">Not connected yet</a></p>
+        </article>
+        <article class="card list">
+          <h3 style="margin-top:0">Discord</h3>
+          <p class="section-lead"><a id="supportDiscordLink" href="#" target="_blank" rel="noopener">Not connected yet</a></p>
+        </article>
+      </div>
+      <div class="lux-band"><b>Email support:</b> <span id="supportEmailText">sales@goldmineops.com</span></div>
+    </section>
+
+    <section class="reveal" style="padding-bottom:40px">
+      <div class="final">
+        <h2 style="margin:0 0 8px;font-size:34px">Ready to trade with process, not panic?</h2>
+        <p class="section-lead" style="margin-bottom:14px">Start your demo and we’ll qualify fit, configure risk, and map your rollout path.</p>
+        <a href="#apply" class="btn btn-primary" data-track="final_start_demo_click">Start 7-Day Demo</a>
+        <div class="confidence" style="margin-top:14px">
+          <div class="conf"><b>Secure onboarding</b><div class="mini">Controlled access + setup steps</div></div>
+          <div class="conf"><b>Risk disclosures</b><div class="mini">Clear terms before activation</div></div>
+          <div class="conf"><b>Support response</b><div class="mini">Business-day assistance</div></div>
+        </div>
+      </div>
+      <p class="mini" style="text-align:center;margin-top:12px">Trading CFDs/Forex carries risk. Past performance does not guarantee future results.</p>
+    </section>
+  </main>
+
+  <div class="sticky-cta">
+    <div class="inner">
+      <a href="#apply" class="btn btn-primary" data-track="sticky_start_demo_click">Start 7-Day Demo</a>
+      <a href="#support" class="btn btn-ghost book-call" data-track="support_channels_click">Support Channels</a>
+    </div>
+  </div>
+
+  <script>
+    const FUNNEL_CONFIG = {
+      leadWebhookUrl: '',
+      coinbaseCheckout: { single_full: '', single_installment: '', bundle_full: '', bundle_installment: '', addseat: '' },
+      calendlyUrl: '', // e.g. https://calendly.com/yourname/30min
+      fallbackLeadEmail: 'sales@goldmineops.com',
+      proofLinks: {
+        dashboardUrl: '',
+        myfxbookUrl: '',
+        fxblueUrl: ''
+      },
+      analytics: {
+        ga4MeasurementId: '', // optional, e.g. G-XXXXXXX
+        metaPixelId: '' // optional
+      },
+      motherboardVpsUrl: '/proxy/vps/',
+      motherboardVdsUrl: '/proxy/vds/',
+      liveFeedVpsApi: '/proxy/vps/api/status',
+      liveFeedVdsApi: '/proxy/vds/api/status',
+      chartVdsApi: '/proxy/vds/api/charts/live',
+      supportTelegram: '',
+      supportDiscord: ''
+    };
+
+    function trackEvent(name, params = {}) {
+      try {
+        if (typeof window.gtag === 'function') window.gtag('event', name, params);
+        if (typeof window.fbq === 'function') window.fbq('trackCustom', name, params);
+      } catch {}
+      console.log('[track]', name, params);
+    }
+
+    (function revealOnScroll(){
+      const els = document.querySelectorAll('.reveal');
+      const io = new IntersectionObserver((entries)=>{
+        entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('show'); io.unobserve(e.target);} });
+      },{threshold:.12});
+      els.forEach(el=>io.observe(el));
+    })();
+
+    (function countdownTimer(){
+      const el = document.getElementById('countdown');
+      if(!el) return;
+      let remaining = 48*60*60; // 48h visual urgency window
+      const tick = () => {
+        const h = String(Math.floor(remaining/3600)).padStart(2,'0');
+        const m = String(Math.floor((remaining%3600)/60)).padStart(2,'0');
+        const s = String(remaining%60).padStart(2,'0');
+        el.textContent = `${h}:${m}:${s}`;
+        remaining = Math.max(0, remaining-1);
+      };
+      tick();
+      setInterval(tick,1000);
+    })();
+
+    (function loadVideo(){
+      const slot = document.getElementById('videoSlot');
+      const path = 'assets/hook-video.mp4';
+      fetch(path,{method:'HEAD'}).then(r=>{
+        if(!r.ok) throw new Error('missing');
+        slot.innerHTML = `<video controls playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover" poster="assets/hook-poster.jpg"><source src="${path}" type="video/mp4"></video>`;
+      }).catch(()=>{});
+    })();
+
+    function maskAccountWeb(v) {
+      const raw = String(v ?? '').trim();
+      if (!/^\d{6,}$/.test(raw)) return raw || '-';
+      return `${raw.slice(0, 3)}***${raw.slice(-3)}`;
+    }
+
+    function n(v, fallback = 0) {
+      const x = Number(v);
+      return Number.isFinite(x) ? x : fallback;
+    }
+
+    function resolveSymbolFromProfile(p) {
+      const s = String(p?.symbols || '').toUpperCase();
+      if (s.includes('XAG')) return 'XAGUSD';
+      if (s.includes('XAU')) return 'XAUUSD';
+      const name = `${p?.profile || ''} ${p?.profileLabel || ''} ${p?.botName || ''}`.toUpperCase();
+      if (name.includes('SILVER')) return 'XAGUSD';
+      return 'XAUUSD';
+    }
+
+    function drawWebCandles(canvas, candles) {
+      const ctx = canvas?.getContext?.('2d');
+      if (!ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(280, canvas.clientWidth || 280);
+      const height = Math.max(220, canvas.clientHeight || 260);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+
+      const bars = Array.isArray(candles) ? candles.filter((c) => Number.isFinite(n(c?.open, NaN))) : [];
+      if (!bars.length) {
+        ctx.fillStyle = '#5e6b76';
+        ctx.font = '12px monospace';
+        ctx.fillText('Waiting for live candles...', 12, 24);
+        return;
+      }
+
+      let min = Infinity;
+      let max = -Infinity;
+      bars.forEach((b) => {
+        min = Math.min(min, n(b.low, b.open));
+        max = Math.max(max, n(b.high, b.open));
+      });
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+      if (max === min) { max += 0.1; min -= 0.1; }
+
+      const padTop = 10;
+      const padBottom = 16;
+      const padLeft = 8;
+      const padRight = 8;
+      const plotH = height - padTop - padBottom;
+      const plotW = width - padLeft - padRight;
+      const step = plotW / Math.max(bars.length, 1);
+      const bodyW = Math.max(2, Math.floor(step * 0.56));
+      const toY = (p) => padTop + ((max - p) / (max - min)) * plotH;
+
+      bars.forEach((b, i) => {
+        const open = n(b.open);
+        const high = n(b.high, open);
+        const low = n(b.low, open);
+        const close = n(b.close, open);
+        const x = Math.floor(padLeft + i * step + step / 2);
+        const up = close >= open;
+        const color = up ? '#2ea67d' : '#d75b5b';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, toY(high));
+        ctx.lineTo(x, toY(low));
+        ctx.stroke();
+        const yOpen = toY(open);
+        const yClose = toY(close);
+        const top = Math.min(yOpen, yClose);
+        const bodyH = Math.max(1, Math.abs(yClose - yOpen));
+        ctx.fillStyle = color;
+        ctx.fillRect(Math.floor(x - bodyW / 2), top, bodyW, bodyH);
+      });
+    }
+
+    async function loadWebsiteCharts(profiles) {
+      const title1 = document.getElementById('webChartTitle1');
+      const title2 = document.getElementById('webChartTitle2');
+      const c1 = document.getElementById('webChart1');
+      const c2 = document.getElementById('webChart2');
+      const m1 = document.getElementById('webChartMeta1');
+      const m2 = document.getElementById('webChartMeta2');
+      if (!c1 || !c2 || !m1 || !m2) return;
+
+      const top = (Array.isArray(profiles) ? profiles : []).slice(0, 2);
+      const symbols = top.map(resolveSymbolFromProfile);
+      while (symbols.length < 2) symbols.push(symbols.length === 0 ? 'XAUUSD' : 'XAGUSD');
+      const [s1, s2] = symbols;
+      if (title1) title1.textContent = `${s1} M5`;
+      if (title2) title2.textContent = `${s2} M5`;
+
+      try {
+        const q = encodeURIComponent(`${s1},${s2}`);
+        const res = await fetch(`${FUNNEL_CONFIG.chartVdsApi}?symbols=${q}&limit=180`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const rows = Array.isArray(data?.charts) ? data.charts : [];
+        const map = rows.reduce((acc, r) => { acc[String(r?.symbol || '').toUpperCase()] = r; return acc; }, {});
+        const a = map[s1] || { candles: [], updatedAt: null, lastPrice: null };
+        const b = map[s2] || { candles: [], updatedAt: null, lastPrice: null };
+        drawWebCandles(c1, a.candles || []);
+        drawWebCandles(c2, b.candles || []);
+        const t1 = a.updatedAt ? new Date(a.updatedAt).toLocaleTimeString() : '-';
+        const t2 = b.updatedAt ? new Date(b.updatedAt).toLocaleTimeString() : '-';
+        m1.textContent = `Updated ${t1} | Last ${Number.isFinite(n(a.lastPrice, NaN)) ? Number(a.lastPrice).toFixed(3) : '-'} | Bars ${(a.candles || []).length}`;
+        m2.textContent = `Updated ${t2} | Last ${Number.isFinite(n(b.lastPrice, NaN)) ? Number(b.lastPrice).toFixed(3) : '-'} | Bars ${(b.candles || []).length}`;
+      } catch {
+        drawWebCandles(c1, []);
+        drawWebCandles(c2, []);
+        m1.textContent = 'Live chart feed unavailable.';
+        m2.textContent = 'Live chart feed unavailable.';
+      }
+    }
+
+    function renderFeedUnavailable({ list, best, meta, motherboardUrl }) {
+      if (best) best.textContent = '-';
+      if (list) {
+        list.innerHTML = '<li>Live feed unavailable from this website host (CORS or endpoint).</li>';
+      }
+      if (meta) {
+        meta.innerHTML = `Motherboard: <a href="${motherboardUrl}" target="_blank" rel="noopener">Open Live Motherboard</a>`;
+      }
+    }
+
+    function riskPctForWebsite(row) {
+      const candidates = [row?.riskPct, row?.avgRiskPct, row?.risk, row?.riskPercent, row?.risk_percentage];
+      for (const c of candidates) {
+        const x = Number(c);
+        if (Number.isFinite(x) && x > 0) return x;
+      }
+      return null;
+    }
+
+    function dayStartEqForWebsite(row) {
+      const candidates = [row?.dayStartEquity, row?.dayStartingEquity, row?.dayOpeningEquity, row?.depositStartingEq, row?.depositStartEq, row?.startEquity, row?.dayBaseline];
+      for (const c of candidates) {
+        const x = Number(c);
+        if (Number.isFinite(x) && x > 0) return x;
+      }
+      return null;
+    }
+
+    function renderFeedSummary(summaryNode, profiles) {
+      if (!summaryNode) return;
+      const rows = (Array.isArray(profiles) ? profiles : []).slice(0, 8);
+      if (!rows.length) {
+        summaryNode.innerHTML = '<div class="mini" style="padding:8px">No profile summary available yet.</div>';
+        return;
+      }
+      summaryNode.innerHTML = `<table><thead><tr><th>Profile</th><th>Risk %</th><th>Day Starting Eq</th><th>Current PnL $</th></tr></thead><tbody>${rows.map((p)=>{
+        const risk = riskPctForWebsite(p);
+        const dayStart = dayStartEqForWebsite(p);
+        const dayPnl = n(p?.metrics?.day?.netUsdLive ?? p?.metrics?.day?.netUsd);
+        return `<tr><td>${String(p?.profileLabel || p?.profile || '-')}</td><td>${risk == null ? '-' : `${risk.toFixed(2)}%`}</td><td>${dayStart == null ? '-' : dayStart.toFixed(2)}</td><td>${dayPnl.toFixed(2)}</td></tr>`;
+      }).join('')}</tbody></table>`;
+    }
+
+    async function loadSingleFeed({ apiUrl, motherboardUrl, listId, bestId, metaId, summaryId }) {
+      const list = document.getElementById(listId);
+      const best = document.getElementById(bestId);
+      const meta = document.getElementById(metaId);
+      const summary = document.getElementById(summaryId);
+      if (!list || !best || !meta) return [];
+      try {
+        const res = await fetch(apiUrl, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const telemetry = data?.telemetry || {};
+        const leader = (telemetry?.overview?.leadersToday || [])[0] || null;
+        best.textContent = leader ? `${leader.profileLabel || leader.profile} (${Number(leader.retPct || 0).toFixed(2)}%)` : '-';
+        const feed = (data?.liveFeed || telemetry?.liveFeed || []).slice(0, 14);
+        list.innerHTML = '';
+        if (!feed.length) {
+          list.innerHTML = '<li>No live events yet.</li>';
+        } else {
+          feed.forEach((e) => {
+            const li = document.createElement('li');
+            const ts = e?.t ? new Date(e.t).toLocaleTimeString() : '-';
+            li.innerHTML = `<b>${ts}</b> [${e.profile || '-'}] ${e.kind || 'event'} - ${String(e.text || '').slice(0, 180)}`;
+            list.appendChild(li);
+          });
+        }
+        const profiles = (telemetry?.profiles || [])
+          .slice()
+          .sort((a, b) => n(b?.metrics?.day?.netUsdLive ?? b?.metrics?.day?.netUsd) - n(a?.metrics?.day?.netUsdLive ?? a?.metrics?.day?.netUsd));
+        renderFeedSummary(summary, profiles);
+        const firstAccount = profiles.find((p) => p?.account)?.account || null;
+        meta.textContent = `Updated ${new Date(data.generatedAt || Date.now()).toLocaleTimeString()} | Account sample ${maskAccountWeb(firstAccount)}`;
+        return profiles;
+      } catch {
+        renderFeedUnavailable({ list, best, meta, motherboardUrl });
+        if (summary) summary.innerHTML = '';
+        return [];
+      }
+    }
+
+    async function loadLiveOps() {
+      const [vpsProfiles, vdsProfiles] = await Promise.all([
+        loadSingleFeed({
+          apiUrl: FUNNEL_CONFIG.liveFeedVpsApi,
+          motherboardUrl: FUNNEL_CONFIG.motherboardVpsUrl,
+          listId: 'liveFeedWebsiteVPS',
+          bestId: 'bestBotWebsiteVPS',
+          metaId: 'liveMetaWebsiteVPS',
+          summaryId: 'liveSummaryWebsiteVPS'
+        }),
+        loadSingleFeed({
+          apiUrl: FUNNEL_CONFIG.liveFeedVdsApi,
+          motherboardUrl: FUNNEL_CONFIG.motherboardVdsUrl,
+          listId: 'liveFeedWebsiteVDS',
+          bestId: 'bestBotWebsiteVDS',
+          metaId: 'liveMetaWebsiteVDS',
+          summaryId: 'liveSummaryWebsiteVDS'
+        })
+      ]);
+      void vpsProfiles;
+      loadWebsiteCharts(vdsProfiles);
+    }
+    loadLiveOps();
+    setInterval(loadLiveOps, 10000);
+
+    // Billing toggle removed: pricing is now Full Pay + 3-Month Installments.
+    (function billingToggle(){
+      return;
+    })();
+
+    (function wireSupportLinks(){
+      const links = document.querySelectorAll('.book-call');
+      links.forEach(link => {
+        link.href = '#support';
+      });
+      const tg = document.getElementById('supportTelegramLink');
+      const dc = document.getElementById('supportDiscordLink');
+      const em = document.getElementById('supportEmailText');
+      if (tg && FUNNEL_CONFIG.supportTelegram) {
+        tg.href = FUNNEL_CONFIG.supportTelegram;
+        tg.textContent = FUNNEL_CONFIG.supportTelegram;
+      }
+      if (dc && FUNNEL_CONFIG.supportDiscord) {
+        dc.href = FUNNEL_CONFIG.supportDiscord;
+        dc.textContent = FUNNEL_CONFIG.supportDiscord;
+      }
+      if (em) em.textContent = FUNNEL_CONFIG.fallbackLeadEmail || 'sales@goldmineops.com';
+    })();
+
+    (function wireTrackingClicks(){
+      document.querySelectorAll('[data-track]').forEach(el => {
+        el.addEventListener('click', () => trackEvent(el.dataset.track || 'cta_click'));
+      });
+    })();
+
+    document.querySelectorAll('.checkout-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const plan = btn.dataset.plan;
+        trackEvent('checkout_click', { plan });
+        const url = FUNNEL_CONFIG.coinbaseCheckout?.[plan];
+        if(url){ window.location.href=url; return; }
+        alert('Checkout link not connected yet. Add Coinbase Commerce URL in FUNNEL_CONFIG.');
+      });
+    });
+
+    (function wireProofLinks(){
+      const { dashboardUrl, myfxbookUrl, fxblueUrl } = FUNNEL_CONFIG.proofLinks || {};
+      const auditTrail = document.querySelector('#results .snap:last-child p');
+      if(!auditTrail) return;
+      const links = [
+        dashboardUrl ? `<a href="${dashboardUrl}" target="_blank" rel="noopener">Dashboard</a>` : '',
+        myfxbookUrl ? `<a href="${myfxbookUrl}" target="_blank" rel="noopener">Myfxbook</a>` : '',
+        fxblueUrl ? `<a href="${fxblueUrl}" target="_blank" rel="noopener">FXBlue</a>` : ''
+      ].filter(Boolean).join(' • ');
+      if(links) auditTrail.innerHTML = `Live verification links: ${links}`;
+    })();
+
+    const form = document.getElementById('leadForm');
+    const statusEl = document.getElementById('formStatus');
+    form?.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(form).entries());
+      payload.source = 'goldmine-v3-funnel';
+      payload.timestamp = new Date().toISOString();
+
+      if(!FUNNEL_CONFIG.leadWebhookUrl){
+        statusEl.textContent = `Lead endpoint not connected. Send manually to ${FUNNEL_CONFIG.fallbackLeadEmail}.`;
+        statusEl.style.color = '#ffce56';
+        return;
+      }
+
+      statusEl.textContent='Submitting...';
+      statusEl.style.color = '#a9b5d2';
+      try{
+        const res = await fetch(FUNNEL_CONFIG.leadWebhookUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        if(!res.ok) throw new Error('bad');
+        form.reset();
+        statusEl.textContent='Application received. We will contact you shortly.';
+        statusEl.style.color = '#31d78d';
+        trackEvent('lead_form_submit_success');
+      }catch{
+        statusEl.textContent=`Couldn’t submit right now. Email details to ${FUNNEL_CONFIG.fallbackLeadEmail}.`;
+        statusEl.style.color = '#ff7a7a';
+        trackEvent('lead_form_submit_failed');
+      }
+    });
+  </script>
+</body>
+</html>

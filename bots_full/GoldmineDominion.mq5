@@ -26,6 +26,7 @@ input double MaxTotalRisk = 5.0;             // Max total risk (%)
 input bool UseBreakEven = true;               // Enable break-even
 input double BreakEvenPips = 25.0;            // BE trigger (pips) – Gold
 input double BreakEvenPips_Silver = 25.0;    // BE trigger (pips) – Silver
+input bool EnableTypeAutoCorrectLive = true; // Keep ON: fixes broker-side side flips so BE/TP/trail still execute
 input double SELL_BE_CapPips = 30.0;         // SELL BE capped at (pips) – never move BE beyond this for SELL
 
 input group "=== Take Profit (same as Blueprint/Nexus) ==="
@@ -38,7 +39,7 @@ input double TP3_Percent = 25.0;             // % at TP3
 input double TP4_Pips = 150.0;               // TP4 (pips) – Close 25%, leave runner
 input double TP4_Percent = 25.0;             // % at TP4
 input double TP5_Pips = 300.0;               // TP5 (pips) – Full close runner
-input double RunnerSizePercent = 15.0;       // % runner
+input double RunnerSizePercent = 10.0;       // % runner
 
 input group "=== Reversal: Close at S/R (M5, M15, M30) ==="
 input bool UseM5_SR = true;                  // Use M5 for close-at-S/R
@@ -139,6 +140,8 @@ bool tp1Hit[]; bool tp2Hit[]; bool tp3Hit[]; bool tp4Hit[]; bool tp5Hit[];
 double tp1HitPrice[];
 int partialCloseLevel[];
 double originalVolume[];
+int forcedPositionType[]; // -1 unknown, POSITION_TYPE_BUY/SELL once inferred from live mismatch
+ulong trackedTickets[];   // Stable mapping to avoid ticket % collisions
 
 // Session open/close levels (Dominion distinctive) – server hour
 double sessionAsiaOpenPrice = 0, sessionAsiaClosePrice = 0;
@@ -869,20 +872,33 @@ void OpenOrder(bool isBuy) {
 //| Ticket index                                                     |
 //+------------------------------------------------------------------+
 int GetTicketIndex(ulong ticket) {
-    return (int)(ticket % 10000);
+    int n = ArraySize(trackedTickets);
+    for(int i = 0; i < n; i++) {
+        if(trackedTickets[i] == ticket) return i;
+    }
+
+    int newIndex = n;
+    ArrayResize(trackedTickets, newIndex + 1);
+    trackedTickets[newIndex] = ticket;
+
+    ArrayResize(tp1Hit, newIndex + 1);
+    ArrayResize(tp2Hit, newIndex + 1);
+    ArrayResize(tp3Hit, newIndex + 1);
+    ArrayResize(tp4Hit, newIndex + 1);
+    ArrayResize(tp5Hit, newIndex + 1);
+    ArrayResize(tp1HitPrice, newIndex + 1);
+    ArrayResize(partialCloseLevel, newIndex + 1);
+    ArrayResize(originalVolume, newIndex + 1);
+    ArrayResize(forcedPositionType, newIndex + 1);
+
+    tp1Hit[newIndex] = false; tp2Hit[newIndex] = false; tp3Hit[newIndex] = false; tp4Hit[newIndex] = false; tp5Hit[newIndex] = false;
+    tp1HitPrice[newIndex] = 0; partialCloseLevel[newIndex] = 0; originalVolume[newIndex] = 0;
+    forcedPositionType[newIndex] = -1;
+
+    return newIndex;
 }
 void EnsureArrays(int index) {
-    int sz = ArraySize(tp1Hit);
-    if(index >= sz) {
-        int newSz = index + 20;
-        ArrayResize(tp1Hit, newSz); ArrayResize(tp2Hit, newSz); ArrayResize(tp3Hit, newSz);
-        ArrayResize(tp4Hit, newSz); ArrayResize(tp5Hit, newSz);
-        ArrayResize(tp1HitPrice, newSz); ArrayResize(partialCloseLevel, newSz); ArrayResize(originalVolume, newSz);
-        for(int j = sz; j < newSz; j++) {
-            tp1Hit[j]=false; tp2Hit[j]=false; tp3Hit[j]=false; tp4Hit[j]=false; tp5Hit[j]=false;
-            tp1HitPrice[j]=0; partialCloseLevel[j]=0; originalVolume[j]=0;
-        }
-    }
+    // no-op: GetTicketIndex() now handles safe per-ticket allocation
 }
 
 //+------------------------------------------------------------------+
@@ -901,24 +917,52 @@ void ManagePositions() {
         double pv = isSilver ? 0.01 : 0.1;
         double currentBID = SymbolInfoDouble(_Symbol, SYMBOL_BID);
         double currentASK = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+        int ticketIndex = GetTicketIndex(ticket);
+        if(ticketIndex < 0 || ticketIndex >= ArraySize(tp1Hit)) continue;
+        if(ticketIndex < ArraySize(forcedPositionType) && forcedPositionType[ticketIndex] >= 0) {
+            posType = (ENUM_POSITION_TYPE)forcedPositionType[ticketIndex];
+        }
+
         double currentProfitPips = (posType == POSITION_TYPE_BUY) ? (currentBID - openPrice) / pv : (openPrice - currentASK) / pv;
         double currentPrice = (posType == POSITION_TYPE_BUY) ? currentBID : currentASK;
 
-        // Type auto-correct: only when broker profit disagrees with reported type (don't flip real BUY in drawdown)
+        // Type auto-correct: tolerate broker-side position-type inversion and persist corrected side per ticket.
         double profitIfBuy  = (currentBID - openPrice) / pv;
         double profitIfSell = (openPrice - currentASK) / pv;
-        double posProfit = position.Profit() + position.Swap();
-        if(posType == POSITION_TYPE_BUY && profitIfBuy < -5.0 && profitIfSell > 5.0 && posProfit > 0) {
-            posType = POSITION_TYPE_SELL; currentProfitPips = profitIfSell; currentPrice = currentASK;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " → SELL (broker profit disagreed) ***");
-        } else if(posType == POSITION_TYPE_SELL && profitIfSell < -5.0 && profitIfBuy > 5.0 && posProfit > 0) {
-            posType = POSITION_TYPE_BUY; currentProfitPips = profitIfBuy; currentPrice = currentBID;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " → BUY (broker profit disagreed) ***");
+        double mt5ProfitUSD = position.Profit() + position.Swap() + position.Commission();
+        const double TYPE_CORRECT_PIP_THRESH = 80.0;
+        if(EnableTypeAutoCorrectLive) {
+            double expectedPipsByType = (posType == POSITION_TYPE_BUY) ? profitIfBuy : profitIfSell;
+            double oppositePips = (posType == POSITION_TYPE_BUY) ? profitIfSell : profitIfBuy;
+            bool impossibleTypeMismatch = (expectedPipsByType <= -TYPE_CORRECT_PIP_THRESH && oppositePips >= TYPE_CORRECT_PIP_THRESH);
+            int inferredType = (int)posType;
+            if(mt5ProfitUSD > 0.0) {
+                if(oppositePips > 2.0 && expectedPipsByType < -2.0)
+                    inferredType = (posType == POSITION_TYPE_BUY) ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+            } else if(mt5ProfitUSD < 0.0) {
+                if(oppositePips < -2.0 && expectedPipsByType > 2.0)
+                    inferredType = (posType == POSITION_TYPE_BUY) ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+            }
+
+            bool shouldFlipType = impossibleTypeMismatch || (inferredType != (int)posType);
+            if(shouldFlipType) {
+                if(posType == POSITION_TYPE_BUY) {
+                    posType = POSITION_TYPE_SELL;
+                    forcedPositionType[ticketIndex] = POSITION_TYPE_SELL;
+                    currentProfitPips = profitIfSell;
+                    currentPrice = currentASK;
+                    Print("*** DOMINION TYPE AUTO-CORRECT: #", ticket, " treating as SELL (", DoubleToString(currentProfitPips, 1), " pips) ***");
+                } else {
+                    posType = POSITION_TYPE_BUY;
+                    forcedPositionType[ticketIndex] = POSITION_TYPE_BUY;
+                    currentProfitPips = profitIfBuy;
+                    currentPrice = currentBID;
+                    Print("*** DOMINION TYPE AUTO-CORRECT: #", ticket, " treating as BUY (", DoubleToString(currentProfitPips, 1), " pips) ***");
+                }
+            }
         }
 
-        int ticketIndex = GetTicketIndex(ticket);
-        EnsureArrays(ticketIndex);
-        if(ticketIndex < 0 || ticketIndex >= ArraySize(tp1Hit)) continue;
         if(originalVolume[ticketIndex] == 0) originalVolume[ticketIndex] = currentVolume;
         double origVol = originalVolume[ticketIndex];
         double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);

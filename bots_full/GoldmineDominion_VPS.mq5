@@ -22,24 +22,37 @@ CAccountInfo account;
 //| Input Parameters                                                 |
 //+------------------------------------------------------------------+
 input group "=== Risk ==="
-input double RiskPercent = 5.0;              // Risk per trade (%) – default 5%
-input double MaxTotalRisk = 5.0;             // Max total risk (%)
+input double RiskPercent = 1.5;              // Risk per trade (%)
+input double MaxTotalRisk = 3.0;             // Max total open risk (%)
 input bool UseBreakEven = true;               // Enable break-even
 input double BreakEvenPips = 25.0;            // BE trigger (pips) – Gold
 input double BreakEvenPips_Silver = 25.0;    // BE trigger (pips) – Silver
+input bool EnableTypeAutoCorrectLive = true; // Keep ON: fixes broker-side side flips so BE/TP/trail still execute
 input double SELL_BE_CapPips = 30.0;         // SELL BE capped at (pips) – never move BE beyond this for SELL
+input bool EnforceDailyLossLimit = true;      // Stop new entries after intraday loss limit is hit
+input double DailyLossLimitPct = 20.0;        // Max intraday loss (% of start-of-day equity)
+input bool CloseAllOnDailyLossBreach = false; // Emergency mode: close all open positions when breached
+input bool ForceCloseAllOnDailyLossBreachLive = true; // Live safety: close all dominion positions when daily loss trips
 
 input group "=== Take Profit (same as Blueprint/Nexus) ==="
-input double TP1_Pips = 25.0;                // TP1 (pips) – Close 15%
+input double TP1_Pips = 100.0;               // TP1 (pips) – Close 15%
 input double TP1_Percent = 15.0;             // % at TP1
-input double TP2_Pips = 50.0;                // TP2 (pips) – Close 15%
+input double TP2_Pips = 150.0;               // TP2 (pips) – Close 15%
 input double TP2_Percent = 15.0;             // % at TP2
-input double TP3_Pips = 80.0;                // TP3 (pips) – Close 25%
+input double TP3_Pips = 200.0;               // TP3 (pips) – Close 25%
 input double TP3_Percent = 25.0;             // % at TP3
-input double TP4_Pips = 150.0;               // TP4 (pips) – Close 25%, leave runner
+input double TP4_Pips = 250.0;               // TP4 (pips) – Close 25%, leave runner
 input double TP4_Percent = 25.0;             // % at TP4
 input double TP5_Pips = 300.0;               // TP5 (pips) – Full close runner
-input double RunnerSizePercent = 15.0;       // % runner
+input double RunnerSizePercent = 10.0;       // % runner
+
+input group "=== Trailing Stop ==="
+input bool UseTrailSL = true;                 // Enable trailing stop management
+input double TrailStartPips = 150.0;          // Start trailing after this profit (pips)
+input double TrailDistancePips = 30.0;        // Keep SL 30 pips behind price once trailing starts
+input bool UseStructureTrail = false;         // Use fixed trail distance for deterministic lock-in
+input int StructureTrail_Lookback = 15;       // Bars for recent swing detection
+input double StructureTrail_BufferPips = 40.0; // Buffer from swing level (pips)
 
 input group "=== Reversal: Close at S/R (M5, M15, M30) ==="
 input bool UseM5_SR = true;                  // Use M5 for close-at-S/R
@@ -100,7 +113,8 @@ input double SL_Pips_Gold = 25.0;            // SL (pips) – Gold
 input double SL_Pips_Silver = 35.0;          // SL (pips) – Silver
 
 input group "=== License ==="
-input bool EnableLicenseCheck = true;
+input bool EnableLicenseCheck = false; // VPS lab mode
+input bool ForceBypassLicenseForVPS = true; // Hard bypass for test profiles
 input string LicenseServerURL = "https://mt5-license-server-production.up.railway.app";
 input string LicenseKey = "";
 input bool UseRemoteValidation = true;
@@ -120,6 +134,10 @@ int symbolDigits = 2;
 datetime lastBarTime = 0;
 datetime lastBarTimeM15 = 0;
 datetime initTime = 0;
+int dayRiskKey = 0;
+double dayStartEquity = 0.0;
+bool dayLossLimitHit = false;
+datetime lastDayLossLog = 0;
 
 // Reversal zones: level, time first seen, key-candle time, isSupport
 struct ReversalZone {
@@ -140,6 +158,8 @@ bool tp1Hit[]; bool tp2Hit[]; bool tp3Hit[]; bool tp4Hit[]; bool tp5Hit[];
 double tp1HitPrice[];
 int partialCloseLevel[];
 double originalVolume[];
+int forcedPositionType[]; // -1 unknown, POSITION_TYPE_BUY/SELL once inferred from live mismatch
+ulong trackedTickets[];   // Stable mapping to avoid ticket % collisions
 
 // Session open/close levels (Dominion distinctive) – server hour
 double sessionAsiaOpenPrice = 0, sessionAsiaClosePrice = 0;
@@ -195,6 +215,7 @@ bool ValidateLicenseRemote(string eaName) {
     return (StringFind(CharArrayToString(result), "\"valid\":true") >= 0);
 }
 bool CheckLicense() {
+    if(ForceBypassLicenseForVPS) return true;
     if(!EnableLicenseCheck) return true;
     if(UseRemoteValidation && ValidateLicenseRemote("Goldmine Dominion")) return true;
     if(StringLen(LicenseKey) > 0) return true;
@@ -208,6 +229,110 @@ double GetPipValue(string sym) {
     string u; StringToUpper(sym); u = sym;
     if(StringFind(u, "XAG") >= 0 || StringFind(u, "SILVER") >= 0) return 0.01;
     return 0.1;
+}
+
+double EffectiveRiskPercent() {
+    // Hard live cap to prevent Dominion from over-risking.
+    return MathMin(MathMax(RiskPercent, 0.1), 1.0);
+}
+
+double EffectiveMaxTotalRisk() {
+    // Hard live cap to prevent runaway stacking.
+    return MathMin(MathMax(MaxTotalRisk, EffectiveRiskPercent()), 2.0);
+}
+
+double EffectiveDailyLossLimitPct() {
+    // Keep daily loss guard strict in live trading even if chart input is wider.
+    return MathMin(MathMax(DailyLossLimitPct, 1.0), 15.0);
+}
+
+int GetDayKey(datetime t) {
+    MqlDateTime dt;
+    TimeToStruct(t, dt);
+    return dt.year * 10000 + dt.mon * 100 + dt.day;
+}
+
+void RefreshDailyRiskState() {
+    datetime now = TimeCurrent();
+    if(now <= 0) return;
+
+    int today = GetDayKey(now);
+    if(dayRiskKey != today) {
+        dayRiskKey = today;
+        dayStartEquity = account.Equity();
+        if(dayStartEquity <= 0) dayStartEquity = account.Balance();
+        dayLossLimitHit = false;
+        lastDayLossLog = 0;
+        Print("DOMINION DAILY BASELINE reset. Day=", dayRiskKey, " StartEquity=", DoubleToString(dayStartEquity, 2));
+    }
+
+    if(!EnforceDailyLossLimit || dayStartEquity <= 0 || dayLossLimitHit) return;
+
+    double eq = account.Equity();
+    double lossPct = ((dayStartEquity - eq) / dayStartEquity) * 100.0;
+    double effectiveDailyLossLimit = EffectiveDailyLossLimitPct();
+    if(lossPct >= effectiveDailyLossLimit) {
+        dayLossLimitHit = true;
+        lastDayLossLog = 0;
+        Print("DOMINION DAILY LOSS LIMIT HIT: Loss=", DoubleToString(lossPct, 2), "% (limit=", DoubleToString(effectiveDailyLossLimit, 2), "%)");
+    }
+}
+
+void LogDailyRiskBlock() {
+    if(!dayLossLimitHit) return;
+    datetime now = TimeCurrent();
+    if(now - lastDayLossLog < 60) return;
+    double eq = account.Equity();
+    double lossPct = 0.0;
+    if(dayStartEquity > 0) lossPct = ((dayStartEquity - eq) / dayStartEquity) * 100.0;
+    Print("DOMINION ENTRY BLOCKED (daily loss guard). Equity=", DoubleToString(eq, 2),
+          " Start=", DoubleToString(dayStartEquity, 2),
+          " Loss=", DoubleToString(lossPct, 2), "%");
+    lastDayLossLog = now;
+}
+
+void CloseAllDominionPositions(string reason) {
+    bool closedAny = false;
+    for(int i = PositionsTotal() - 1; i >= 0; i--) {
+        if(!position.SelectByIndex(i)) continue;
+        if(position.Symbol() != _Symbol || position.Magic() != MagicNumber) continue;
+        ulong ticket = position.Ticket();
+        if(trade.PositionClose(ticket)) {
+            closedAny = true;
+            Print("DOMINION emergency close #", ticket, " reason=", reason);
+        } else {
+            Print("DOMINION emergency close FAILED #", ticket, " err=", GetLastError(), " reason=", reason);
+        }
+    }
+    if(closedAny) Print("DOMINION emergency close pass complete.");
+}
+
+double CalculateOpenRiskPct() {
+    double accountValue = account.Equity();
+    if(accountValue <= 0) accountValue = account.Balance();
+    if(accountValue <= 0) return 0.0;
+
+    double totalRiskPct = 0.0;
+    for(int i = PositionsTotal() - 1; i >= 0; i--) {
+        if(!position.SelectByIndex(i)) continue;
+        if(position.Symbol() != _Symbol || position.Magic() != MagicNumber) continue;
+
+        double sl = position.StopLoss();
+        if(sl <= 0) continue;
+
+        double entry = position.PriceOpen();
+        double volume = position.Volume();
+        double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+        double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+        if(tickVal <= 0 || tickSize <= 0 || volume <= 0) continue;
+
+        double slDistance = MathAbs(entry - sl);
+        if(slDistance <= 0) continue;
+
+        double riskAmount = (slDistance / tickSize) * tickVal * volume;
+        totalRiskPct += (riskAmount / accountValue) * 100.0;
+    }
+    return totalRiskPct;
 }
 
 //+------------------------------------------------------------------+
@@ -834,6 +959,15 @@ void OpenOrder(bool isBuy) {
     if(GlobalVariableCheck(gvName) && (TimeCurrent() - (datetime)GlobalVariableGet(gvName) < 3)) return;
     GlobalVariableSet(gvName, (double)TimeCurrent());
 
+    double openRiskPct = CalculateOpenRiskPct();
+    double effectiveRiskPct = EffectiveRiskPercent();
+    double effectiveMaxRiskPct = EffectiveMaxTotalRisk();
+    if(openRiskPct + effectiveRiskPct > effectiveMaxRiskPct) {
+        Print("DOMINION ENTRY BLOCKED: open risk ", DoubleToString(openRiskPct, 2), "% + new ",
+              DoubleToString(effectiveRiskPct, 2), "% > max ", DoubleToString(effectiveMaxRiskPct, 2), "%");
+        return;
+    }
+
     double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
     double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
     double price = isBuy ? ask : bid;
@@ -841,7 +975,7 @@ void OpenOrder(bool isBuy) {
     double slDist = slPips * pipValue;
     double sl = isBuy ? NormalizeDouble(price - slDist, symbolDigits) : NormalizeDouble(price + slDist, symbolDigits);
     double equity = account.Equity();
-    double riskAmount = equity * (RiskPercent / 100.0);
+    double riskAmount = equity * (effectiveRiskPct / 100.0);
     double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
     double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
     if(tickSize <= 0) return;
@@ -859,10 +993,10 @@ void OpenOrder(bool isBuy) {
 
     if(isBuy) {
         if(trade.Buy(lotSize, _Symbol, price, sl, 0, comment))
-            Print("*** DOMINION BUY opened ", lotSize, " @ ", price, " SL ", sl);
+            Print("*** DOMINION BUY opened ", lotSize, " @ ", price, " SL ", sl, " Risk=", DoubleToString(effectiveRiskPct, 2), "%");
     } else {
         if(trade.Sell(lotSize, _Symbol, price, sl, 0, comment))
-            Print("*** DOMINION SELL opened ", lotSize, " @ ", price, " SL ", sl);
+            Print("*** DOMINION SELL opened ", lotSize, " @ ", price, " SL ", sl, " Risk=", DoubleToString(effectiveRiskPct, 2), "%");
     }
 }
 
@@ -870,20 +1004,33 @@ void OpenOrder(bool isBuy) {
 //| Ticket index                                                     |
 //+------------------------------------------------------------------+
 int GetTicketIndex(ulong ticket) {
-    return (int)(ticket % 10000);
+    int n = ArraySize(trackedTickets);
+    for(int i = 0; i < n; i++) {
+        if(trackedTickets[i] == ticket) return i;
+    }
+
+    int newIndex = n;
+    ArrayResize(trackedTickets, newIndex + 1);
+    trackedTickets[newIndex] = ticket;
+
+    ArrayResize(tp1Hit, newIndex + 1);
+    ArrayResize(tp2Hit, newIndex + 1);
+    ArrayResize(tp3Hit, newIndex + 1);
+    ArrayResize(tp4Hit, newIndex + 1);
+    ArrayResize(tp5Hit, newIndex + 1);
+    ArrayResize(tp1HitPrice, newIndex + 1);
+    ArrayResize(partialCloseLevel, newIndex + 1);
+    ArrayResize(originalVolume, newIndex + 1);
+    ArrayResize(forcedPositionType, newIndex + 1);
+
+    tp1Hit[newIndex] = false; tp2Hit[newIndex] = false; tp3Hit[newIndex] = false; tp4Hit[newIndex] = false; tp5Hit[newIndex] = false;
+    tp1HitPrice[newIndex] = 0; partialCloseLevel[newIndex] = 0; originalVolume[newIndex] = 0;
+    forcedPositionType[newIndex] = -1;
+
+    return newIndex;
 }
 void EnsureArrays(int index) {
-    int sz = ArraySize(tp1Hit);
-    if(index >= sz) {
-        int newSz = index + 20;
-        ArrayResize(tp1Hit, newSz); ArrayResize(tp2Hit, newSz); ArrayResize(tp3Hit, newSz);
-        ArrayResize(tp4Hit, newSz); ArrayResize(tp5Hit, newSz);
-        ArrayResize(tp1HitPrice, newSz); ArrayResize(partialCloseLevel, newSz); ArrayResize(originalVolume, newSz);
-        for(int j = sz; j < newSz; j++) {
-            tp1Hit[j]=false; tp2Hit[j]=false; tp3Hit[j]=false; tp4Hit[j]=false; tp5Hit[j]=false;
-            tp1HitPrice[j]=0; partialCloseLevel[j]=0; originalVolume[j]=0;
-        }
-    }
+    // no-op: GetTicketIndex() now handles safe per-ticket allocation
 }
 
 //+------------------------------------------------------------------+
@@ -892,7 +1039,11 @@ void EnsureArrays(int index) {
 void ManagePositions() {
     for(int i = PositionsTotal() - 1; i >= 0; i--) {
         if(!position.SelectByIndex(i)) continue;
-        if(position.Symbol() != _Symbol || position.Magic() != MagicNumber) continue;
+        if(position.Symbol() != _Symbol) continue;
+        bool magicOk = (MagicNumber != 0 && position.Magic() == MagicNumber);
+        string posComment = position.Comment();
+        bool commentOk = (StringFind(posComment, "GoldmineDominion") >= 0 || StringFind(posComment, "DOMINION") >= 0);
+        if(!magicOk && !commentOk) continue;
         ulong ticket = position.Ticket();
         double openPrice = position.PriceOpen();
         double currentSL = position.StopLoss();
@@ -902,24 +1053,63 @@ void ManagePositions() {
         double pv = isSilver ? 0.01 : 0.1;
         double currentBID = SymbolInfoDouble(_Symbol, SYMBOL_BID);
         double currentASK = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+        int ticketIndex = GetTicketIndex(ticket);
+        if(ticketIndex < 0 || ticketIndex >= ArraySize(tp1Hit)) continue;
+        if(ticketIndex < ArraySize(forcedPositionType) && forcedPositionType[ticketIndex] >= 0) {
+            posType = (ENUM_POSITION_TYPE)forcedPositionType[ticketIndex];
+        }
+
         double currentProfitPips = (posType == POSITION_TYPE_BUY) ? (currentBID - openPrice) / pv : (openPrice - currentASK) / pv;
         double currentPrice = (posType == POSITION_TYPE_BUY) ? currentBID : currentASK;
 
-        // Type auto-correct: only when broker profit disagrees with reported type (don't flip real BUY in drawdown)
+        // Type auto-correct: tolerate broker-side position-type inversion and persist corrected side per ticket.
         double profitIfBuy  = (currentBID - openPrice) / pv;
         double profitIfSell = (openPrice - currentASK) / pv;
-        double posProfit = position.Profit() + position.Swap();
-        if(posType == POSITION_TYPE_BUY && profitIfBuy < -5.0 && profitIfSell > 5.0 && posProfit > 0) {
-            posType = POSITION_TYPE_SELL; currentProfitPips = profitIfSell; currentPrice = currentASK;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " → SELL (broker profit disagreed) ***");
-        } else if(posType == POSITION_TYPE_SELL && profitIfSell < -5.0 && profitIfBuy > 5.0 && posProfit > 0) {
-            posType = POSITION_TYPE_BUY; currentProfitPips = profitIfBuy; currentPrice = currentBID;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " → BUY (broker profit disagreed) ***");
+        double mt5ProfitUSD = position.Profit() + position.Swap() + position.Commission();
+        const double TYPE_CORRECT_PIP_THRESH = 120.0;
+        const double TYPE_CORRECT_USD_THRESH = 1.0;
+        if(EnableTypeAutoCorrectLive) {
+            double expectedPipsByType = (posType == POSITION_TYPE_BUY) ? profitIfBuy : profitIfSell;
+            double oppositePips = (posType == POSITION_TYPE_BUY) ? profitIfSell : profitIfBuy;
+            bool shouldFlipType = false;
+            if(posType == POSITION_TYPE_BUY) {
+                bool contradictionPositive = (mt5ProfitUSD > TYPE_CORRECT_USD_THRESH &&
+                                              expectedPipsByType <= -TYPE_CORRECT_PIP_THRESH &&
+                                              oppositePips >= TYPE_CORRECT_PIP_THRESH);
+                bool contradictionNegative = (mt5ProfitUSD < -TYPE_CORRECT_USD_THRESH &&
+                                              expectedPipsByType >= TYPE_CORRECT_PIP_THRESH &&
+                                              oppositePips <= -TYPE_CORRECT_PIP_THRESH);
+                shouldFlipType = contradictionPositive || contradictionNegative;
+            } else if(posType == POSITION_TYPE_SELL) {
+                bool contradictionPositive = (mt5ProfitUSD > TYPE_CORRECT_USD_THRESH &&
+                                              expectedPipsByType <= -TYPE_CORRECT_PIP_THRESH &&
+                                              oppositePips >= TYPE_CORRECT_PIP_THRESH);
+                bool contradictionNegative = (mt5ProfitUSD < -TYPE_CORRECT_USD_THRESH &&
+                                              expectedPipsByType >= TYPE_CORRECT_PIP_THRESH &&
+                                              oppositePips <= -TYPE_CORRECT_PIP_THRESH);
+                shouldFlipType = contradictionPositive || contradictionNegative;
+            }
+
+            if(shouldFlipType) {
+                if(posType == POSITION_TYPE_BUY) {
+                    posType = POSITION_TYPE_SELL;
+                    forcedPositionType[ticketIndex] = POSITION_TYPE_SELL;
+                    currentProfitPips = profitIfSell;
+                    currentPrice = currentASK;
+                    Print("*** [SELL_TYPE_CORRECT] DOMINION TYPE AUTO-CORRECT: #", ticket,
+                          " treating as SELL (", DoubleToString(currentProfitPips, 1), " pips, mt5Profit=", DoubleToString(mt5ProfitUSD, 2), ") ***");
+                } else {
+                    posType = POSITION_TYPE_BUY;
+                    forcedPositionType[ticketIndex] = POSITION_TYPE_BUY;
+                    currentProfitPips = profitIfBuy;
+                    currentPrice = currentBID;
+                    Print("*** [BUY_TYPE_CORRECT] DOMINION TYPE AUTO-CORRECT: #", ticket,
+                          " treating as BUY (", DoubleToString(currentProfitPips, 1), " pips, mt5Profit=", DoubleToString(mt5ProfitUSD, 2), ") ***");
+                }
+            }
         }
 
-        int ticketIndex = GetTicketIndex(ticket);
-        EnsureArrays(ticketIndex);
-        if(ticketIndex < 0 || ticketIndex >= ArraySize(tp1Hit)) continue;
         if(originalVolume[ticketIndex] == 0) originalVolume[ticketIndex] = currentVolume;
         double origVol = originalVolume[ticketIndex];
         double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -929,37 +1119,47 @@ void ManagePositions() {
         // BE – SELL BE capped (Fresh-style cushion/fallback for broker compatibility)
         double bePips = isSilver ? BreakEvenPips_Silver : BreakEvenPips;
         if(posType == POSITION_TYPE_SELL && bePips > SELL_BE_CapPips) bePips = SELL_BE_CapPips;
-        if(!tp1Hit[ticketIndex] && currentProfitPips >= bePips && currentProfitPips > 0) {
-            tp1Hit[ticketIndex] = true;
+        if(currentProfitPips >= bePips && currentProfitPips > 0) {
+            if(!tp1Hit[ticketIndex]) tp1Hit[ticketIndex] = true;
             if(UseBreakEven) {
-                double newSL = NormalizeDouble(openPrice, symbolDigits);
-                bool need = (posType == POSITION_TYPE_BUY) ? (newSL > currentSL || currentSL == 0) : (currentSL == 0 || newSL < currentSL);
-                if(need) {
-                    double tpVal = position.TakeProfit();
-                    bool modified = (posType == POSITION_TYPE_BUY)
-                        ? (trade.PositionModify(ticket, newSL, tpVal) || trade.PositionModify(ticket, newSL, 0))
-                        : (trade.PositionModify(ticket, newSL, tpVal) || trade.PositionModify(ticket, newSL, 0));
-                    if(!modified && posType == POSITION_TYPE_SELL) {
-                        double cushionSL = NormalizeDouble(openPrice - pv, symbolDigits); // 1 pip in profit
-                        modified = trade.PositionModify(ticket, cushionSL, tpVal) || trade.PositionModify(ticket, cushionSL, 0);
-                    }
-                    if(modified)
-                        Print("*** BE set #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " @ ", bePips, " pips ***");
-                    else {
-                        double buf1 = (posType == POSITION_TYPE_BUY) ? NormalizeDouble(openPrice + pv, symbolDigits) : NormalizeDouble(openPrice - pv, symbolDigits);
-                        double buf5 = (posType == POSITION_TYPE_BUY) ? NormalizeDouble(openPrice + 5.0*pv, symbolDigits) : NormalizeDouble(openPrice - 5.0*pv, symbolDigits);
-                        if(trade.PositionModify(ticket, buf1, 0))
-                            Print("*** BE set (1 pip buffer) #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " ***");
-                        else if(trade.PositionModify(ticket, buf5, 0))
-                            Print("*** BE set (5 pip buffer) #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " ***");
-                        else
-                            Print("*** BE FAILED #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " err ", GetLastError(), " pips ", currentProfitPips, " ***");
+                double beTol = 2.0 * pv;
+                bool alreadyBE = (posType == POSITION_TYPE_BUY)
+                    ? (currentSL > 0 && currentSL >= openPrice - beTol)
+                    : (currentSL > 0 && currentSL <= openPrice + beTol);
+                if(!alreadyBE) {
+                    double newSL = NormalizeDouble(openPrice, symbolDigits);
+                    bool need = (posType == POSITION_TYPE_BUY) ? (newSL > currentSL || currentSL == 0) : (currentSL == 0 || newSL < currentSL);
+                    if(need) {
+                        double tpVal = position.TakeProfit();
+                        bool modified = (posType == POSITION_TYPE_BUY)
+                            ? (trade.PositionModify(ticket, newSL, tpVal) || trade.PositionModify(ticket, newSL, 0))
+                            : (trade.PositionModify(ticket, newSL, tpVal) || trade.PositionModify(ticket, newSL, 0));
+                        if(!modified && posType == POSITION_TYPE_SELL) {
+                            double cushionSL = NormalizeDouble(openPrice - pv, symbolDigits); // 1 pip in profit
+                            modified = trade.PositionModify(ticket, cushionSL, tpVal) || trade.PositionModify(ticket, cushionSL, 0);
+                        }
+                        if(modified)
+                            Print("*** BE set #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " @ ", bePips, " pips ***");
+                        else {
+                            double buf1 = (posType == POSITION_TYPE_BUY) ? NormalizeDouble(openPrice + pv, symbolDigits) : NormalizeDouble(openPrice - pv, symbolDigits);
+                            double buf5 = (posType == POSITION_TYPE_BUY) ? NormalizeDouble(openPrice + 5.0*pv, symbolDigits) : NormalizeDouble(openPrice - 5.0*pv, symbolDigits);
+                            if(trade.PositionModify(ticket, buf1, 0))
+                                Print("*** BE set (1 pip buffer) #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " ***");
+                            else if(trade.PositionModify(ticket, buf5, 0))
+                                Print("*** BE set (5 pip buffer) #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " ***");
+                            else
+                                Print("*** BE FAILED #", ticket, " ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " err ", GetLastError(), " pips ", currentProfitPips, " ***");
+                        }
                     }
                 }
             }
         }
 
-        // TP1–TP4 partials + TP5 full close (runs after BE trigger; prints when each level hits)
+        // TP1–TP4 partials + TP5 full close. Unlock TP when TP1 threshold is already reached.
+        if(!tp1Hit[ticketIndex] && currentProfitPips >= TP1_Pips) {
+            tp1Hit[ticketIndex] = true;
+            Print("*** DOMINION TP UNLOCK #", ticket, " | Profit=", DoubleToString(currentProfitPips, 1), " pips >= TP1=", TP1_Pips, " ***");
+        }
         if(!tp1Hit[ticketIndex]) continue;
         int level = partialCloseLevel[ticketIndex];
         double minPip = isSilver ? 0.01 : 0.1;
@@ -970,9 +1170,9 @@ void ManagePositions() {
             if(currentVolume - closeVol >= runnerSize) {
                 if(trade.PositionClosePartial(ticket, closeVol)) {
                     partialCloseLevel[ticketIndex] = 1;
-                    Print("*** TP1 #", ticket, " ", closeVol, " lots @ ", DoubleToString(currentProfitPips, 1), " pips ***");
+                    Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP1]" : "[SELL_TP1]"), " TP1 #", ticket, " ", closeVol, " lots @ ", DoubleToString(currentProfitPips, 1), " pips ***");
                 } else
-                    Print("*** TP1 FAILED #", ticket, " want ", closeVol, " err ", GetLastError(), " ***");
+                    Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP1_FAIL]" : "[SELL_TP1_FAIL]"), " TP1 FAILED #", ticket, " want ", closeVol, " err ", GetLastError(), " ***");
             }
         } else if(level == 1 && currentProfitPips >= TP2_Pips && currentVolume > runnerSize + minLot) {
             double closeVol = NormalizeDouble(origVol * (TP2_Percent/100.0), 2);
@@ -980,8 +1180,8 @@ void ManagePositions() {
             if(currentVolume - closeVol >= runnerSize) {
                 if(trade.PositionClosePartial(ticket, closeVol)) {
                     partialCloseLevel[ticketIndex] = 2;
-                    Print("*** TP2 #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips ***");
-                } else Print("*** TP2 FAILED #", ticket, " err ", GetLastError(), " ***");
+                    Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP2]" : "[SELL_TP2]"), " TP2 #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips ***");
+                } else Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP2_FAIL]" : "[SELL_TP2_FAIL]"), " TP2 FAILED #", ticket, " err ", GetLastError(), " ***");
             }
         } else if(level == 2 && currentProfitPips >= TP3_Pips && currentVolume > runnerSize + minLot) {
             double closeVol = NormalizeDouble(origVol * (TP3_Percent/100.0), 2);
@@ -989,8 +1189,8 @@ void ManagePositions() {
             if(currentVolume - closeVol >= runnerSize) {
                 if(trade.PositionClosePartial(ticket, closeVol)) {
                     partialCloseLevel[ticketIndex] = 3;
-                    Print("*** TP3 #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips ***");
-                } else Print("*** TP3 FAILED #", ticket, " err ", GetLastError(), " ***");
+                    Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP3]" : "[SELL_TP3]"), " TP3 #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips ***");
+                } else Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP3_FAIL]" : "[SELL_TP3_FAIL]"), " TP3 FAILED #", ticket, " err ", GetLastError(), " ***");
             }
         } else if(level == 3 && currentProfitPips >= TP4_Pips && currentVolume > runnerSize + minLot) {
             double closeVol = NormalizeDouble(origVol * (TP4_Percent/100.0), 2);
@@ -998,14 +1198,47 @@ void ManagePositions() {
             if(currentVolume - closeVol >= runnerSize) {
                 if(trade.PositionClosePartial(ticket, closeVol)) {
                     partialCloseLevel[ticketIndex] = 4;
-                    Print("*** TP4 #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips (runner active) ***");
-                } else Print("*** TP4 FAILED #", ticket, " err ", GetLastError(), " ***");
+                    Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP4]" : "[SELL_TP4]"), " TP4 #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips (runner active) ***");
+                } else Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP4_FAIL]" : "[SELL_TP4_FAIL]"), " TP4 FAILED #", ticket, " err ", GetLastError(), " ***");
             }
         } else if(level >= 3 && currentProfitPips >= TP5_Pips && !tp5Hit[ticketIndex]) {
             if(trade.PositionClose(ticket)) {
                 tp5Hit[ticketIndex] = true;
-                Print("*** TP5 full close #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips ***");
-            } else Print("*** TP5 FAILED #", ticket, " err ", GetLastError(), " ***");
+                Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP5]" : "[SELL_TP5]"), " TP5 full close #", ticket, " @ ", DoubleToString(currentProfitPips, 1), " pips ***");
+            } else Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP5_FAIL]" : "[SELL_TP5_FAIL]"), " TP5 FAILED #", ticket, " err ", GetLastError(), " ***");
+        }
+
+        // Trail SL after configured threshold. Use structure when available, fallback to fixed distance.
+        if(UseTrailSL && currentProfitPips >= TrailStartPips && currentProfitPips > 0) {
+            double newSL = 0;
+            if(UseStructureTrail) {
+                if(posType == POSITION_TYPE_BUY) {
+                    int sIdx = iLowest(_Symbol, PERIOD_M5, MODE_LOW, StructureTrail_Lookback, 1);
+                    if(sIdx >= 0) {
+                        double swingLow = iLow(_Symbol, PERIOD_M5, sIdx);
+                        if(swingLow > 0) newSL = NormalizeDouble(swingLow - StructureTrail_BufferPips * pv, symbolDigits);
+                    }
+                } else {
+                    int sIdx = iHighest(_Symbol, PERIOD_M5, MODE_HIGH, StructureTrail_Lookback, 1);
+                    if(sIdx >= 0) {
+                        double swingHigh = iHigh(_Symbol, PERIOD_M5, sIdx);
+                        if(swingHigh > 0) newSL = NormalizeDouble(swingHigh + StructureTrail_BufferPips * pv, symbolDigits);
+                    }
+                }
+            }
+            if(newSL <= 0) {
+                if(posType == POSITION_TYPE_BUY) newSL = NormalizeDouble(currentPrice - TrailDistancePips * pv, symbolDigits);
+                else newSL = NormalizeDouble(currentPrice + TrailDistancePips * pv, symbolDigits);
+            }
+
+            bool improve = (posType == POSITION_TYPE_BUY)
+                ? (newSL > openPrice && newSL < currentPrice && (currentSL == 0 || newSL > currentSL))
+                : (newSL < openPrice && newSL > currentPrice && (currentSL == 0 || newSL < currentSL));
+            if(improve && trade.PositionModify(ticket, newSL, position.TakeProfit())) {
+                Print("*** DOMINION TRAIL ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " #", ticket,
+                      " | Profit=", DoubleToString(currentProfitPips, 1), " pips | SL=", DoubleToString(newSL, symbolDigits),
+                      (UseStructureTrail ? " (structure)" : " (distance)"), " ***");
+            }
         }
     }
 }
@@ -1029,6 +1262,8 @@ int OnInit() {
         Print("DOMINION: License check failed.");
         return INIT_FAILED;
     }
+    RefreshDailyRiskState();
+    Print("DOMINION runtime risk caps: Risk=", DoubleToString(EffectiveRiskPercent(), 2), "% MaxTotal=", DoubleToString(EffectiveMaxTotalRisk(), 2), "% DailyLoss=", DoubleToString(EffectiveDailyLossLimitPct(), 2), "%");
     // VPS: Adopt existing positions on restart
     int adopted = 0;
     for(int ai = PositionsTotal() - 1; ai >= 0; ai--) {
@@ -1064,13 +1299,42 @@ void OnDeinit(const int reason) {
 //+------------------------------------------------------------------+
 //| OnTick                                                           |
 //+------------------------------------------------------------------+
+
+void LogAccountSnapshotHeartbeat() {
+    static datetime lastSnapshotLog = 0;
+    datetime now = TimeCurrent();
+    if(now == 0) return;
+    if(now - lastSnapshotLog < 60) return;
+
+    double bal = account.Balance();
+    double eq = account.Equity();
+    double prof = account.Profit();
+    double freeMargin = account.FreeMargin();
+    Print("ACCOUNT_SNAPSHOT Balance=", DoubleToString(bal, 2),
+          " Equity=", DoubleToString(eq, 2),
+          " Profit=", DoubleToString(prof, 2),
+          " FreeMargin=", DoubleToString(freeMargin, 2),
+          " Account=", IntegerToString((int)account.Login()));
+    lastSnapshotLog = now;
+}
+
 void OnTick() {
+    LogAccountSnapshotHeartbeat();
+
     static datetime lastLicense = 0;
     if(TimeCurrent() - lastLicense >= 3600) {
         if(!CheckLicense()) { ExpertRemove(); return; }
         lastLicense = TimeCurrent();
     }
+    RefreshDailyRiskState();
+    if(dayLossLimitHit && (CloseAllOnDailyLossBreach || ForceCloseAllOnDailyLossBreachLive)) {
+        CloseAllDominionPositions("DailyLossLimit");
+    }
     ManagePositions();
+    if(dayLossLimitHit) {
+        LogDailyRiskBlock();
+        return;
+    }
 
     datetime barTime = iTime(_Symbol, PERIOD_M5, 0);
     static bool openedThisBar = false;

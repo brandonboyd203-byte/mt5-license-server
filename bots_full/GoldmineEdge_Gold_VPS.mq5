@@ -41,22 +41,30 @@ input int AccountLeverage = 999999;           // Your account leverage (2000, 50
 input group "=== Stop Loss Settings ==="
 input bool UseDynamicSL = true;               // Dynamic SL based on confluence (bigger SL for more confluence)
 input double SL_Pips = 20.0;                 // Base SL (pips) - Used when UseDynamicSL=false or confluence=1
-input double SL_PerConfluence = 10.0;        // Additional SL pips per confluence factor (e.g., 2 confluence = base + 10 = 30 pips)
-input double SL_MaxPips = 50.0;              // Maximum SL (pips) - Safety limit
+input double SL_PerConfluence = 6.0;         // Additional SL pips per confluence factor
+input double SL_MaxPips = 35.0;              // Maximum SL (pips) - Safety limit
 input bool SL_OutsideZone = true;             // Place SL outside zone to avoid wicks (adds zone size to SL)
 input bool UseBreakEven = true;              // Enable break-even
 input double BreakEvenPips = 25.0;           // Move to BE at this many pips profit
 
 input group "=== Take Profit System ==="
-input double TP1_Pips = 10.0;                // TP1 (pips) - Close 25%
+input double TP1_Pips = 100.0;               // TP1 (pips) - Close 25%
 input double TP1_Percent = 25.0;              // % to close at TP1
-input double TP2_Pips = 20.0;                // TP2 (pips) - Close 20%
+input double TP2_Pips = 150.0;               // TP2 (pips) - Close 20%
 input double TP2_Percent = 20.0;             // % to close at TP2
-input double TP3_Pips = 50.0;                // TP3 (pips) - Close 30%
+input double TP3_Pips = 220.0;               // TP3 (pips) - Close 30%
 input double TP3_Percent = 30.0;              // % to close at TP3
 input bool TP4_To1H_SR = true;               // TP4: Remaining position targets nearest 1H S/R
 input double RunnerSizePercent = 10.0;       // % to keep as runner (always)
 input bool RunnerTo1H_SR = true;             // Runner targets 1H support/resistance
+
+input group "=== Trailing Stop ==="
+input bool UseTrailSL = true;                 // Enable trailing stop management
+input double TrailStartPips = 150.0;          // Start trailing after this profit (pips)
+input double TrailDistancePips = 30.0;        // Keep SL 30 pips behind price once trailing starts
+input bool UseStructureTrail = false;         // Use fixed trail distance for deterministic lock-in
+input int StructureTrail_Lookback = 15;       // Bars for recent swing detection
+input double StructureTrail_BufferPips = 40.0; // Buffer from swing level (pips)
 
 input group "=== Order Block Settings ==="
 input bool UseOrderBlocks = true;             // Enable Order Block trading
@@ -126,7 +134,7 @@ input bool UseMarketStructure = true;           // Use BOS/CHoCH for trend direc
 input int MS_SwingLength = 5;                   // Swing length for market structure
 
 input group "=== Trade Management ==="
-input bool AllowNewTradesWhileInTrade = true;  // Allow new trades even when already in a position
+input bool AllowNewTradesWhileInTrade = false; // Block adding more trades while one is already open
 input bool MoveToBE_OnNewTrade = true;         // Move existing trades to BE when new high-probability trade appears
 input int MinConfluenceForBE_Move = 3;         // Minimum confluence to trigger BE move on existing trades
 
@@ -136,9 +144,17 @@ input int MaxLayers = 5;                       // Maximum layers per trade
 input double LayerSpacingPips = 10.0;          // Spacing between layers (pips) - Auto converts to points based on symbol
 input double EntryZonePips = 20.0;             // Entry zone size (pips) - Auto converts to points based on symbol
 input bool WaitForConfirmation = false;        // Wait for candle close
-input double MinOppositeDistancePips = 5.0;    // Minimum distance between opposite trades (pips) - Only blocks if within this distance
-input double OppositeTradeTP_Pips = 10.0;       // TP for opposite trades (quick exit) - Auto converts to points
-input double OppositeTradeSL_Pips = 10.0;       // SL for opposite trades (cap risk, avoid oversized SL)
+input bool AllowOppositeTrades = false;        // Disable opposite/counter-direction entries
+input bool OppositeOnlyHighProbability = true; // Opposite entries only allowed on high-probability zones
+input int MinConfluenceForOpposite = 3;        // Minimum confluence required for opposite entries
+input double MinOppositeDistancePips = 12.0;   // Minimum distance between opposite trades (pips)
+input double OppositeTradeTP_Pips = 12.0;      // TP for opposite trades (quick exit)
+input double OppositeTradeSL_Pips = 8.0;       // SL for opposite trades (hard cap)
+input bool IgnoreLegacyPositionsForNewEntries = true; // Entry gating ignores positions opened before today (legacy still managed)
+input int MaxOppositeTradesPerDirection = 0;    // Max opposite-direction positions allowed (0 = hard disabled)
+input double OppositeRiskMultiplier = 0.35;     // Opposite-entry risk multiplier
+input bool DisableOppositeEntriesLive = true;   // Safety switch: disable opposite/counter entries in live monitoring
+input double MinProfitPipsForSignalBE = 5.0;    // Minimum profit before BE move on new high-confluence signal
 
 input group "=== Engulfing Candle Detection ==="
 input bool UseEngulfingCandles = true;         // Enable engulfing candle entries
@@ -148,14 +164,14 @@ input double EngulfingMinSize = 5.0;            // Minimum engulfing candle size
 input int EngulfingLookback = 3;                // Bars to look back for engulfing pattern
 
 input group "=== Confluence Requirements ==="
-input int MinConfluence = 1;                   // Minimum confluence factors required (1 = very aggressive)
+input int MinConfluence = 2;                   // Minimum confluence factors required
 input bool RequireOrderBlock = false;           // Require Order Block for entry
 input bool RequireFVG = false;                 // Require FVG for entry
 input bool RequireTrendLine = false;            // Require Trend Line for entry
 input bool RequireSessionLevel = false;        // Require Session Level for entry
 input bool RequireEngulfing = false;            // Require Engulfing Candle for entry
-input bool AllowMultipleTradesInZone = true;    // Allow multiple trades in same zone
-input int MaxTradesPerZone = 3;                // Maximum trades per zone
+input bool AllowMultipleTradesInZone = false;   // Allow multiple trades in same zone
+input int MaxTradesPerZone = 2;                // Maximum trades per zone
 
 input group "=== Timeframes ==="
 input ENUM_TIMEFRAMES PrimaryTF = PERIOD_M5;   // Primary timeframe (scalping)
@@ -167,7 +183,8 @@ input int NewsBlockMinutesBefore = 5;          // Minutes before news to block t
 input int NewsBlockMinutesAfter = 15;          // Minutes after news to block trades
 
 input group "=== License Protection ==="
-input bool EnableLicenseCheck = true;         // Enable license protection (DISABLE ONLY FOR TESTING)
+input bool EnableLicenseCheck = false;         // VPS lab mode
+input bool ForceBypassLicenseForVPS = true;    // Hard bypass for test profiles
 input string LicenseServerURL = "https://mt5-license-server-production.up.railway.app"; // License Server URL
 input string LicenseKey = "";                 // License Key (optional - provided by developer)
 input string AllowedAccounts = "";           // Allowed Account Numbers (fallback - comma-separated)
@@ -310,6 +327,7 @@ bool tp4Hit[];
 double tp1HitPrice[];
 int partialCloseLevel[]; // Track which partial close level reached
 double originalVolume[]; // Track original position size for accurate partial closes
+int forcedPositionType[]; // -1 unknown, POSITION_TYPE_BUY/SELL when auto-correct infers true side
 
 //+------------------------------------------------------------------+
 //| Validate License with Remote Server                              |
@@ -394,6 +412,10 @@ bool ValidateLicenseRemote() {
 //| License Check Function                                           |
 //+------------------------------------------------------------------+
 bool CheckLicense() {
+    if(ForceBypassLicenseForVPS) {
+        Print("Edge VPS: ForceBypassLicenseForVPS=true -> skipping license checks.");
+        return true;
+    }
     if(!EnableLicenseCheck) {
         Print("WARNING: License check is DISABLED - EA is running in test mode!");
         return true; // Allow if disabled
@@ -562,7 +584,7 @@ int OnInit() {
         Print("Layer Spacing: ", LayerSpacingPips, " pips = ", (LayerSpacingPips * pipValue), " points");
         Print("FVG Min Size: ", FVG_MinSize, " pips = ", (FVG_MinSize * pipValue), " points");
         Print("SR Tolerance: ", SR_TouchTolerance, " pips = ", (SR_TouchTolerance * pipValue), " points");
-        Print("Opposite Distance: ", MinOppositeDistancePips, " pips = ", (MinOppositeDistancePips * pipValue), " points");
+        Print("Opposite Distance: ", EffectiveMinOppositeDistancePips(), " pips = ", (EffectiveMinOppositeDistancePips() * pipValue), " points");
         Print("Opposite TP: ", OppositeTradeTP_Pips, " pips = ", (OppositeTradeTP_Pips * pipValue), " points");
         Print("Engulfing Min: ", EngulfingMinSize, " pips = ", (EngulfingMinSize * pipValue), " points");
     } else if(isSilver) {
@@ -581,7 +603,7 @@ int OnInit() {
         Print("Layer Spacing: ", LayerSpacingPips, " pips = ", (LayerSpacingPips * pipValue), " points");
         Print("FVG Min Size: ", FVG_MinSize, " pips = ", (FVG_MinSize * pipValue), " points");
         Print("SR Tolerance: ", SR_TouchTolerance, " pips = ", (SR_TouchTolerance * pipValue), " points");
-        Print("Opposite Distance: ", MinOppositeDistancePips, " pips = ", (MinOppositeDistancePips * pipValue), " points");
+        Print("Opposite Distance: ", EffectiveMinOppositeDistancePips(), " pips = ", (EffectiveMinOppositeDistancePips() * pipValue), " points");
         Print("Opposite TP: ", OppositeTradeTP_Pips, " pips = ", (OppositeTradeTP_Pips * pipValue), " points");
         Print("Engulfing Min: ", EngulfingMinSize, " pips = ", (EngulfingMinSize * pipValue), " points");
     } else {
@@ -603,17 +625,18 @@ int OnInit() {
     Print("=== STOP LOSS (Dynamic) ===");
     Print("Base SL: ", SL_Pips, " pips | Dynamic: ", (UseDynamicSL ? "YES" : "NO"));
     if(UseDynamicSL) {
-        Print("  - Additional SL per confluence: ", SL_PerConfluence, " pips");
-        Print("  - Max SL: ", SL_MaxPips, " pips | Outside zone: ", (SL_OutsideZone ? "YES" : "NO"));
-        Print("  - Example: 3 confluence = ", (SL_Pips + (2 * SL_PerConfluence)), " pips SL");
+        Print("  - Additional SL per confluence: ", EffectiveSLPerConfluence(), " pips");
+        Print("  - Max SL: ", EffectiveSLMaxPips(), " pips | Outside zone: ", (SL_OutsideZone ? "YES" : "NO"));
+        Print("  - Example: 3 confluence = ", (SL_Pips + (2 * EffectiveSLPerConfluence())), " pips SL");
     }
     Print("Account Leverage: ", AccountLeverage == 999999 ? "UNLIMITED" : IntegerToString(AccountLeverage), ":1");
     Print("Break-Even: ", BreakEvenPips, " pips profit (exact BE)");
-    Print("Confluence required: ", MinConfluence, " factors (1 = very aggressive)");
+    Print("Confluence required: ", EffectiveMinConfluence(), " factors (runtime floor applied)");
     Print("=== OPPOSITE TRADES ===");
-    Print("Min opposite distance: ", MinOppositeDistancePips, " pips (only blocks if within this distance)");
+    Print("Min opposite distance: ", EffectiveMinOppositeDistancePips(), " pips (runtime floor applied)");
     Print("Opposite trade TP: ", OppositeTradeTP_Pips, " pips (quick exit when entering opposite to existing trade)");
-    Print("  - Allows opposite trades if > ", MinOppositeDistancePips, " pips apart");
+    Print("Opposite entries live safety switch: ", (DisableOppositeEntriesLive ? "ON (counter entries blocked)" : "OFF"));
+    Print("  - Allows opposite trades if > ", EffectiveMinOppositeDistancePips(), " pips apart");
     Print("  - Higher timeframe direction wins if it has confluences");
     Print("=== NEWS FILTER ===");
     Print("Block trades during news: ", (BlockTradesDuringNews ? "YES" : "NO"));
@@ -633,7 +656,7 @@ int OnInit() {
     Print("Calculated Lot Size: ", testLotSize);
     Print("Free Margin: $", account.FreeMargin());
     Print("Multiple trades per zone: ", AllowMultipleTradesInZone ? "YES" : "NO");
-    Print("Max trades per zone: ", MaxTradesPerZone);
+    Print("Max trades per zone: ", EffectiveMaxTradesPerZone(), " (runtime cap)");
     Print("--- Detection Settings ---");
     Print("Order Blocks: ", UseOrderBlocks ? "ON" : "OFF");
     Print("  M1 OB: ", UseM1_OB ? "ON" : "OFF", " | M3 OB: ", UseM3_OB ? "ON" : "OFF", " | M5 OB: ", UseM5_OB ? "ON" : "OFF", " | M15 OB: ", UseM15_OB ? "ON" : "OFF", " | M30 OB: ", UseM30_OB ? "ON" : "OFF");
@@ -717,9 +740,11 @@ int OnInit() {
             ArrayResize(tp1HitPrice, ns);
             ArrayResize(partialCloseLevel, ns);
             ArrayResize(originalVolume, ns);
+            ArrayResize(forcedPositionType, ns);
             for(int j = oldSize; j < ns; j++) {
                 tp1Hit[j] = false; tp2Hit[j] = false; tp3Hit[j] = false; tp4Hit[j] = false;
                 tp1HitPrice[j] = 0; partialCloseLevel[j] = 0; originalVolume[j] = 0;
+                forcedPositionType[j] = -1;
             }
         }
         if(originalVolume[idx] == 0) originalVolume[idx] = vol;
@@ -741,7 +766,28 @@ void OnDeinit(const int reason) {
 //+------------------------------------------------------------------+
 //| Expert tick function                                            |
 //+------------------------------------------------------------------+
+
+void LogAccountSnapshotHeartbeat() {
+    static datetime lastSnapshotLog = 0;
+    datetime now = TimeCurrent();
+    if(now == 0) return;
+    if(now - lastSnapshotLog < 60) return;
+
+    double bal = account.Balance();
+    double eq = account.Equity();
+    double prof = account.Profit();
+    double freeMargin = account.FreeMargin();
+    Print("ACCOUNT_SNAPSHOT Balance=", DoubleToString(bal, 2),
+          " Equity=", DoubleToString(eq, 2),
+          " Profit=", DoubleToString(prof, 2),
+          " FreeMargin=", DoubleToString(freeMargin, 2),
+          " Account=", IntegerToString((int)account.Login()));
+    lastSnapshotLog = now;
+}
+
 void OnTick() {
+    LogAccountSnapshotHeartbeat();
+
     // Periodic license check (every hour) - prevents unauthorized use
     static datetime lastLicenseCheck = 0;
     if(EnableLicenseCheck && TimeCurrent() - lastLicenseCheck >= 3600) { // Check every hour
@@ -1803,7 +1849,7 @@ void FindConfluenceZones(ConfluenceZone &zones[]) {
         Print("=== Detection Status ===");
         Print("Active Order Blocks: ", activeOB, " | Active FVGs: ", activeFVG);
         Print("Current Price: ", currentPrice);
-        Print("Min Confluence Required: ", MinConfluence);
+        Print("Min Confluence Required: ", EffectiveMinConfluence());
         lastLogTime = currentTime;
     }
     
@@ -1970,7 +2016,7 @@ void FindConfluenceZones(ConfluenceZone &zones[]) {
                                (zone.hasWeeklyLevel ? 1 : 0) + (zone.hasHourlySweep ? 1 : 0) +
                                (zone.hasSessionSweep ? 1 : 0);
         
-        if(zone.totalConfluence >= MinConfluence) {
+        if(zone.totalConfluence >= EffectiveMinConfluence()) {
             int size = ArraySize(zones);
             ArrayResize(zones, size + 1);
             zones[size] = zone;
@@ -2148,7 +2194,7 @@ void FindConfluenceZones(ConfluenceZone &zones[]) {
             
             // High-probability setups can bypass MinConfluence requirement
             bool isHighProbability = zone.closedOnSupport || zone.closedOnResistance || zone.fvgRetest;
-            int requiredConfluence = isHighProbability ? 1 : MinConfluence; // High-probability only needs 1 confluence
+            int requiredConfluence = isHighProbability ? 1 : EffectiveMinConfluence(); // High-probability only needs 1 confluence
             
             if(zone.totalConfluence >= requiredConfluence) {
                 int size = ArraySize(zones);
@@ -2190,7 +2236,7 @@ void FindConfluenceZones(ConfluenceZone &zones[]) {
                 zone.isBullish = true; // Support = bullish
                 zone.totalConfluence = 1; // SR touch counts as 1
                 
-                if(zone.totalConfluence >= MinConfluence) {
+                if(zone.totalConfluence >= EffectiveMinConfluence()) {
                     int size = ArraySize(zones);
                     ArrayResize(zones, size + 1);
                     zones[size] = zone;
@@ -2221,7 +2267,7 @@ void FindConfluenceZones(ConfluenceZone &zones[]) {
                 zone.isBullish = false; // Resistance = bearish
                 zone.totalConfluence = 1;
                 
-                if(zone.totalConfluence >= MinConfluence) {
+                if(zone.totalConfluence >= EffectiveMinConfluence()) {
                     int size = ArraySize(zones);
                     ArrayResize(zones, size + 1);
                     zones[size] = zone;
@@ -2296,11 +2342,40 @@ bool IsNewsEventActive() {
     return false;
 }
 
+int EffectiveMinConfluence() {
+    return MathMax(MinConfluence, 2);
+}
+
+int EffectiveMaxTradesPerZone() {
+    return MathMax(1, MathMin(MaxTradesPerZone, 2));
+}
+
+double EffectiveMinOppositeDistancePips() {
+    return MathMax(MinOppositeDistancePips, 12.0);
+}
+
+double EffectiveSLPerConfluence() {
+    return MathMin(MathMax(SL_PerConfluence, 0.0), 6.0);
+}
+
+double EffectiveSLMaxPips() {
+    return MathMin(MathMax(SL_MaxPips, SL_Pips), 35.0);
+}
+
+double EffectiveEntryRiskPct(bool isOppositeEntry) {
+    // Keep live risk bounded regardless of chart inputs.
+    double basePct = MathMin(MathMax(RiskPerTrade, 0.1), 1.0);
+    if(!isOppositeEntry) return basePct;
+    double riskMul = MathMax(0.1, MathMin(1.0, OppositeRiskMultiplier));
+    return basePct * riskMul;
+}
+
 //+------------------------------------------------------------------+
 //| Check Confluence Entries                                         |
 //+------------------------------------------------------------------+
 void CheckConfluenceEntries(ConfluenceZone &zones[]) {
     int zoneCount = ArraySize(zones);
+    int effectiveMaxTradesPerZone = EffectiveMaxTradesPerZone();
     
     // Check for news events - block all entries during news
     if(IsNewsEventActive()) {
@@ -2346,8 +2421,12 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
     for(int i = 0; i < zoneCount; i++) {
         // Check if price is in confluence zone
         if(currentPrice < zones[i].bottom || currentPrice > zones[i].top) continue;
+
+        // Always refresh live counts before entry gating so we don't use stale values.
+        buyPositions = CountPositions(POSITION_TYPE_BUY);
+        sellPositions = CountPositions(POSITION_TYPE_SELL);
         
-        // NEW: If high-probability trade appears, move existing trades to BE
+        // NEW: If high-probability trade appears, move existing profitable trades to BE
         if(MoveToBE_OnNewTrade && zones[i].totalConfluence >= MinConfluenceForBE_Move) {
             int totalPositions = buyPositions + sellPositions;
             if(totalPositions > 0) {
@@ -2359,17 +2438,18 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
                     
                     double openPrice = position.PriceOpen();
                     double currentSL = position.StopLoss();
-                    double entryPrice = openPrice;
-                    
-                    // Only move to BE if not already at BE
-                    if(currentSL != entryPrice) {
-                        if(position.Type() == POSITION_TYPE_BUY) {
-                            trade.PositionModify(position.Ticket(), entryPrice, position.TakeProfit());
-                            Print("*** MOVED TO BE: High-probability trade detected (Confluence: ", zones[i].totalConfluence, ") ***");
-                        } else if(position.Type() == POSITION_TYPE_SELL) {
-                            trade.PositionModify(position.Ticket(), entryPrice, position.TakeProfit());
-                            Print("*** MOVED TO BE: High-probability trade detected (Confluence: ", zones[i].totalConfluence, ") ***");
-                        }
+                    ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)position.Type();
+                    double currentBid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+                    double currentAsk = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+                    double currentPosPrice = (posType == POSITION_TYPE_BUY) ? currentBid : currentAsk;
+                    double profitPips = (posType == POSITION_TYPE_BUY) ? ((currentPosPrice - openPrice) / pipValue) : ((openPrice - currentPosPrice) / pipValue);
+
+                    // Avoid invalid-stop spam: only force BE on trades already in profit.
+                    if(profitPips < MinProfitPipsForSignalBE) continue;
+
+                    if(currentSL != openPrice) {
+                        TryMoveToBreakEven(position.Ticket(), posType, openPrice, currentSL,
+                                           "high-probability zone confluence " + IntegerToString(zones[i].totalConfluence));
                     }
                 }
             }
@@ -2378,20 +2458,23 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
         // High-probability setups bypass some restrictions
         bool isHighProbability = zones[i].closedOnSupport || zones[i].closedOnResistance || zones[i].fvgRetest;
         
-        // Check if we should allow new trades while in existing trades
-        if(!AllowNewTradesWhileInTrade && !isHighProbability) { // High-probability bypasses this
+        // If one trade is already live, block adding any new entry.
+        if(!AllowNewTradesWhileInTrade) {
             int totalPositions = buyPositions + sellPositions;
             if(totalPositions > 0) {
-                // Check if this zone is for opposite direction
-                bool isOppositeDirection = false;
-                if(zones[i].isBullish && sellPositions > 0) isOppositeDirection = true;
-                if(!zones[i].isBullish && buyPositions > 0) isOppositeDirection = true;
-                
-                // Only block if same direction (allow opposite)
-                if(!isOppositeDirection) {
-                    continue; // Block same-direction trades if already in trade
+                if(currentTime - lastEntryLogTime < 2) {
+                    Print("Entry BLOCKED: existing trade open and AllowNewTradesWhileInTrade=false");
                 }
+                continue;
             }
+        }
+
+        // Hard safety: never open a counter-position against an active side.
+        if((zones[i].isBullish && sellPositions > 0) || (!zones[i].isBullish && buyPositions > 0)) {
+            if(currentTime - lastEntryLogTime < 2) {
+                Print("Entry BLOCKED: counter-position disabled (one-side-only mode)");
+            }
+            continue;
         }
         
         // Check requirements (high-probability setups bypass these)
@@ -2475,17 +2558,20 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
             }
         }
         
-        // Check for opposite trades - Only block if VERY close (5 pips), otherwise allow with 5 pip TP
-        double minDistance = MinOppositeDistancePips * pipValue; // 5 pips = very tight
+        // Check for opposite trades - block if too close or opposite-trade limit already reached.
+        double effectiveMinOppositeDistance = EffectiveMinOppositeDistancePips();
+        double minDistance = effectiveMinOppositeDistance * pipValue;
         double zoneEntryPrice = zones[i].isBullish ? zones[i].bottom : zones[i].top;
         bool hasOppositeTrade = false;
         bool hasOppositeConflict = false;
         string conflictReason = "";
+        int oppositeCount = 0;
         
         for(int pos = PositionsTotal() - 1; pos >= 0; pos--) {
             if(!position.SelectByIndex(pos)) continue;
             if(position.Symbol() != _Symbol) continue;
             if(position.Magic() != MagicNumber) continue;
+            if(IsLegacyPositionForEntry()) continue;
             
             double posPrice = position.PriceOpen();
             
@@ -2499,19 +2585,24 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
             
             if(isOpposite) {
                 hasOppositeTrade = true;
+                oppositeCount++;
                 
-                // ONLY BLOCK if entry price is within 5 pips of opposite trade
-                // This prevents entries in the exact same pip area
+                // Only block if entry price is too close to an opposite trade.
                 double distance = MathAbs(zoneEntryPrice - posPrice);
                 if(distance < minDistance) {
                     hasOppositeConflict = true;
-                    conflictReason = "Entry too close to opposite trade (distance: " + DoubleToString(distance / pipValue, 2) + " pips, need " + DoubleToString(MinOppositeDistancePips, 1) + " pips)";
+                    conflictReason = "Entry too close to opposite trade (distance: " + DoubleToString(distance / pipValue, 2) + " pips, need " + DoubleToString(effectiveMinOppositeDistance, 1) + " pips)";
                     break;
                 }
             }
         }
+
+        if(!hasOppositeConflict && hasOppositeTrade && oppositeCount >= MaxOppositeTradesPerDirection) {
+            hasOppositeConflict = true;
+            conflictReason = "Opposite trade limit reached (" + IntegerToString(oppositeCount) + "/" + IntegerToString(MaxOppositeTradesPerDirection) + ")";
+        }
         
-        // Block only if too close (within 5 pips)
+        // Block if opposite conflict is detected.
         if(hasOppositeConflict) {
             if(currentTime - lastEntryLogTime < 2) {
                 Print("Entry BLOCKED: ", conflictReason);
@@ -2519,16 +2610,61 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
             continue;
         }
         
-        // If opposite trade exists but is > 5 pips away, mark as opposite entry (will use 5 pip TP)
+        // If opposite trade exists but is far enough, mark as opposite entry (quick TP/SL profile).
         bool isOppositeEntry = hasOppositeTrade;
         if(isOppositeEntry) {
-            Print("*** OPPOSITE TRADE DETECTED - Will use 5 pip TP for quick exit ***");
+            if(DisableOppositeEntriesLive) {
+                if(currentTime - lastEntryLogTime < 2) {
+                    Print("Entry BLOCKED: Opposite entries disabled by live safety switch");
+                }
+                continue;
+            }
+            if(!AllowOppositeTrades) {
+                if(currentTime - lastEntryLogTime < 2) {
+                    Print("Entry BLOCKED: Opposite entries disabled");
+                }
+                continue;
+            }
+
+            if(OppositeOnlyHighProbability && !isHighProbability) {
+                if(currentTime - lastEntryLogTime < 2) {
+                    Print("Entry BLOCKED: Opposite entry requires high-probability setup");
+                }
+                continue;
+            }
+
+            if(zones[i].totalConfluence < MinConfluenceForOpposite) {
+                if(currentTime - lastEntryLogTime < 2) {
+                    Print("Entry BLOCKED: Opposite entry confluence too low (", zones[i].totalConfluence, " < ", MinConfluenceForOpposite, ")");
+                }
+                continue;
+            }
+
+            bool oppositeAgainstTrend = false;
+            if(TradeWithTrendOnly) {
+                if(UseRangeTrading && currentRange.hasBuyZone && currentRange.hasSellZone) {
+                    if(zones[i].isBullish && currentRange.trendDirection != 1) oppositeAgainstTrend = true;
+                    if(!zones[i].isBullish && currentRange.trendDirection != -1) oppositeAgainstTrend = true;
+                } else if(UseMarketStructure) {
+                    if(zones[i].isBullish && marketStruct.trend != 1) oppositeAgainstTrend = true;
+                    if(!zones[i].isBullish && marketStruct.trend != -1) oppositeAgainstTrend = true;
+                }
+            }
+            if(oppositeAgainstTrend) {
+                if(currentTime - lastEntryLogTime < 2) {
+                    Print("Entry BLOCKED: Opposite entry against active trend filter");
+                }
+                continue;
+            }
+
+            Print("*** OPPOSITE TRADE DETECTED - quick profile TP=", DoubleToString(MathMax(10.0, OppositeTradeTP_Pips), 1),
+                  " pips SL=", DoubleToString(MathMin(10.0, MathMax(5.0, OppositeTradeSL_Pips)), 1), " pips ***");
         }
         
         // Check total risk before opening new trade
         double accountValue = UseEquity ? account.Equity() : account.Balance();
         double currentTotalRisk = CalculateTotalRisk();
-        double newTradeRisk = RiskPerTrade;
+        double newTradeRisk = EffectiveEntryRiskPct(isOppositeEntry);
         double totalRiskAfter = currentTotalRisk + newTradeRisk;
         
         if(totalRiskAfter > MaxTotalRisk) {
@@ -2543,7 +2679,7 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
         
         // Check if we can enter more trades in this zone
         if(AllowMultipleTradesInZone) {
-            if(tradesInZone >= MaxTradesPerZone) {
+            if(tradesInZone >= effectiveMaxTradesPerZone) {
                 continue; // Already have max trades in this zone
             }
             
@@ -2566,7 +2702,7 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
         
         // Check total position limits
         if(zones[i].isBullish) {
-            if(buyPositions >= MaxTradesPerZone) continue; // Limit to MaxTradesPerZone
+            if(buyPositions >= effectiveMaxTradesPerZone) continue; // Limit to max
             
             // Enter single trade (not layered for quick scalps)
             // Pass isOppositeEntry flag - if true, will use 5 pip TP
@@ -2588,7 +2724,7 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
             Print("*** ENTRY: BUY at ", currentPrice, " | Zone: ", zones[i].bottom, "-", zones[i].top,
                   " | Confluence: ", zones[i].totalConfluence, " factors | Risk: ", RiskPerTrade, "% | Equity: ", accountValue, " ***");
         } else {
-            if(sellPositions >= MaxTradesPerZone) continue; // Limit to MaxTradesPerZone
+            if(sellPositions >= effectiveMaxTradesPerZone) continue; // Limit to max
             
             // Pass isOppositeEntry flag - if true, will use 5 pip TP
             OpenSellOrder(zones[i], isOppositeEntry);
@@ -2610,7 +2746,8 @@ void CheckConfluenceEntries(ConfluenceZone &zones[]) {
                   " | Confluence: ", zones[i].totalConfluence, " factors | Risk: ", RiskPerTrade, "% | Equity: ", accountValue, " ***");
         }
         
-        // Don't break - allow multiple zones to be checked
+        // Keep one entry decision per scan cycle to avoid burst overtrading.
+        break;
     }
 }
 
@@ -2623,6 +2760,7 @@ int CountTradesInZone(ConfluenceZone &zone) {
         if(!position.SelectByIndex(i)) continue;
         if(position.Symbol() != _Symbol) continue;
         if(position.Magic() != MagicNumber) continue;
+        if(IsLegacyPositionForEntry()) continue;
         
         double openPrice = position.PriceOpen();
         if(openPrice >= zone.bottom && openPrice <= zone.top) {
@@ -2644,6 +2782,7 @@ double CalculateTotalRisk() {
         if(!position.SelectByIndex(i)) continue;
         if(position.Symbol() != _Symbol) continue;
         if(position.Magic() != MagicNumber) continue;
+        if(IsLegacyPositionForEntry()) continue;
         
         double openPrice = position.PriceOpen();
         double sl = position.StopLoss();
@@ -2675,7 +2814,8 @@ void OpenLayeredBuy(ConfluenceZone &zone) {
     
     // Use equity and RiskPerTrade (1% per trade)
     double accountValue = UseEquity ? account.Equity() : account.Balance();
-    double riskAmount = accountValue * (RiskPerTrade / 100.0);
+    double effectiveRiskPct = MathMin(RiskPerTrade, 1.0);
+    double riskAmount = accountValue * (effectiveRiskPct / 100.0);
     
     // Calculate dynamic SL based on confluence
     double zoneSize = zone.top - zone.bottom;
@@ -2728,7 +2868,8 @@ void OpenLayeredSell(ConfluenceZone &zone) {
     
     // Use equity and RiskPerTrade (1% per trade)
     double accountValue = UseEquity ? account.Equity() : account.Balance();
-    double riskAmount = accountValue * (RiskPerTrade / 100.0);
+    double effectiveRiskPct = MathMin(RiskPerTrade, 1.0);
+    double riskAmount = accountValue * (effectiveRiskPct / 100.0);
     
     // Calculate dynamic SL based on confluence
     double zoneSize = zone.top - zone.bottom;
@@ -2788,24 +2929,38 @@ void OpenBuyOrder(ConfluenceZone &zone, bool isOppositeEntry = false) {
     Print("Base SL: ", SL_Pips, " pips | SL: ", slDistancePips, " pips");
     if(SL_OutsideZone) Print("SL placed outside zone (zone size: ", zoneSize / pipValue, " pips)");
     
+    double oppositeTPPips = OppositeTradeTP_Pips;
+    double oppositeSLPips = OppositeTradeSL_Pips;
+
+    // For opposite trades, hard-cap TP/SL so chart-level stale inputs cannot explode risk.
+    if(isOppositeEntry) {
+        oppositeTPPips = MathMax(10.0, OppositeTradeTP_Pips);
+        oppositeSLPips = MathMin(10.0, MathMax(5.0, OppositeTradeSL_Pips));
+    }
+
     // For opposite trades, cap SL to avoid oversized risk
     if(isOppositeEntry) {
-        slDistancePoints = OppositeTradeSL_Pips * pipValue;
-        slDistancePips = OppositeTradeSL_Pips;
+        slDistancePoints = oppositeSLPips * pipValue;
+        slDistancePips = oppositeSLPips;
     }
     double sl = entryPrice - slDistancePoints; // SL calculated from entry price
     
     // If opposite entry, use 5 pip TP for quick exit
     double tp = 0;
     if(isOppositeEntry) {
-        tp = entryPrice + (OppositeTradeTP_Pips * pipValue);
+        tp = entryPrice + (oppositeTPPips * pipValue);
         Print("*** OPPOSITE TRADE: Using quick TP and capped SL ***");
     }
     // Otherwise: No TP - managed manually via TP1, TP2, TP3, TP4 system
     
     // Use equity and RiskPerTrade - position size auto-adjusts based on SL distance
     double accountValue = UseEquity ? account.Equity() : account.Balance();
-    double riskAmount = accountValue * (RiskPerTrade / 100.0);
+    double effectiveRiskPct = MathMin(RiskPerTrade, 1.0);
+    if(isOppositeEntry) {
+        double riskMul = MathMax(0.1, MathMin(1.0, OppositeRiskMultiplier));
+        effectiveRiskPct *= riskMul;
+    }
+    double riskAmount = accountValue * (effectiveRiskPct / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
     double lotSize = CalculateLotSize(riskAmount, slDistance); // Auto-adjusts for bigger SL
     
@@ -2839,9 +2994,10 @@ void OpenBuyOrder(ConfluenceZone &zone, bool isOppositeEntry = false) {
         Print("*** BUY ORDER OPENED ***");
         if(isOppositeEntry) Print("*** OPPOSITE TRADE - quick TP set ***");
         Print("Entry: ", entryPrice, " | SL: ", sl, " | TP: ", (tp > 0 ? DoubleToString(tp, symbolDigits) : "Manual"));
-        Print("SL Distance: ", actualSLDistancePoints, " points = ", actualSLDistancePips, " pips (Expected: ", SL_Pips, " pips)");
+        double expectedSLPips = isOppositeEntry ? oppositeSLPips : SL_Pips;
+        Print("SL Distance: ", actualSLDistancePoints, " points = ", actualSLDistancePips, " pips (Expected: ", expectedSLPips, " pips)");
         if(tp > 0) Print("TP Distance: ", (tp - entryPrice) / pipValue, " pips");
-        Print("Lots: ", lotSize, " | Risk: ", RiskPerTrade, "% | Margin: $", totalMargin);
+        Print("Lots: ", lotSize, " | Risk: ", effectiveRiskPct, "% | Margin: $", totalMargin);
         Print("Confluence: ", zone.totalConfluence, " factors");
     } else {
         Print("ERROR: BUY order failed. Error: ", trade.ResultRetcodeDescription());
@@ -2865,24 +3021,38 @@ void OpenSellOrder(ConfluenceZone &zone, bool isOppositeEntry = false) {
     Print("Base SL: ", SL_Pips, " pips | SL: ", slDistancePips, " pips");
     if(SL_OutsideZone) Print("SL placed outside zone (zone size: ", zoneSize / pipValue, " pips)");
     
+    double oppositeTPPips = OppositeTradeTP_Pips;
+    double oppositeSLPips = OppositeTradeSL_Pips;
+
+    // For opposite trades, hard-cap TP/SL so chart-level stale inputs cannot explode risk.
+    if(isOppositeEntry) {
+        oppositeTPPips = MathMax(10.0, OppositeTradeTP_Pips);
+        oppositeSLPips = MathMin(10.0, MathMax(5.0, OppositeTradeSL_Pips));
+    }
+
     // For opposite trades, cap SL to avoid oversized risk
     if(isOppositeEntry) {
-        slDistancePoints = OppositeTradeSL_Pips * pipValue;
-        slDistancePips = OppositeTradeSL_Pips;
+        slDistancePoints = oppositeSLPips * pipValue;
+        slDistancePips = oppositeSLPips;
     }
     double sl = entryPrice + slDistancePoints; // SL calculated from entry price
     
     // If opposite entry, use 5 pip TP for quick exit
     double tp = 0;
     if(isOppositeEntry) {
-        tp = entryPrice - (OppositeTradeTP_Pips * pipValue);
+        tp = entryPrice - (oppositeTPPips * pipValue);
         Print("*** OPPOSITE TRADE: Using quick TP and capped SL ***");
     }
     // Otherwise: No TP - managed manually via TP1, TP2, TP3, TP4 system
     
     // Use equity and RiskPerTrade - position size auto-adjusts based on SL distance
     double accountValue = UseEquity ? account.Equity() : account.Balance();
-    double riskAmount = accountValue * (RiskPerTrade / 100.0);
+    double effectiveRiskPct = MathMin(RiskPerTrade, 1.0);
+    if(isOppositeEntry) {
+        double riskMul = MathMax(0.1, MathMin(1.0, OppositeRiskMultiplier));
+        effectiveRiskPct *= riskMul;
+    }
+    double riskAmount = accountValue * (effectiveRiskPct / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
     double lotSize = CalculateLotSize(riskAmount, slDistance); // Auto-adjusts for bigger SL
     
@@ -2916,9 +3086,10 @@ void OpenSellOrder(ConfluenceZone &zone, bool isOppositeEntry = false) {
         Print("*** SELL ORDER OPENED ***");
         if(isOppositeEntry) Print("*** OPPOSITE TRADE - quick TP set ***");
         Print("Entry: ", entryPrice, " | SL: ", sl, " | TP: ", (tp > 0 ? DoubleToString(tp, symbolDigits) : "Manual"));
-        Print("SL Distance: ", actualSLDistancePoints, " points = ", actualSLDistancePips, " pips (Expected: ", SL_Pips, " pips)");
+        double expectedSLPips = isOppositeEntry ? oppositeSLPips : SL_Pips;
+        Print("SL Distance: ", actualSLDistancePoints, " points = ", actualSLDistancePips, " pips (Expected: ", expectedSLPips, " pips)");
         if(tp > 0) Print("TP Distance: ", (entryPrice - tp) / pipValue, " pips");
-        Print("Lots: ", lotSize, " | Risk: ", RiskPerTrade, "% | Margin: $", totalMargin);
+        Print("Lots: ", lotSize, " | Risk: ", effectiveRiskPct, "% | Margin: $", totalMargin);
         Print("Confluence: ", zone.totalConfluence, " factors");
     } else {
         Print("ERROR: SELL order failed. Error: ", trade.ResultRetcodeDescription());
@@ -2935,7 +3106,7 @@ double CalculateDynamicSL(double baseSLPips, int confluence, double zoneSize) {
     
     // Calculate SL: base + (confluence - 1) * perConfluence
     // More confluence = bigger SL to avoid wicks
-    double dynamicSLPips = baseSLPips + ((confluence - 1) * SL_PerConfluence);
+    double dynamicSLPips = baseSLPips + ((confluence - 1) * EffectiveSLPerConfluence());
     
     // Add zone size if we want SL outside zone
     if(SL_OutsideZone && zoneSize > 0) {
@@ -2944,8 +3115,8 @@ double CalculateDynamicSL(double baseSLPips, int confluence, double zoneSize) {
     }
     
     // Cap at maximum
-    if(dynamicSLPips > SL_MaxPips) {
-        dynamicSLPips = SL_MaxPips;
+    if(dynamicSLPips > EffectiveSLMaxPips()) {
+        dynamicSLPips = EffectiveSLMaxPips();
     }
     
     return dynamicSLPips * pipValue; // Convert to points
@@ -3027,6 +3198,61 @@ double CalculateLotSize(double riskAmount, double slDistance) {
 //+------------------------------------------------------------------+
 //| Count Positions                                                  |
 //+------------------------------------------------------------------+
+int DayKeyFromTime(datetime t) {
+    MqlDateTime dt;
+    TimeToStruct(t, dt);
+    return dt.year * 10000 + dt.mon * 100 + dt.day;
+}
+
+bool IsLegacyPositionForEntry() {
+    if(!IgnoreLegacyPositionsForNewEntries) return false;
+    datetime posTime = position.Time();
+    if(posTime <= 0) return false;
+    return DayKeyFromTime(posTime) < DayKeyFromTime(TimeCurrent());
+}
+
+double GetMinStopDistancePrice() {
+    int stopsLevel = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+    int freezeLevel = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+    int minLevelPoints = MathMax(stopsLevel, freezeLevel);
+    return (minLevelPoints + 1) * _Point;
+}
+
+bool CanMoveSLToPriceNow(ENUM_POSITION_TYPE posType, double targetSL) {
+    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+    double minStopDistance = GetMinStopDistancePrice();
+    if(posType == POSITION_TYPE_BUY) {
+        return targetSL <= (bid - minStopDistance);
+    }
+    return targetSL >= (ask + minStopDistance);
+}
+
+bool TryMoveToBreakEven(ulong ticket, ENUM_POSITION_TYPE posType, double entryPrice, double currentSL, string reason) {
+    double targetSL = NormalizeDouble(entryPrice, symbolDigits);
+    bool needToModify = false;
+    if(posType == POSITION_TYPE_BUY) {
+        if(targetSL > currentSL || currentSL == 0) needToModify = true;
+    } else {
+        if(currentSL == 0 || targetSL < currentSL) needToModify = true;
+    }
+    if(!needToModify) return false;
+
+    if(!CanMoveSLToPriceNow(posType, targetSL)) {
+        Print("BE deferred (", reason, ") | Ticket #", ticket, " | target SL ", targetSL, " not valid at current price.");
+        return false;
+    }
+
+    if(trade.PositionModify(ticket, targetSL, 0)) {
+        Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_BE_SET]" : "[SELL_BE_SET]"),
+              " MOVED TO BE (", reason, ") | Ticket #", ticket, " | SL: ", targetSL, " ***");
+        return true;
+    }
+
+    Print("ERROR: Failed BE move (", reason, ") | Ticket #", ticket, " | ", trade.ResultRetcodeDescription());
+    return false;
+}
+
 int CountPositions(ENUM_POSITION_TYPE type) {
     int count = 0;
     for(int i = PositionsTotal() - 1; i >= 0; i--) {
@@ -3034,6 +3260,7 @@ int CountPositions(ENUM_POSITION_TYPE type) {
             if(position.Symbol() == _Symbol && 
                position.Magic() == MagicNumber &&
                position.Type() == type) {
+                if(IsLegacyPositionForEntry()) continue;
                 count++;
             }
         }
@@ -3048,7 +3275,10 @@ void ManagePositions() {
     for(int i = PositionsTotal() - 1; i >= 0; i--) {
         if(!position.SelectByIndex(i)) continue;
         if(position.Symbol() != _Symbol) continue;
-        if(position.Magic() != MagicNumber) continue;
+        bool magicOk = (MagicNumber != 0 && position.Magic() == MagicNumber);
+        string posCommentFilter = position.Comment();
+        bool commentOk = (StringFind(posCommentFilter, "GoldmineEdge") >= 0 || StringFind(posCommentFilter, "EDGE") >= 0);
+        if(!magicOk && !commentOk) continue;
         
         ulong ticket = position.Ticket();
         
@@ -3072,26 +3302,48 @@ void ManagePositions() {
         } else {
             currentProfitPips = (openPrice - currentPrice) / pipValue;
         }
+        int ticketIndex = (int)(ticket % 10000);
+        if(ticketIndex >= 0 && ticketIndex < ArraySize(forcedPositionType) && forcedPositionType[ticketIndex] >= 0) {
+            posType = (ENUM_POSITION_TYPE)forcedPositionType[ticketIndex];
+            currentPrice = (posType == POSITION_TYPE_BUY) ? currentBID : currentASK;
+            currentProfitPips = (posType == POSITION_TYPE_BUY)
+                ? (currentPrice - openPrice) / pipValue
+                : (openPrice - currentPrice) / pipValue;
+        }
         
         // Auto-correct position type if MT5 reports wrong type (e.g. SELL shown as BUY after broker/MT issue)
+        double mt5ProfitUSD = position.Profit() + position.Swap() + position.Commission();
         const double GOLD_PIP = 0.1;
         double profitIfBuy  = (currentBID - openPrice) / GOLD_PIP;
         double profitIfSell = (openPrice - currentASK) / GOLD_PIP;
-        const double TYPE_CORRECT_PIP_THRESH = 5.0;
-        if(posType == POSITION_TYPE_BUY && profitIfBuy < -TYPE_CORRECT_PIP_THRESH && profitIfSell > TYPE_CORRECT_PIP_THRESH) {
+        const double TYPE_CORRECT_PIP_THRESH = 120.0;
+        const double TYPE_CORRECT_USD_THRESH = 1.0;
+        int correctedType = -1;
+        bool flipBuyToSell = (posType == POSITION_TYPE_BUY &&
+                              (
+                                (mt5ProfitUSD > TYPE_CORRECT_USD_THRESH && profitIfBuy <= -TYPE_CORRECT_PIP_THRESH && profitIfSell >= TYPE_CORRECT_PIP_THRESH) ||
+                                (mt5ProfitUSD < -TYPE_CORRECT_USD_THRESH && profitIfBuy >= TYPE_CORRECT_PIP_THRESH && profitIfSell <= -TYPE_CORRECT_PIP_THRESH)
+                              ));
+        bool flipSellToBuy = (posType == POSITION_TYPE_SELL &&
+                              (
+                                (mt5ProfitUSD > TYPE_CORRECT_USD_THRESH && profitIfSell <= -TYPE_CORRECT_PIP_THRESH && profitIfBuy >= TYPE_CORRECT_PIP_THRESH) ||
+                                (mt5ProfitUSD < -TYPE_CORRECT_USD_THRESH && profitIfSell >= TYPE_CORRECT_PIP_THRESH && profitIfBuy <= -TYPE_CORRECT_PIP_THRESH)
+                              ));
+        if(flipBuyToSell) {
             posType = POSITION_TYPE_SELL;
+            correctedType = POSITION_TYPE_SELL;
+            if(ticketIndex < ArraySize(forcedPositionType)) forcedPositionType[ticketIndex] = POSITION_TYPE_SELL;
             currentProfitPips = profitIfSell;
             currentPrice = currentASK;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported BUY but price below entry (SELL in profit ", DoubleToString(currentProfitPips, 1), " pips) - treating as SELL ***");
-        } else if(posType == POSITION_TYPE_SELL && profitIfSell < -TYPE_CORRECT_PIP_THRESH && profitIfBuy > TYPE_CORRECT_PIP_THRESH) {
+            Print("*** [SELL_TYPE_CORRECT] TYPE AUTO-CORRECT: #", ticket, " BUY->SELL (", DoubleToString(currentProfitPips, 1), " pips, mt5Profit=", DoubleToString(mt5ProfitUSD, 2), ") ***");
+        } else if(flipSellToBuy) {
             posType = POSITION_TYPE_BUY;
+            correctedType = POSITION_TYPE_BUY;
+            if(ticketIndex < ArraySize(forcedPositionType)) forcedPositionType[ticketIndex] = POSITION_TYPE_BUY;
             currentProfitPips = profitIfBuy;
             currentPrice = currentBID;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported SELL but price above entry (BUY in profit) - treating as BUY ***");
+            Print("*** [BUY_TYPE_CORRECT] TYPE AUTO-CORRECT: #", ticket, " SELL->BUY (", DoubleToString(currentProfitPips, 1), " pips, mt5Profit=", DoubleToString(mt5ProfitUSD, 2), ") ***");
         }
-        
-        // Initialize tracking with bounds checking
-        int ticketIndex = (int)(ticket % 10000);
         
         // Ensure arrays are large enough
         if(ticketIndex >= ArraySize(tp1Hit)) {
@@ -3104,6 +3356,7 @@ void ManagePositions() {
             ArrayResize(tp1HitPrice, newSize);
             ArrayResize(partialCloseLevel, newSize);
             ArrayResize(originalVolume, newSize);
+            ArrayResize(forcedPositionType, newSize);
             // Initialize only the NEW elements (from oldSize to newSize)
             for(int j = oldSize; j < newSize; j++) {
                 tp1Hit[j] = false;
@@ -3113,6 +3366,7 @@ void ManagePositions() {
                 tp1HitPrice[j] = 0;
                 partialCloseLevel[j] = 0;
                 originalVolume[j] = 0;
+                forcedPositionType[j] = -1;
             }
         }
         
@@ -3120,6 +3374,16 @@ void ManagePositions() {
         if(ticketIndex < 0 || ticketIndex >= ArraySize(tp1Hit)) {
             Print("ERROR: Invalid ticketIndex: ", ticketIndex, " (Array size: ", ArraySize(tp1Hit), ")");
             continue; // Skip this position
+        }
+        if(correctedType >= 0 && ticketIndex < ArraySize(forcedPositionType)) {
+            forcedPositionType[ticketIndex] = correctedType;
+        }
+        if(ticketIndex < ArraySize(forcedPositionType) && forcedPositionType[ticketIndex] >= 0) {
+            posType = (ENUM_POSITION_TYPE)forcedPositionType[ticketIndex];
+            currentPrice = (posType == POSITION_TYPE_BUY) ? currentBID : currentASK;
+            currentProfitPips = (posType == POSITION_TYPE_BUY)
+                ? (currentPrice - openPrice) / pipValue
+                : (openPrice - currentPrice) / pipValue;
         }
         
         // Store original volume if not already stored (first time seeing this position)
@@ -3136,50 +3400,28 @@ void ManagePositions() {
         bool hasTP4 = (partialCloseLevel[ticketIndex] == 3); // TP4 is active (after TP3)
         
         // STEP 1: Break Even at specified pips profit (EXACT break-even, not above entry)
-        if(!tp1Hit[ticketIndex] && currentProfitPips >= BreakEvenPips && currentProfitPips > 0) {
-            tp1Hit[ticketIndex] = true;
-            
+        if(currentProfitPips >= BreakEvenPips && currentProfitPips > 0) {
+            if(!tp1Hit[ticketIndex]) tp1Hit[ticketIndex] = true;
             if(UseBreakEven) {
-                // Move SL to EXACT break-even (openPrice)
-                double newSL = openPrice;
-                
-                bool needToModify = false;
-                if(posType == POSITION_TYPE_BUY) {
-                    // For BUY: SL is below entry, moving to BE means raising SL
-                    if(newSL > currentSL || currentSL == 0) {
-                        needToModify = true;
+                double beTol = 2.0 * pipValue;
+                bool alreadyBE = (posType == POSITION_TYPE_BUY)
+                    ? (currentSL > 0 && currentSL >= openPrice - beTol)
+                    : (currentSL > 0 && currentSL <= openPrice + beTol);
+                if(!alreadyBE) {
+                    if(!TryMoveToBreakEven(ticket, posType, openPrice, currentSL,
+                                           "profit trigger " + DoubleToString(currentProfitPips, 1) + " pips")) {
+                        Print("DEBUG: BE deferred/unchanged | Type: ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"),
+                              " | Entry: ", openPrice, " | Current SL: ", currentSL, " | Profit: ", currentProfitPips, " pips");
                     }
-                } else {
-                    // For SELL: SL is above entry, moving to BE means lowering SL
-                    // For SELL, we need to check if newSL (entry) is lower than currentSL
-                    if(currentSL == 0) {
-                        needToModify = true; // No SL set, definitely need to set BE
-                    } else if(newSL < currentSL) {
-                        needToModify = true; // Entry is below current SL, can move to BE
-                    } else {
-                        // Current SL is already at or below entry - this shouldn't happen for SELL
-                        Print("WARNING: SELL position SL issue | Entry: ", openPrice, " | Current SL: ", currentSL, " | New SL (BE): ", newSL);
-                    }
-                }
-                
-                if(needToModify) {
-                    Print("DEBUG: Setting BE | Type: ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"),
-                          " | Entry: ", openPrice, " | Current SL: ", currentSL, " | New SL (BE): ", newSL,
-                          " | Profit: ", currentProfitPips, " pips");
-                    if(trade.PositionModify(ticket, newSL, 0)) {
-                        Print("*** BREAK-EVEN SET at ", BreakEvenPips, " pips profit | Ticket #", ticket, " | SL moved to: ", newSL, " (exact entry) ***");
-                    } else {
-                        Print("ERROR: Failed to set break-even. Error: ", trade.ResultRetcodeDescription());
-                        Print("DEBUG: Ticket: ", ticket, " | Entry: ", openPrice, " | Current SL: ", currentSL, " | Attempted SL: ", newSL);
-                    }
-                } else {
-                    Print("DEBUG: BE not needed | Type: ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"),
-                          " | Entry: ", openPrice, " | Current SL: ", currentSL, " | Profit: ", currentProfitPips, " pips");
                 }
             }
         }
         
-        // STEP 2: New TP System - TP1, TP2, TP3, TP4 (only if BE was hit and trade is in profit)
+        // STEP 2: New TP System - TP1, TP2, TP3, TP4. Unlock if TP1 threshold is already reached.
+        if(!tp1Hit[ticketIndex] && currentProfitPips >= TP1_Pips) {
+            tp1Hit[ticketIndex] = true;
+            Print("*** EDGE TP UNLOCK #", ticket, " | Profit=", DoubleToString(currentProfitPips, 1), " pips >= TP1=", TP1_Pips, " ***");
+        }
         if(tp1Hit[ticketIndex] && currentProfitPips > 0 && !hasRunner) {
             // Initialize partial close level tracking
             if(ticketIndex >= ArraySize(partialCloseLevel)) {
@@ -3208,7 +3450,7 @@ void ManagePositions() {
                 if(closeVolume >= minLot && remainingVolume >= minLot) {
                     if(trade.PositionClosePartial(ticket, closeVolume)) {
                         partialCloseLevel[ticketIndex] = 1;
-                        Print("*** TP1 HIT: Closed ", closeVolume, " lots (", TP1_Percent, "% of ", origVol, " lots) at ", TP1_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
+                        Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP1]" : "[SELL_TP1]"), " TP1 HIT: Closed ", closeVolume, " lots (", TP1_Percent, "% of ", origVol, " lots) at ", TP1_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                     }
                 }
             }
@@ -3220,7 +3462,7 @@ void ManagePositions() {
                 if(closeVolume >= minLot && remainingVolume >= minLot) {
                     if(trade.PositionClosePartial(ticket, closeVolume)) {
                         partialCloseLevel[ticketIndex] = 2;
-                        Print("*** TP2 HIT: Closed ", closeVolume, " lots (", TP2_Percent, "% of ", origVol, " lots) at ", TP2_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
+                        Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP2]" : "[SELL_TP2]"), " TP2 HIT: Closed ", closeVolume, " lots (", TP2_Percent, "% of ", origVol, " lots) at ", TP2_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                     }
                 }
             }
@@ -3232,7 +3474,7 @@ void ManagePositions() {
                 if(closeVolume >= minLot && remainingVolume >= minLot) {
                     if(trade.PositionClosePartial(ticket, closeVolume)) {
                         partialCloseLevel[ticketIndex] = 3;
-                        Print("*** TP3 HIT: Closed ", closeVolume, " lots (", TP3_Percent, "% of ", origVol, " lots) at ", TP3_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
+                        Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP3]" : "[SELL_TP3]"), " TP3 HIT: Closed ", closeVolume, " lots (", TP3_Percent, "% of ", origVol, " lots) at ", TP3_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                     }
                 }
             }
@@ -3264,7 +3506,7 @@ void ManagePositions() {
                     
                     if(closeVolume >= minLot && (currentVolume - closeVolume) >= runnerSize) {
                         if(trade.PositionClosePartial(ticket, closeVolume)) {
-                            Print("*** TP4 HIT at 1H S/R: Closed ", closeVolume, " lots (15% of ", origVol, " lots) | Remaining 10% runner: ", (currentVolume - closeVolume), " lots ***");
+                            Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TP4]" : "[SELL_TP4]"), " TP4 HIT at 1H S/R: Closed ", closeVolume, " lots (15% of ", origVol, " lots) | Remaining 10% runner: ", (currentVolume - closeVolume), " lots ***");
                             partialCloseLevel[ticketIndex] = 4; // Mark TP4 as complete, runner active
                         }
                     }
@@ -3292,6 +3534,39 @@ void ManagePositions() {
             }
         }
         
+        // STEP 4b: Trail SL after threshold. Use structure (40 pip buffer), fallback to fixed 80 pip distance.
+        if(UseTrailSL && currentProfitPips >= TrailStartPips && currentProfitPips > 0) {
+            double trailPV = pipValue;
+            double newSL = 0;
+            if(UseStructureTrail) {
+                if(posType == POSITION_TYPE_BUY) {
+                    int sIdx = iLowest(_Symbol, PERIOD_M5, MODE_LOW, StructureTrail_Lookback, 1);
+                    if(sIdx >= 0) {
+                        double swingLow = iLow(_Symbol, PERIOD_M5, sIdx);
+                        if(swingLow > 0) newSL = NormalizeDouble(swingLow - StructureTrail_BufferPips * trailPV, symbolDigits);
+                    }
+                } else {
+                    int sIdx = iHighest(_Symbol, PERIOD_M5, MODE_HIGH, StructureTrail_Lookback, 1);
+                    if(sIdx >= 0) {
+                        double swingHigh = iHigh(_Symbol, PERIOD_M5, sIdx);
+                        if(swingHigh > 0) newSL = NormalizeDouble(swingHigh + StructureTrail_BufferPips * trailPV, symbolDigits);
+                    }
+                }
+            }
+            if(newSL <= 0) {
+                if(posType == POSITION_TYPE_BUY) newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPV, symbolDigits);
+                else newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPV, symbolDigits);
+            }
+            bool improveTrail = (posType == POSITION_TYPE_BUY)
+                ? (newSL > openPrice && newSL < currentPrice && (currentSL == 0 || newSL > currentSL))
+                : (newSL < openPrice && newSL > currentPrice && (currentSL == 0 || newSL < currentSL));
+            if(improveTrail && trade.PositionModify(ticket, newSL, 0)) {
+                Print("*** ", (posType == POSITION_TYPE_BUY ? "[BUY_TRAIL]" : "[SELL_TRAIL]"), " EDGE TRAIL ", (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"), " #", ticket,
+                      " | Profit=", DoubleToString(currentProfitPips, 1), " pips | SL=", DoubleToString(newSL, symbolDigits),
+                      (UseStructureTrail ? " (structure)" : " (distance)"), " ***");
+            }
+        }
+
         // STEP 5: Ensure SL is always set (safety check)
         if(currentSL == 0) {
             double newSL = 0;
@@ -3300,8 +3575,13 @@ void ManagePositions() {
             } else {
                 newSL = openPrice + (SL_Pips * pipValue);
             }
-            trade.PositionModify(ticket, newSL, 0);
-            Print("WARNING: Position #", ticket, " had no SL! Set to: ", newSL);
+            newSL = NormalizeDouble(newSL, symbolDigits);
+            if(CanMoveSLToPriceNow(posType, newSL) && trade.PositionModify(ticket, newSL, 0)) {
+                Print("WARNING: Position #", ticket, " had no SL! Set to: ", newSL);
+            } else {
+                Print("WARNING: Position #", ticket, " has no SL and safe set failed/deferred. Target: ", newSL,
+                      " | ", trade.ResultRetcodeDescription());
+            }
         }
     }
 }
