@@ -261,6 +261,42 @@ h3 {
   color: var(--muted);
 }
 
+.feed-labels {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.feed-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+}
+
+.feed-label-ok {
+  color: #b8ffde;
+  background: rgba(49, 215, 141, 0.16);
+  border-color: rgba(49, 215, 141, 0.4);
+}
+
+.feed-label-warn {
+  color: #ffe4ad;
+  background: rgba(246, 199, 106, 0.16);
+  border-color: rgba(246, 199, 106, 0.4);
+}
+
+.feed-label-bad {
+  color: #ffd0d0;
+  background: rgba(255, 122, 122, 0.16);
+  border-color: rgba(255, 122, 122, 0.45);
+}
+
 .table-wrap {
   margin-top: 18px;
   overflow-x: auto;

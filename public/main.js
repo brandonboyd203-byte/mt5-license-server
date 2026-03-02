@@ -183,6 +183,16 @@
     }
   }
 
+  function setFeedHealth(id, state, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('feed-label-ok', 'feed-label-warn', 'feed-label-bad');
+    if (state === 'ok') el.classList.add('feed-label-ok');
+    else if (state === 'bad') el.classList.add('feed-label-bad');
+    else el.classList.add('feed-label-warn');
+    el.textContent = text;
+  }
+
   function renderLiveRows(targetEl, rows, emptyText = 'No live profiles yet.') {
     if (!targetEl) return;
     const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
@@ -231,6 +241,9 @@
       if (!respVps.ok || !vps.ok) throw new Error(vps.message || 'VPS live feed unavailable');
       if (!respVds.ok || !vds.ok) throw new Error(vds.message || 'VDS live feed unavailable');
 
+      setFeedHealth('vpsHealthLabel', vps.stale ? 'warn' : 'ok', `VPS: ${vps.stale ? 'STALE' : 'LIVE'} • ${vps.summary?.profilesTotal ?? 0} profiles`);
+      setFeedHealth('vdsHealthLabel', vds.stale ? 'warn' : 'ok', `VDS: ${vds.stale ? 'STALE' : 'LIVE'} • ${vds.summary?.profilesTotal ?? 0} profiles`);
+
       const summary = vps.summary || {};
       const day = document.getElementById('liveDayNet');
       const week = document.getElementById('liveWeekNet');
@@ -251,6 +264,8 @@
     } catch (error) {
       if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      setFeedHealth('vpsHealthLabel', 'bad', 'VPS: OFFLINE');
+      setFeedHealth('vdsHealthLabel', 'bad', 'VDS: OFFLINE');
       loadLiveCharts();
     }
   }
