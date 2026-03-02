@@ -145,7 +145,7 @@
     });
   }
 
-  async function loadLiveCharts(rows) {
+  async function loadLiveCharts() {
     const t1 = document.getElementById('liveChartTitle1');
     const t2 = document.getElementById('liveChartTitle2');
     const c1 = document.getElementById('liveChartCanvas1');
@@ -154,15 +154,14 @@
     const m2 = document.getElementById('liveChartMeta2');
     if (!c1 || !c2 || !m1 || !m2) return;
 
-    const top = Array.isArray(rows) ? rows.slice(0, 2) : [];
-    const symbols = top.map(resolveLiveSymbol);
-    while (symbols.length < 2) symbols.push(symbols.length === 0 ? 'XAUUSD' : 'XAGUSD');
-    const [s1, s2] = symbols;
+    // Lock to the exact VDS live-feed chart pair/order.
+    const s1 = 'XAUUSD';
+    const s2 = 'XAGUSD';
     if (t1) t1.textContent = `${s1} M5`;
     if (t2) t2.textContent = `${s2} M5`;
 
     try {
-      const q = new URLSearchParams({ symbols: `${s1},${s2}`, limit: '180', source: 'vds' });
+      const q = new URLSearchParams({ symbols: `${s1},${s2}`, limit: '320', source: 'vds' });
       const response = await fetch(`/api/bots/charts?${q.toString()}`);
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.message || 'Live chart feed unavailable');
@@ -248,11 +247,11 @@
       const vdsRows = Array.isArray(vds.profiles) ? vds.profiles : [];
       renderLiveRows(rowsVps, vpsRows, 'No VPS live profiles yet.');
       renderLiveRows(rowsVds, vdsRows, 'No VDS live profiles yet.');
-      loadLiveCharts(vdsRows);
+      loadLiveCharts();
     } catch (error) {
       if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
-      loadLiveCharts([]);
+      loadLiveCharts();
     }
   }
 
@@ -300,6 +299,6 @@
   wireCheckout();
 
   if (document.getElementById('liveFeedRowsVps') || document.getElementById('liveFeedRowsVds')) {
-    setInterval(loadLiveFeed, 5000);
+    setInterval(loadLiveFeed, 3000);
   }
 })();
