@@ -214,6 +214,17 @@
     el.textContent = text;
   }
 
+  function inferRiskPct(row) {
+    const direct = Number(row?.riskPct);
+    if (Number.isFinite(direct)) return String(direct);
+    const name = `${row?.profileLabel || ''} ${row?.profile || ''}`.toUpperCase();
+    let m = name.match(/RISK\s*[_-]?(\d{1,2})/);
+    if (m) return m[1];
+    m = name.match(/GOLD[_-]?SILVER(\d{1,2})/);
+    if (m) return m[1];
+    return '-';
+  }
+
   function renderLiveRows(targetEl, rows, emptyText = 'No live profiles yet.') {
     if (!targetEl) return;
     const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
@@ -232,7 +243,7 @@
           <tr>
             <td>${row.profileLabel || row.profile || '-'}</td>
             <td>${row.account || '-'}</td>
-            <td>${row.riskPct ?? '-'}</td>
+            <td>${inferRiskPct(row)}</td>
             <td>${lev}</td>
             <td>$${Number(row.balance || 0).toFixed(2)}</td>
             <td>$${Number(row.equity || 0).toFixed(2)}</td>
