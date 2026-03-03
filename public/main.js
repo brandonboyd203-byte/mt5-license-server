@@ -309,49 +309,67 @@
   async function loadLiveFeed() {
     const rowsVps = document.getElementById('liveFeedRowsVps');
     const rowsVds = document.getElementById('liveFeedRowsVds');
-    if (!rowsVps && !rowsVds) return;
+    const rowsLegacy = document.getElementById('liveFeedRows');
+    if (!rowsVps && !rowsVds && !rowsLegacy) return;
 
     try {
       const nonce = Date.now();
-      const [respVps, respVds] = await Promise.all([
-        fetch(`/api/bots/live?source=vps&_t=${nonce}`),
-        fetch(`/api/bots/live?source=vds&_t=${nonce}`),
-      ]);
-      const [vps, vds] = await Promise.all([respVps.json(), respVds.json()]);
-      if (!respVps.ok || !vps.ok) throw new Error(vps.message || 'VPS live feed unavailable');
-      if (!respVds.ok || !vds.ok) throw new Error(vds.message || 'VDS live feed unavailable');
+      const isLegacyHome = !!rowsLegacy && !rowsVps && !rowsVds;
+      let vps = null;
+      let vds = null;
 
-      setFeedHealth('vpsHealthLabel', vps.stale ? 'warn' : 'ok', `VPS: ${vps.stale ? 'STALE' : 'LIVE'} • ${vps.summary?.profilesTotal ?? 0} profiles`);
-      setFeedHealth('vdsHealthLabel', vds.stale ? 'warn' : 'ok', `VDS: ${vds.stale ? 'STALE' : 'LIVE'} • ${vds.summary?.profilesTotal ?? 0} profiles`);
+      if (isLegacyHome) {
+        const respVds = await fetch(`/api/bots/live?source=vds&_t=${nonce}`);
+        vds = await respVds.json();
+        if (!respVds.ok || !vds.ok) throw new Error(vds.message || 'VDS live feed unavailable');
+      } else {
+        const [respVps, respVds] = await Promise.all([
+          fetch(`/api/bots/live?source=vps&_t=${nonce}`),
+          fetch(`/api/bots/live?source=vds&_t=${nonce}`),
+        ]);
+        [vps, vds] = await Promise.all([respVps.json(), respVds.json()]);
+        if (!respVps.ok || !vps.ok) throw new Error(vps.message || 'VPS live feed unavailable');
+        if (!respVds.ok || !vds.ok) throw new Error(vds.message || 'VDS live feed unavailable');
+      }
 
-      const vpsSummary = vps.summary || {};
-      const vdsSummary = vds.summary || {};
+      if (!isLegacyHome) {
+        setFeedHealth('vpsHealthLabel', vps.stale ? 'warn' : 'ok', `VPS: ${vps.stale ? 'STALE' : 'LIVE'} • ${vps.summary?.profilesTotal ?? 0} profiles`);
+        setFeedHealth('vdsHealthLabel', vds.stale ? 'warn' : 'ok', `VDS: ${vds.stale ? 'STALE' : 'LIVE'} • ${vds.summary?.profilesTotal ?? 0} profiles`);
+      }
+
+      const vpsSummary = (vps && vps.summary) || {};
+      const vdsSummary = (vds && vds.summary) || {};
       const day = document.getElementById('liveDayNet');
       const week = document.getElementById('liveWeekNet');
       const open = document.getElementById('liveOpenPnl');
       const profiles = document.getElementById('liveProfiles');
       const updated = document.getElementById('liveUpdated');
-      if (day) day.textContent = money(vpsSummary.dayNetUsd);
-      if (week) week.textContent = money(vpsSummary.weekNetUsd);
+      if (day) day.textContent = money(isLegacyHome ? vdsSummary.dayNetUsd : vpsSummary.dayNetUsd);
+      if (week) week.textContent = money(isLegacyHome ? vdsSummary.weekNetUsd : vpsSummary.weekNetUsd);
       if (open) {
         const vdsOpen = Number(vdsSummary.openProfitUsd || 0);
         const rowsOpen = (Array.isArray(vds.profiles) ? vds.profiles : []).reduce((a, r) => a + openPnlValue(r), 0);
         open.textContent = money(Math.abs(vdsOpen) > 0 ? vdsOpen : rowsOpen);
       }
-      if (profiles) profiles.textContent = `${vpsSummary.profilesTotal ?? 0}/${vdsSummary.profilesTotal ?? 0}`;
-      if (updated) updated.textContent = `${fmtTime(vps.generatedAt)} / ${fmtTime(vds.generatedAt)}`;
+      if (profiles) profiles.textContent = isLegacyHome ? `${vdsSummary.profilesTotal ?? 0}` : `${vpsSummary.profilesTotal ?? 0}/${vdsSummary.profilesTotal ?? 0}`;
+      if (updated) updated.textContent = isLegacyHome ? `${fmtTime(vds.generatedAt)}` : `${fmtTime(vps.generatedAt)} / ${fmtTime(vds.generatedAt)}`;
 
-      const vpsRows = Array.isArray(vps.profiles) ? vps.profiles : [];
-      const vdsRows = Array.isArray(vds.profiles) ? vds.profiles : [];
-      renderLiveRows(rowsVps, vpsRows, 'No VPS live profiles yet.');
-      renderLiveRows(rowsVds, vdsRows, 'No VDS live profiles yet.');
-      loadLiveCharts();
+      const vpsRows = (vps && Array.isArray(vps.profiles)) ? vps.profiles : [];
+      const vdsRows = (vds && Array.isArray(vds.profiles)) ? vds.profiles : [];
+      if (isLegacyHome) {
+        renderLiveRows(rowsLegacy, vdsRows, 'No VDS live profiles yet.');
+      } else {
+        renderLiveRows(rowsVps, vpsRows, 'No VPS live profiles yet.');
+        renderLiveRows(rowsVds, vdsRows, 'No VDS live profiles yet.');
+        loadLiveCharts();
+      }
     } catch (error) {
       if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsLegacy) rowsLegacy.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       setFeedHealth('vpsHealthLabel', 'bad', 'VPS: OFFLINE');
       setFeedHealth('vdsHealthLabel', 'bad', 'VDS: OFFLINE');
-      loadLiveCharts();
+      if (!rowsLegacy) loadLiveCharts();
     }
   }
 
