@@ -231,6 +231,26 @@
     return '-';
   }
 
+  function openPnlValue(row) {
+    const openPositions = Number(row?.openPositions || 0);
+    if (openPositions <= 0) return 0;
+    const eq = Number(row?.equity);
+    const bal = Number(row?.balance);
+    const eqDiff = (Number.isFinite(eq) && Number.isFinite(bal)) ? (eq - bal) : null;
+    const rawOpen = Number(row?.openProfit);
+    if (Number.isFinite(rawOpen)) {
+      if (eqDiff == null) return rawOpen;
+      const rawIsZeroish = Math.abs(rawOpen) < 0.01;
+      const eqHasSignal = Math.abs(eqDiff) >= 0.01;
+      const oppositeSign = Math.abs(rawOpen) > 0.01 && eqHasSignal && Math.sign(rawOpen) !== Math.sign(eqDiff);
+      const largeDrift = Math.abs(rawOpen - eqDiff) >= 25;
+      if ((rawIsZeroish && eqHasSignal) || (oppositeSign && largeDrift)) return eqDiff;
+      return rawOpen;
+    }
+    if (eqDiff != null) return eqDiff;
+    return 0;
+  }
+
   function inferCashFlows(row) {
     const dep = Number(row?.depositAmount);
     const wd = Number(row?.withdrawAmount);
@@ -273,7 +293,7 @@
             <td>$${Number(row.dayStartEquity ?? row.dayStartBalance ?? 5000).toFixed(2)}</td>
             <td>$${Number(row.balance || 0).toFixed(2)}</td>
             <td>$${Number(row.equity || 0).toFixed(2)}</td>
-            <td class="${numClass(row.openProfit)}">${money(row.openProfit)}</td>
+            <td class="${numClass(openPnlValue(row))}">${money(openPnlValue(row))}</td>
             <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
             <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
@@ -314,7 +334,7 @@
       if (week) week.textContent = money(vpsSummary.weekNetUsd);
       if (open) {
         const vdsOpen = Number(vdsSummary.openProfitUsd || 0);
-        const rowsOpen = (Array.isArray(vds.profiles) ? vds.profiles : []).reduce((a, r) => a + Number(r?.openProfit || 0), 0);
+        const rowsOpen = (Array.isArray(vds.profiles) ? vds.profiles : []).reduce((a, r) => a + openPnlValue(r), 0);
         open.textContent = money(Math.abs(vdsOpen) > 0 ? vdsOpen : rowsOpen);
       }
       if (profiles) profiles.textContent = `${vpsSummary.profilesTotal ?? 0}/${vdsSummary.profilesTotal ?? 0}`;
