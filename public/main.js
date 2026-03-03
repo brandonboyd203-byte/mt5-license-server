@@ -222,6 +222,12 @@
     if (m) return m[1];
     m = name.match(/GOLD[_-]?SILVER(\d{1,2})/);
     if (m) return m[1];
+    if (name.includes('EDGE')) return '1';
+    if (name.includes('FRESH')) return '2';
+    if (name.includes('SURGE')) return '2';
+    if (name.includes('DOMINION')) return '2';
+    if (name.includes('NEXUS')) return '2';
+    if (name.includes('BLUEPRINT')) return '2';
     return '-';
   }
 
@@ -306,7 +312,11 @@
       const updated = document.getElementById('liveUpdated');
       if (day) day.textContent = money(vpsSummary.dayNetUsd);
       if (week) week.textContent = money(vpsSummary.weekNetUsd);
-      if (open) open.textContent = money(vdsSummary.openProfitUsd);
+      if (open) {
+        const vdsOpen = Number(vdsSummary.openProfitUsd || 0);
+        const rowsOpen = (Array.isArray(vds.profiles) ? vds.profiles : []).reduce((a, r) => a + Number(r?.openProfit || 0), 0);
+        open.textContent = money(Math.abs(vdsOpen) > 0 ? vdsOpen : rowsOpen);
+      }
       if (profiles) profiles.textContent = `${vpsSummary.profilesTotal ?? 0}/${vdsSummary.profilesTotal ?? 0}`;
       if (updated) updated.textContent = `${fmtTime(vps.generatedAt)} / ${fmtTime(vds.generatedAt)}`;
 
