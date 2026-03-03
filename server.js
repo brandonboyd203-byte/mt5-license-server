@@ -192,10 +192,10 @@ function shapeLiveBotPayload(raw, cfg) {
             const balance = n(p.currentBalance, 0);
             const equity = n(p.currentEquity, 0);
             const reportedOpen = Number(p.openProfit);
-            const derivedOpen = equity - balance;
+            const openPositions = n(p.openPositions, 0);
             const openProfit = Number.isFinite(reportedOpen)
-                ? (Math.abs(reportedOpen) > 0 ? reportedOpen : derivedOpen)
-                : derivedOpen;
+                ? (openPositions > 0 ? reportedOpen : 0)
+                : 0;
             return {
                 profile: p.profile,
                 profileLabel: p.profileLabel || p.profile,
@@ -239,7 +239,7 @@ function shapeLiveBotPayload(raw, cfg) {
             weekReturnPct: Number.isFinite(Number(week.returnPct)) ? Number(week.returnPct) : null,
             openProfitUsd: (() => {
                 const reported = Number(summary.totalOpenProfitUsd);
-                if (Number.isFinite(reported) && Math.abs(reported) > 0) return reported;
+                if (Number.isFinite(reported)) return reported;
                 return rows.reduce((a, r) => a + n(r.openProfit, 0), 0);
             })()
         },

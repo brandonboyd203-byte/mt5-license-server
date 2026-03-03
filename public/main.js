@@ -232,23 +232,8 @@
   }
 
   function openPnlValue(row) {
-    const eq = Number(row?.equity);
-    const bal = Number(row?.balance);
-    const eqDiff = (Number.isFinite(eq) && Number.isFinite(bal)) ? (eq - bal) : null;
     const rawOpen = Number(row?.openProfit);
-
-    // Prefer equity-balance when raw open is missing/zero or clearly inconsistent.
-    if (Number.isFinite(rawOpen)) {
-      if (eqDiff == null) return rawOpen;
-      const rawIsZeroish = Math.abs(rawOpen) < 0.01;
-      const eqHasSignal = Math.abs(eqDiff) >= 0.01;
-      const oppositeSign = Math.abs(rawOpen) > 0.01 && eqHasSignal && Math.sign(rawOpen) !== Math.sign(eqDiff);
-      const largeDrift = Math.abs(rawOpen - eqDiff) >= 25;
-      if ((rawIsZeroish && eqHasSignal) || (oppositeSign && largeDrift)) return eqDiff;
-      return rawOpen;
-    }
-
-    if (eqDiff != null) return eqDiff;
+    if (Number.isFinite(rawOpen)) return rawOpen;
     return 0;
   }
 
