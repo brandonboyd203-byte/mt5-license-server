@@ -189,6 +189,13 @@ function shapeLiveBotPayload(raw, cfg) {
             const status = p?.metrics?.status || {};
             const dayNet = dayMetrics.netUsdLive ?? dayMetrics.netUsd;
             const dayRet = dayMetrics.returnPctLive ?? dayMetrics.returnPct;
+            const balance = n(p.currentBalance, 0);
+            const equity = n(p.currentEquity, 0);
+            const reportedOpen = Number(p.openProfit);
+            const derivedOpen = equity - balance;
+            const openProfit = Number.isFinite(reportedOpen)
+                ? (Math.abs(reportedOpen) > 0 ? reportedOpen : derivedOpen)
+                : derivedOpen;
             return {
                 profile: p.profile,
                 profileLabel: p.profileLabel || p.profile,
@@ -200,9 +207,9 @@ function shapeLiveBotPayload(raw, cfg) {
                 withdrawAmount: Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount) : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw) : null),
                 dayStartBalance: Number.isFinite(Number(p.dayStartBalance)) ? Number(p.dayStartBalance) : null,
                 dayStartEquity: Number.isFinite(Number(p.dayStartEquity)) ? Number(p.dayStartEquity) : null,
-                balance: n(p.currentBalance, 0),
-                equity: n(p.currentEquity, 0),
-                openProfit: n(p.openProfit, 0),
+                balance,
+                equity,
+                openProfit,
                 dayNetUsd: n(dayNet, 0),
                 dayReturnPct: Number.isFinite(Number(dayRet)) ? Number(dayRet) : null,
                 weekNetUsd: n(weekMetrics.netUsd, 0),
@@ -230,7 +237,11 @@ function shapeLiveBotPayload(raw, cfg) {
             dayReturnPct: Number.isFinite(Number(day.returnPctLive ?? day.returnPct)) ? Number(day.returnPctLive ?? day.returnPct) : null,
             weekNetUsd: n(week.netUsd, 0),
             weekReturnPct: Number.isFinite(Number(week.returnPct)) ? Number(week.returnPct) : null,
-            openProfitUsd: n(summary.totalOpenProfitUsd, 0)
+            openProfitUsd: (() => {
+                const reported = Number(summary.totalOpenProfitUsd);
+                if (Number.isFinite(reported) && Math.abs(reported) > 0) return reported;
+                return rows.reduce((a, r) => a + n(r.openProfit, 0), 0);
+            })()
         },
         profiles: rows
     };
