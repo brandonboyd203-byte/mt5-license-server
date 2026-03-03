@@ -216,7 +216,7 @@
 
   function inferRiskPct(row) {
     const direct = Number(row?.riskPct);
-    if (Number.isFinite(direct)) return String(direct);
+    if (Number.isFinite(direct) && direct > 0) return String(direct);
     const name = `${row?.profileLabel || ''} ${row?.profile || ''}`.toUpperCase();
     let m = name.match(/RISK\s*[_-]?(\d{1,2})/);
     if (m) return m[1];
@@ -225,11 +225,27 @@
     return '-';
   }
 
+  function inferCashFlows(row) {
+    const dep = Number(row?.depositAmount);
+    const wd = Number(row?.withdrawAmount);
+    if (Number.isFinite(dep) || Number.isFinite(wd)) {
+      return {
+        deposit: Number.isFinite(dep) ? dep : 0,
+        withdraw: Number.isFinite(wd) ? wd : 0,
+      };
+    }
+    const base = Number(row?.dayStartBalance ?? row?.dayStartEquity ?? 5000);
+    return {
+      deposit: base > 5000 ? (base - 5000) : 0,
+      withdraw: base < 5000 ? (5000 - base) : 0,
+    };
+  }
+
   function renderLiveRows(targetEl, rows, emptyText = 'No live profiles yet.') {
     if (!targetEl) return;
     const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
     if (!list.length) {
-      targetEl.innerHTML = `<tr><td colspan="12">${emptyText}</td></tr>`;
+      targetEl.innerHTML = `<tr><td colspan="14">${emptyText}</td></tr>`;
       return;
     }
     targetEl.innerHTML = list
@@ -239,12 +255,15 @@
             ? `~${row.leverage}`
             : row.leverage
           : '-';
+        const flows = inferCashFlows(row);
         return `
           <tr>
             <td>${row.profileLabel || row.profile || '-'}</td>
             <td>${row.account || '-'}</td>
             <td>${inferRiskPct(row)}</td>
             <td>${lev}</td>
+            <td>${money(flows.deposit)}</td>
+            <td>${money(flows.withdraw)}</td>
             <td>$${Number(row.balance || 0).toFixed(2)}</td>
             <td>$${Number(row.equity || 0).toFixed(2)}</td>
             <td class="${numClass(row.openProfit)}">${money(row.openProfit)}</td>
@@ -265,9 +284,10 @@
     if (!rowsVps && !rowsVds) return;
 
     try {
+      const nonce = Date.now();
       const [respVps, respVds] = await Promise.all([
-        fetch('/api/bots/live?source=vps'),
-        fetch('/api/bots/live?source=vds'),
+        fetch(`/api/bots/live?source=vps&_t=${nonce}`),
+        fetch(`/api/bots/live?source=vds&_t=${nonce}`),
       ]);
       const [vps, vds] = await Promise.all([respVps.json(), respVds.json()]);
       if (!respVps.ok || !vps.ok) throw new Error(vps.message || 'VPS live feed unavailable');
@@ -295,8 +315,8 @@
       renderLiveRows(rowsVds, vdsRows, 'No VDS live profiles yet.');
       loadLiveCharts();
     } catch (error) {
-      if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
-      if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="14">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="14">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       setFeedHealth('vpsHealthLabel', 'bad', 'VPS: OFFLINE');
       setFeedHealth('vdsHealthLabel', 'bad', 'VDS: OFFLINE');
       loadLiveCharts();
