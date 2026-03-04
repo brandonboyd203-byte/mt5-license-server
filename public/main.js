@@ -312,7 +312,7 @@
     if (!targetEl) return;
     const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
     if (!list.length) {
-      targetEl.innerHTML = `<tr><td colspan="15">${emptyText}</td></tr>`;
+      targetEl.innerHTML = `<tr><td colspan="17">${emptyText}</td></tr>`;
       return;
     }
     targetEl.innerHTML = list
@@ -338,6 +338,8 @@
             <td>$${Number(row.equity || 0).toFixed(2)}</td>
             <td class="${numClass(openPnlValue(row))}">${money(openPnlValue(row))}</td>
             <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
+            <td class="${numClass(row.totalNetUsd)}">${money(row.totalNetUsd)}</td>
+            <td class="${numClass(row.totalReturnPct)}">${pct(row.totalReturnPct)}</td>
             <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
             <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
@@ -352,7 +354,7 @@
     if (!targetEl) return;
     const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
     if (!list.length) {
-      targetEl.innerHTML = `<tr><td colspan="12">${emptyText}</td></tr>`;
+      targetEl.innerHTML = `<tr><td colspan="14">${emptyText}</td></tr>`;
       return;
     }
     targetEl.innerHTML = list
@@ -372,6 +374,8 @@
             <td>$${Number(row.equity || 0).toFixed(2)}</td>
             <td class="${numClass(openPnlValue(row))}">${money(openPnlValue(row))}</td>
             <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
+            <td class="${numClass(row.totalNetUsd)}">${money(row.totalNetUsd)}</td>
+            <td class="${numClass(row.totalReturnPct)}">${pct(row.totalReturnPct)}</td>
             <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
             <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
@@ -497,10 +501,10 @@
         loadLiveCharts();
       }
     } catch (error) {
-      if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
-      if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
-      if (rowsJordan) rowsJordan.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
-      if (rowsLegacy) rowsLegacy.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="17">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="17">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsJordan) rowsJordan.innerHTML = `<tr><td colspan="17">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsLegacy) rowsLegacy.innerHTML = `<tr><td colspan="14">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       setFeedHealth('vpsHealthLabel', 'bad', 'VPS: OFFLINE');
       setFeedHealth('vdsHealthLabel', 'bad', 'VDS: OFFLINE');
       if (!rowsLegacy) loadLiveCharts();

@@ -177,6 +177,7 @@ function getMotherboardConfig(sourceRaw) {
 
 function shapeLiveBotPayload(raw, cfg) {
     const telemetry = raw?.telemetry || raw || {};
+    const copierFeedRaw = raw?.copierFeed || telemetry?.copierFeed || null;
     const profiles = Array.isArray(telemetry.profiles) ? telemetry.profiles : [];
     const summary = telemetry.summary || {};
     const day = summary.day || {};
@@ -186,6 +187,7 @@ function shapeLiveBotPayload(raw, cfg) {
         .map((p) => {
             const dayMetrics = p?.metrics?.day || {};
             const weekMetrics = p?.metrics?.week || {};
+            const totalMetrics = p?.metrics?.total || {};
             const status = p?.metrics?.status || {};
             const dayNet = dayMetrics.netUsdLive ?? dayMetrics.netUsd;
             const dayRet = dayMetrics.returnPctLive ?? dayMetrics.returnPct;
@@ -205,15 +207,32 @@ function shapeLiveBotPayload(raw, cfg) {
                 leverageSource: p.leverageSource || null,
                 depositAmount: Number.isFinite(Number(p.depositAmount)) ? Number(p.depositAmount) : (Number.isFinite(Number(p.deposit)) ? Number(p.deposit) : null),
                 withdrawAmount: Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount) : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw) : null),
+                accountStartEquity: Number.isFinite(Number(p.accountStartEquity)) ? Number(p.accountStartEquity) : null,
                 dayStartBalance: Number.isFinite(Number(p.dayStartBalance)) ? Number(p.dayStartBalance) : null,
                 dayStartEquity: Number.isFinite(Number(p.dayStartEquity)) ? Number(p.dayStartEquity) : null,
                 balance,
                 equity,
                 openProfit,
+                currentPnlGross: Number.isFinite(Number(p.currentPnlGross)) ? Number(p.currentPnlGross) : null,
+                currentPnlWithOpen: Number.isFinite(Number(p.currentPnlWithOpen)) ? Number(p.currentPnlWithOpen) : null,
                 dayNetUsd: n(dayNet, 0),
                 dayReturnPct: Number.isFinite(Number(dayRet)) ? Number(dayRet) : null,
                 weekNetUsd: n(weekMetrics.netUsd, 0),
                 weekReturnPct: Number.isFinite(Number(weekMetrics.returnPct)) ? Number(weekMetrics.returnPct) : null,
+                totalNetUsd: Number.isFinite(Number(p.totalNetUsd))
+                    ? Number(p.totalNetUsd)
+                    : (Number.isFinite(Number(totalMetrics.netUsd))
+                        ? Number(totalMetrics.netUsd)
+                        : (Number.isFinite(Number(p.currentEquity)) && Number.isFinite(Number(p.accountStartEquity))
+                            ? Number((Number(p.currentEquity) - Number(p.accountStartEquity)).toFixed(2))
+                            : null)),
+                totalReturnPct: Number.isFinite(Number(p.totalReturnPct))
+                    ? Number(p.totalReturnPct)
+                    : (Number.isFinite(Number(totalMetrics.returnPct))
+                        ? Number(totalMetrics.returnPct)
+                        : (Number.isFinite(Number(p.currentEquity)) && Number.isFinite(Number(p.accountStartEquity)) && Number(p.accountStartEquity) > 0
+                            ? Number(((100 * (Number(p.currentEquity) - Number(p.accountStartEquity))) / Number(p.accountStartEquity)).toFixed(2))
+                            : null)),
                 status: status.label || 'UNKNOWN',
                 statusReason: status.reason || '',
                 updatedAt: p.lastActivityAt || p.snapshotAt || p.lastSyncAt || telemetry.generatedAt || null
@@ -243,7 +262,12 @@ function shapeLiveBotPayload(raw, cfg) {
                 return rows.reduce((a, r) => a + n(r.openProfit, 0), 0);
             })()
         },
-        profiles: rows
+        profiles: rows,
+        copierFeed: {
+            generatedAt: copierFeedRaw?.generatedAt || (telemetry.generatedAt || new Date().toISOString()),
+            columns: Array.isArray(copierFeedRaw?.columns) ? copierFeedRaw.columns : [],
+            rows: Array.isArray(copierFeedRaw?.rows) ? copierFeedRaw.rows : []
+        }
     };
 }
 
