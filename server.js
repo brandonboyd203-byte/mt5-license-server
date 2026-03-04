@@ -198,6 +198,18 @@ function shapeLiveBotPayload(raw, cfg) {
             const openProfit = Number.isFinite(reportedOpen)
                 ? (openPositions > 0 ? reportedOpen : 0)
                 : 0;
+            const depositAmount = Number.isFinite(Number(p.depositAmount)) ? Number(p.depositAmount) : (Number.isFinite(Number(p.deposit)) ? Number(p.deposit) : null);
+            const withdrawAmount = Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount) : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw) : null);
+            const accountStartEquity = Number.isFinite(Number(p.accountStartEquity)) ? Number(p.accountStartEquity) : null;
+            const totalBaseline = Number.isFinite(accountStartEquity) && accountStartEquity > 0
+                ? accountStartEquity
+                : (Number.isFinite(depositAmount) && depositAmount > 0 ? depositAmount : null);
+            const totalNetCashflow = (Number.isFinite(totalBaseline) && totalBaseline > 0)
+                ? Number((equity + n(withdrawAmount, 0) - totalBaseline).toFixed(2))
+                : null;
+            const totalPctCashflow = (Number.isFinite(totalBaseline) && totalBaseline > 0 && Number.isFinite(totalNetCashflow))
+                ? Number(((100 * totalNetCashflow) / totalBaseline).toFixed(2))
+                : null;
             return {
                 profile: p.profile,
                 profileLabel: p.profileLabel || p.profile,
@@ -205,9 +217,9 @@ function shapeLiveBotPayload(raw, cfg) {
                 riskPct: p.riskPct ?? null,
                 leverage: p.leverage || null,
                 leverageSource: p.leverageSource || null,
-                depositAmount: Number.isFinite(Number(p.depositAmount)) ? Number(p.depositAmount) : (Number.isFinite(Number(p.deposit)) ? Number(p.deposit) : null),
-                withdrawAmount: Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount) : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw) : null),
-                accountStartEquity: Number.isFinite(Number(p.accountStartEquity)) ? Number(p.accountStartEquity) : null,
+                depositAmount,
+                withdrawAmount,
+                accountStartEquity,
                 dayStartBalance: Number.isFinite(Number(p.dayStartBalance)) ? Number(p.dayStartBalance) : null,
                 dayStartEquity: Number.isFinite(Number(p.dayStartEquity)) ? Number(p.dayStartEquity) : null,
                 balance,
@@ -219,20 +231,24 @@ function shapeLiveBotPayload(raw, cfg) {
                 dayReturnPct: Number.isFinite(Number(dayRet)) ? Number(dayRet) : null,
                 weekNetUsd: n(weekMetrics.netUsd, 0),
                 weekReturnPct: Number.isFinite(Number(weekMetrics.returnPct)) ? Number(weekMetrics.returnPct) : null,
-                totalNetUsd: Number.isFinite(Number(p.totalNetUsd))
+                totalNetUsd: Number.isFinite(totalNetCashflow)
+                    ? totalNetCashflow
+                    : (Number.isFinite(Number(p.totalNetUsd))
                     ? Number(p.totalNetUsd)
                     : (Number.isFinite(Number(totalMetrics.netUsd))
                         ? Number(totalMetrics.netUsd)
                         : (Number.isFinite(Number(p.currentEquity)) && Number.isFinite(Number(p.accountStartEquity))
                             ? Number((Number(p.currentEquity) - Number(p.accountStartEquity)).toFixed(2))
-                            : null)),
-                totalReturnPct: Number.isFinite(Number(p.totalReturnPct))
+                            : null))),
+                totalReturnPct: Number.isFinite(totalPctCashflow)
+                    ? totalPctCashflow
+                    : (Number.isFinite(Number(p.totalReturnPct))
                     ? Number(p.totalReturnPct)
                     : (Number.isFinite(Number(totalMetrics.returnPct))
                         ? Number(totalMetrics.returnPct)
                         : (Number.isFinite(Number(p.currentEquity)) && Number.isFinite(Number(p.accountStartEquity)) && Number(p.accountStartEquity) > 0
                             ? Number(((100 * (Number(p.currentEquity) - Number(p.accountStartEquity))) / Number(p.accountStartEquity)).toFixed(2))
-                            : null)),
+                            : null))),
                 status: status.label || 'UNKNOWN',
                 statusReason: status.reason || '',
                 updatedAt: p.lastActivityAt || p.snapshotAt || p.lastSyncAt || telemetry.generatedAt || null
