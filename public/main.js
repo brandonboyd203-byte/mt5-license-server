@@ -232,9 +232,68 @@
   }
 
   function openPnlValue(row) {
-    const rawOpen = Number(row?.openProfit);
-    if (Number.isFinite(rawOpen)) return rawOpen;
+    const rawOpen = Number(row?.openProfit ?? row?.openPnl ?? row?.openProfitUsd);
+    const bal = Number(row?.balance);
+    const eq = Number(row?.equity);
+    const eqDiff = Number.isFinite(eq) && Number.isFinite(bal) ? (eq - bal) : null;
+    if (Number.isFinite(rawOpen)) {
+      if (Number.isFinite(bal) && Math.abs(rawOpen - bal) < 0.01 && Number.isFinite(eqDiff)) return eqDiff;
+      if (Number.isFinite(eqDiff) && Math.abs(rawOpen) > 0 && Math.abs(rawOpen - eqDiff) > 50) return eqDiff;
+      return rawOpen;
+    }
+    if (Number.isFinite(eqDiff)) return eqDiff;
     return 0;
+  }
+
+  function profileName(row) {
+    return String(row?.profileLabel || row?.profile || '').trim();
+  }
+
+  function isBaseOrPresetRow(row) {
+    const name = profileName(row).toUpperCase();
+    return (
+      name === 'BASE'
+      || name === 'PRESETS'
+      || name === 'UNKNOWN:BASE'
+      || name === 'UNKNOWN:PRESETS'
+      || name.endsWith(':BASE')
+      || name.endsWith(':PRESETS')
+    );
+  }
+
+  function isJordanRow(row) {
+    const name = profileName(row).toUpperCase();
+    const client = String(row?.client || '').toUpperCase();
+    return name.includes('JORDAN') || client.includes('JORDAN');
+  }
+
+  function botGroupRank(row) {
+    const name = profileName(row).toUpperCase();
+    if (name.includes('BLUEPRINT')) return 0;
+    if (name.includes('NEXUS')) return 1;
+    if (name.includes('FRESH')) return 2;
+    if (name.includes('DOMINION')) return 3;
+    if (name.includes('EDGE')) return 4;
+    if (name.includes('SURGE')) return 5;
+    return 9;
+  }
+
+  function sortRowsByBotOrder(rows) {
+    return (Array.isArray(rows) ? rows : [])
+      .slice()
+      .sort((a, b) => {
+        const ga = botGroupRank(a);
+        const gb = botGroupRank(b);
+        if (ga !== gb) return ga - gb;
+        return profileName(a).localeCompare(profileName(b));
+      });
+  }
+
+  function prepareRows(rows) {
+    const filtered = (Array.isArray(rows) ? rows : []).filter((r) => !isBaseOrPresetRow(r));
+    const jordan = sortRowsByBotOrder(filtered.filter((r) => isJordanRow(r)));
+    const main = sortRowsByBotOrder(filtered.filter((r) => !isJordanRow(r)));
+    return { main, jordan };
   }
 
   function inferCashFlows(row) {
@@ -246,11 +305,7 @@
         withdraw: Number.isFinite(wd) ? wd : 0,
       };
     }
-    const base = Number(row?.dayStartBalance ?? row?.dayStartEquity ?? 5000);
-    return {
-      deposit: base > 5000 ? (base - 5000) : 0,
-      withdraw: base < 5000 ? (5000 - base) : 0,
-    };
+    return { deposit: 0, withdraw: 0 };
   }
 
   function renderLiveRows(targetEl, rows, emptyText = 'No live profiles yet.') {
@@ -276,7 +331,9 @@
             <td>${lev}</td>
             <td>${money(flows.deposit)}</td>
             <td>${money(flows.withdraw)}</td>
-            <td>$${Number(row.dayStartEquity ?? row.dayStartBalance ?? 5000).toFixed(2)}</td>
+            <td>${Number.isFinite(Number(row?.dayStartEquity ?? row?.dayStartBalance))
+              ? `$${Number(row.dayStartEquity ?? row.dayStartBalance).toFixed(2)}`
+              : '-'}</td>
             <td>$${Number(row.balance || 0).toFixed(2)}</td>
             <td>$${Number(row.equity || 0).toFixed(2)}</td>
             <td class="${numClass(openPnlValue(row))}">${money(openPnlValue(row))}</td>
@@ -291,9 +348,97 @@
       .join('');
   }
 
+  function renderLegacyHomeRows(targetEl, rows, emptyText = 'No live profiles yet.') {
+    if (!targetEl) return;
+    const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
+    if (!list.length) {
+      targetEl.innerHTML = `<tr><td colspan="12">${emptyText}</td></tr>`;
+      return;
+    }
+    targetEl.innerHTML = list
+      .map((row) => {
+        const lev = row.leverage
+          ? row.leverageSource === 'equity-tier-estimate'
+            ? `~${row.leverage}`
+            : row.leverage
+          : '-';
+        return `
+          <tr>
+            <td>${row.profileLabel || row.profile || '-'}</td>
+            <td>${row.account || '-'}</td>
+            <td>${inferRiskPct(row)}</td>
+            <td>${lev}</td>
+            <td>$${Number(row.balance || 0).toFixed(2)}</td>
+            <td>$${Number(row.equity || 0).toFixed(2)}</td>
+            <td class="${numClass(openPnlValue(row))}">${money(openPnlValue(row))}</td>
+            <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
+            <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
+            <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
+            <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
+            <td title="${row.statusReason || ''}">${row.status || '-'}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  function renderCopierRows(targetEl, rows, emptyText = 'No copier accounts live yet.') {
+    if (!targetEl) return;
+    const list = Array.isArray(rows) ? rows.slice(0, 50) : [];
+    if (!list.length) {
+      targetEl.innerHTML = `<tr><td colspan="18">${emptyText}</td></tr>`;
+      return;
+    }
+    targetEl.innerHTML = list
+      .map((row) => {
+        const lev = row.leverage || '-';
+        return `
+          <tr>
+            <td>${row.profileLabel || row.profile || '-'}</td>
+            <td>${row.account || '-'}</td>
+            <td>${row.client || '-'}</td>
+            <td>${row.botName || '-'}</td>
+            <td>${Number.isFinite(Number(row.riskPct)) ? Number(row.riskPct).toFixed(2) : '-'}</td>
+            <td>${lev}</td>
+            <td>${money(row.depositAmount)}</td>
+            <td>${money(row.withdrawAmount)}</td>
+            <td>${Number.isFinite(Number(row?.dayStartEquity))
+              ? `$${Number(row.dayStartEquity).toFixed(2)}`
+              : '-'}</td>
+            <td>$${Number(row.balance || 0).toFixed(2)}</td>
+            <td>$${Number(row.equity || 0).toFixed(2)}</td>
+            <td class="${numClass(row.openProfit)}">${money(row.openProfit)}</td>
+            <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
+            <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
+            <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
+            <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
+            <td>${row.status || '-'}</td>
+            <td>${fmtTime(row.updatedAt)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  async function loadCopierFeedSection() {
+    const rows = document.getElementById('liveCopierFeedRows');
+    if (!rows) return;
+    try {
+      const nonce = Date.now();
+      const resp = await fetch(`/api/bots/live?source=vds&_t=${nonce}`);
+      const payload = await resp.json();
+      if (!resp.ok || !payload.ok) throw new Error(payload.message || 'copier feed unavailable');
+      const feedRows = Array.isArray(payload?.copierFeed?.rows) ? payload.copierFeed.rows : [];
+      renderCopierRows(rows, feedRows, 'No copier accounts configured yet.');
+    } catch (error) {
+      rows.innerHTML = `<tr><td colspan="18">Copier feed error: ${error.message || 'unavailable'}</td></tr>`;
+    }
+  }
+
   async function loadLiveFeed() {
     const rowsVps = document.getElementById('liveFeedRowsVps');
     const rowsVds = document.getElementById('liveFeedRowsVds');
+    const rowsJordan = document.getElementById('liveFeedRowsJordan');
     const rowsLegacy = document.getElementById('liveFeedRows');
     if (!rowsVps && !rowsVds && !rowsLegacy) return;
 
@@ -341,16 +486,20 @@
 
       const vpsRows = (vps && Array.isArray(vps.profiles)) ? vps.profiles : [];
       const vdsRows = (vds && Array.isArray(vds.profiles)) ? vds.profiles : [];
+      const preparedVps = prepareRows(vpsRows);
+      const preparedVds = prepareRows(vdsRows);
       if (isLegacyHome) {
-        renderLiveRows(rowsLegacy, vdsRows, 'No VDS live profiles yet.');
+        renderLegacyHomeRows(rowsLegacy, preparedVds.main, 'No VDS live profiles yet.');
       } else {
-        renderLiveRows(rowsVps, vpsRows, 'No VPS live profiles yet.');
-        renderLiveRows(rowsVds, vdsRows, 'No VDS live profiles yet.');
+        renderLiveRows(rowsVps, preparedVps.main, 'No VPS live profiles yet.');
+        renderLiveRows(rowsVds, preparedVds.main, 'No VDS live profiles yet.');
+        renderLiveRows(document.getElementById('liveFeedRowsJordan'), preparedVds.jordan, 'No JORDAN accounts live yet.');
         loadLiveCharts();
       }
     } catch (error) {
       if (rowsVps) rowsVps.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
+      if (rowsJordan) rowsJordan.innerHTML = `<tr><td colspan="15">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       if (rowsLegacy) rowsLegacy.innerHTML = `<tr><td colspan="12">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       setFeedHealth('vpsHealthLabel', 'bad', 'VPS: OFFLINE');
       setFeedHealth('vdsHealthLabel', 'bad', 'VDS: OFFLINE');
@@ -399,9 +548,13 @@
 
   loadSupportEmail();
   loadLiveFeed();
+  loadCopierFeedSection();
   wireCheckout();
 
   if (document.getElementById('liveFeedRowsVps') || document.getElementById('liveFeedRowsVds')) {
     setInterval(loadLiveFeed, 3000);
+  }
+  if (document.getElementById('liveCopierFeedRows')) {
+    setInterval(loadCopierFeedSection, 5000);
   }
 })();
