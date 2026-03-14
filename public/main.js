@@ -275,7 +275,12 @@
   function isJordanRow(row) {
     const name = profileName(row).toUpperCase();
     const client = String(row?.client || '').toUpperCase();
-    return name.includes('JORDAN') || client.includes('JORDAN');
+    return name.includes('JORDAN')
+      || name.includes('SEAN')
+      || name.includes('SARAH')
+      || client.includes('JORDAN')
+      || client.includes('SEAN')
+      || client.includes('SARAH');
   }
 
   function normalizedLabel(value) {
@@ -581,12 +586,15 @@
       const vdsRows = (vds && Array.isArray(vds.profiles)) ? vds.profiles : [];
       const preparedVps = prepareRows(vpsRows, 'vps');
       const preparedVds = prepareRows(vdsRows, 'vds');
+      const jordanFromCopier = Array.isArray(vds?.copierFeed?.rows)
+        ? vds.copierFeed.rows.filter((r) => isActiveJordanRow(r))
+        : preparedVds.jordan;
       if (isLegacyHome) {
         renderLegacyHomeRows(rowsLegacy, preparedVds.main, 'No VDS live profiles yet.');
       } else {
         renderLiveRows(rowsVps, preparedVps.main, 'No VPS live profiles yet.');
         renderLiveRows(rowsVds, preparedVds.main, 'No VDS live profiles yet.');
-        renderLiveRows(rowsJordan, preparedVds.jordan, 'No active live copier accounts yet.');
+        renderLiveRows(rowsJordan, jordanFromCopier, 'No active live copier accounts yet.');
         loadLiveCharts();
       }
     } catch (error) {
