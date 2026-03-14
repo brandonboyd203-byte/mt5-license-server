@@ -307,6 +307,7 @@
 
   function jordanDisplayName(row) {
     const key = `${normalizedLabel(profileName(row))} ${normalizedLabel(row?.client)}`;
+    if (key.includes('JORDAN4') || key.includes('CHRIS')) return 'CHRIS';
     if (key.includes('JORDAN3') || key.includes('SARAH')) return 'SARAH';
     if (key.includes('JORDAN2') || key.includes('SEAN')) return 'SEAN';
     if (key.includes('JORDAN1') || key.includes('JORDAN')) return 'JORDAN';
