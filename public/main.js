@@ -292,7 +292,12 @@
 
   function isActiveJordanRow(row) {
     const key = `${normalizedLabel(profileName(row))} ${normalizedLabel(row?.client)}`;
-    return key.includes('JORDAN') || key.includes('JORDAN1') || key.includes('JORDAN2') || key.includes('JORDAN3');
+    return key.includes('JORDAN')
+      || key.includes('JORDAN1')
+      || key.includes('JORDAN2')
+      || key.includes('JORDAN3')
+      || key.includes('SEAN')
+      || key.includes('SARAH');
   }
 
   function jordanDisplayName(row) {
