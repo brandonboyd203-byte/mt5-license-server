@@ -400,13 +400,14 @@
         const flows = inferCashFlows(row);
         const rawName = (row.profileLabel || row.profile || '-');
         const displayName = jordanDisplayName(row) || rawName;
+        const displayDeposit = displayName === 'CHRIS' ? 2500 : flows.deposit;
         return `
           <tr>
             <td>${displayName}</td>
             <td>${row.account || '-'}</td>
             <td>${inferRiskPct(row)}</td>
             <td>${lev}</td>
-            <td>${money(flows.deposit)}</td>
+            <td>${money(displayDeposit)}</td>
             <td>${money(flows.withdraw)}</td>
             <td>${Number.isFinite(Number(row?.dayStartEquity ?? row?.dayStartBalance))
               ? `$${Number(row.dayStartEquity ?? row.dayStartBalance).toFixed(2)}`
@@ -473,15 +474,17 @@
     targetEl.innerHTML = list
       .map((row) => {
         const lev = row.leverage || '-';
+        const displayName = jordanDisplayName(row);
+        const displayDeposit = displayName === 'CHRIS' ? 2500 : row.depositAmount;
         return `
           <tr>
-            <td>${jordanDisplayName(row)}</td>
+            <td>${displayName}</td>
             <td>${row.account || '-'}</td>
             <td>${row.client || '-'}</td>
             <td>${row.botName || '-'}</td>
             <td>${Number.isFinite(Number(row.riskPct)) ? Number(row.riskPct).toFixed(2) : '-'}</td>
             <td>${lev}</td>
-            <td>${money(row.depositAmount)}</td>
+            <td>${money(displayDeposit)}</td>
             <td>${money(row.withdrawAmount)}</td>
             <td>${Number.isFinite(Number(row?.dayStartEquity))
               ? `$${Number(row.dayStartEquity).toFixed(2)}`
