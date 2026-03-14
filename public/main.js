@@ -245,6 +245,17 @@
     return 0;
   }
 
+  function rowDayReturnPct(row) {
+    const direct = Number(row?.dayReturnPct);
+    if (Number.isFinite(direct)) return direct;
+    const dayStart = Number(row?.dayStartEquity ?? row?.dayStartBalance ?? row?.dayBaseline);
+    const dayNet = Number(row?.dayNetUsd);
+    if (Number.isFinite(dayStart) && dayStart > 0 && Number.isFinite(dayNet)) {
+      return Number(((100 * dayNet) / dayStart).toFixed(2));
+    }
+    return null;
+  }
+
   function profileName(row) {
     return String(row?.profileLabel || row?.profile || '').trim();
   }
@@ -265,6 +276,49 @@
     const name = profileName(row).toUpperCase();
     const client = String(row?.client || '').toUpperCase();
     return name.includes('JORDAN') || client.includes('JORDAN');
+  }
+
+  function normalizedLabel(value) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  function isAllowedMainBotRow(row) {
+    const key = normalizedLabel(profileName(row));
+    return key === 'BLUEPRINTGOLD'
+      || key === 'BLUEPRINTGOLDSILVER'
+      || key === 'BLUEPRINTSILVER'
+      || key === 'BLUEPRINT20';
+  }
+
+  function isActiveJordanRow(row) {
+    const key = `${normalizedLabel(profileName(row))} ${normalizedLabel(row?.client)}`;
+    return key.includes('JORDAN') || key.includes('JORDAN1') || key.includes('JORDAN2') || key.includes('JORDAN3');
+  }
+
+  function jordanDisplayName(row) {
+    const key = `${normalizedLabel(profileName(row))} ${normalizedLabel(row?.client)}`;
+    if (key.includes('JORDAN3') || key.includes('SARAH')) return 'SARAH';
+    if (key.includes('JORDAN2') || key.includes('SEAN')) return 'SEAN';
+    if (key.includes('JORDAN1') || key.includes('JORDAN')) return 'JORDAN';
+    return row?.profileLabel || row?.profile || '-';
+  }
+
+  function isHiddenWebsiteLiveRow(row, source = 'vds') {
+    const name = profileName(row).toUpperCase();
+    if (!name) return false;
+    if (source === 'vds') {
+      if (name.includes('DOMINION')) return true;
+      if (name.includes('SURGE')) return true;
+      if (name.includes('EDGE')) return true;
+      if (name.includes('FRESH')) return true;
+    }
+    if (name.includes('BRAND_NEW')) return true;
+    if (name.includes('COPIER_NEW')) return true;
+    if (name.includes('COPIER_CLEAN')) return true;
+    if (name.includes('TF_SETUP')) return true;
+    if (name.includes('BLUEPRINT_TF_')) return true;
+    if (name.includes('BLUEPRINT TF')) return true;
+    return false;
   }
 
   function botGroupRank(row) {
@@ -289,10 +343,20 @@
       });
   }
 
-  function prepareRows(rows) {
-    const filtered = (Array.isArray(rows) ? rows : []).filter((r) => !isBaseOrPresetRow(r));
-    const jordan = sortRowsByBotOrder(filtered.filter((r) => isJordanRow(r)));
-    const main = sortRowsByBotOrder(filtered.filter((r) => !isJordanRow(r)));
+  function prepareRows(rows, source = 'vds') {
+    const filtered = (Array.isArray(rows) ? rows : [])
+      .filter((r) => !isBaseOrPresetRow(r))
+      .filter((r) => !isHiddenWebsiteLiveRow(r, source));
+    const jordan = sortRowsByBotOrder(
+      filtered
+        .filter((r) => isJordanRow(r))
+        .filter((r) => isActiveJordanRow(r)),
+    );
+    const main = sortRowsByBotOrder(
+      filtered
+        .filter((r) => !isJordanRow(r))
+        .filter((r) => isAllowedMainBotRow(r)),
+    );
     return { main, jordan };
   }
 
@@ -308,7 +372,7 @@
     return { deposit: 0, withdraw: 0 };
   }
 
-  function renderLiveRows(targetEl, rows, emptyText = 'No live profiles yet.') {
+  function renderLiveRows(targetEl, rows, emptyText = 'No live profiles yet.', options = {}) {
     if (!targetEl) return;
     const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
     if (!list.length) {
@@ -323,9 +387,11 @@
             : row.leverage
           : '-';
         const flows = inferCashFlows(row);
+        const rawName = (row.profileLabel || row.profile || '-');
+        const displayName = jordanDisplayName(row) || rawName;
         return `
           <tr>
-            <td>${row.profileLabel || row.profile || '-'}</td>
+            <td>${displayName}</td>
             <td>${row.account || '-'}</td>
             <td>${inferRiskPct(row)}</td>
             <td>${lev}</td>
@@ -340,7 +406,7 @@
             <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
             <td class="${numClass(row.totalNetUsd)}">${money(row.totalNetUsd)}</td>
             <td class="${numClass(row.totalReturnPct)}">${pct(row.totalReturnPct)}</td>
-            <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
+            <td class="${numClass(rowDayReturnPct(row))}">${pct(rowDayReturnPct(row))}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
             <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
             <td title="${row.statusReason || ''}">${row.status || '-'}</td>
@@ -376,7 +442,7 @@
             <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
             <td class="${numClass(row.totalNetUsd)}">${money(row.totalNetUsd)}</td>
             <td class="${numClass(row.totalReturnPct)}">${pct(row.totalReturnPct)}</td>
-            <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
+            <td class="${numClass(rowDayReturnPct(row))}">${pct(rowDayReturnPct(row))}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
             <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
             <td title="${row.statusReason || ''}">${row.status || '-'}</td>
@@ -398,7 +464,7 @@
         const lev = row.leverage || '-';
         return `
           <tr>
-            <td>${row.profileLabel || row.profile || '-'}</td>
+            <td>${jordanDisplayName(row)}</td>
             <td>${row.account || '-'}</td>
             <td>${row.client || '-'}</td>
             <td>${row.botName || '-'}</td>
@@ -444,19 +510,17 @@
     const rowsVds = document.getElementById('liveFeedRowsVds');
     const rowsJordan = document.getElementById('liveFeedRowsJordan');
     const rowsLegacy = document.getElementById('liveFeedRows');
-    if (!rowsVps && !rowsVds && !rowsLegacy) return;
+    if (!rowsVps && !rowsVds && !rowsLegacy && !rowsJordan) return;
 
     try {
       const nonce = Date.now();
       const isLegacyHome = !!rowsLegacy && !rowsVps && !rowsVds;
+      const needsVps = !!rowsVps;
+      const needsVds = !!rowsVds || !!rowsJordan || isLegacyHome;
       let vps = null;
       let vds = null;
 
-      if (isLegacyHome) {
-        const respVds = await fetch(`/api/bots/live?source=vds&_t=${nonce}`);
-        vds = await respVds.json();
-        if (!respVds.ok || !vds.ok) throw new Error(vds.message || 'VDS live feed unavailable');
-      } else {
+      if (needsVps && needsVds) {
         const [respVps, respVds] = await Promise.all([
           fetch(`/api/bots/live?source=vps&_t=${nonce}`),
           fetch(`/api/bots/live?source=vds&_t=${nonce}`),
@@ -464,40 +528,60 @@
         [vps, vds] = await Promise.all([respVps.json(), respVds.json()]);
         if (!respVps.ok || !vps.ok) throw new Error(vps.message || 'VPS live feed unavailable');
         if (!respVds.ok || !vds.ok) throw new Error(vds.message || 'VDS live feed unavailable');
+      } else if (needsVps) {
+        const respVps = await fetch(`/api/bots/live?source=vps&_t=${nonce}`);
+        vps = await respVps.json();
+        if (!respVps.ok || !vps.ok) throw new Error(vps.message || 'VPS live feed unavailable');
+      } else if (needsVds) {
+        const respVds = await fetch(`/api/bots/live?source=vds&_t=${nonce}`);
+        vds = await respVds.json();
+        if (!respVds.ok || !vds.ok) throw new Error(vds.message || 'VDS live feed unavailable');
       }
 
-      if (!isLegacyHome) {
+      if (!isLegacyHome && needsVps) {
         setFeedHealth('vpsHealthLabel', vps.stale ? 'warn' : 'ok', `VPS: ${vps.stale ? 'STALE' : 'LIVE'} • ${vps.summary?.profilesTotal ?? 0} profiles`);
+      }
+      if (!isLegacyHome && needsVds) {
         setFeedHealth('vdsHealthLabel', vds.stale ? 'warn' : 'ok', `VDS: ${vds.stale ? 'STALE' : 'LIVE'} • ${vds.summary?.profilesTotal ?? 0} profiles`);
       }
 
       const vpsSummary = (vps && vps.summary) || {};
       const vdsSummary = (vds && vds.summary) || {};
+      const activeSummary = needsVps && !needsVds ? vpsSummary : vdsSummary;
       const day = document.getElementById('liveDayNet');
       const week = document.getElementById('liveWeekNet');
       const open = document.getElementById('liveOpenPnl');
       const profiles = document.getElementById('liveProfiles');
       const updated = document.getElementById('liveUpdated');
-      if (day) day.textContent = money(isLegacyHome ? vdsSummary.dayNetUsd : vpsSummary.dayNetUsd);
-      if (week) week.textContent = money(isLegacyHome ? vdsSummary.weekNetUsd : vpsSummary.weekNetUsd);
+      if (day) day.textContent = money(activeSummary.dayNetUsd);
+      if (week) week.textContent = money(activeSummary.weekNetUsd);
       if (open) {
-        const vdsOpen = Number(vdsSummary.openProfitUsd || 0);
-        const rowsOpen = (Array.isArray(vds.profiles) ? vds.profiles : []).reduce((a, r) => a + openPnlValue(r), 0);
-        open.textContent = money(Math.abs(vdsOpen) > 0 ? vdsOpen : rowsOpen);
+        const activeRows = needsVps && !needsVds
+          ? (Array.isArray(vps?.profiles) ? vps.profiles : [])
+          : (Array.isArray(vds?.profiles) ? vds.profiles : []);
+        const activeOpen = Number(activeSummary.openProfitUsd || 0);
+        const rowsOpen = activeRows.reduce((a, r) => a + openPnlValue(r), 0);
+        open.textContent = money(Math.abs(activeOpen) > 0 ? activeOpen : rowsOpen);
       }
-      if (profiles) profiles.textContent = isLegacyHome ? `${vdsSummary.profilesTotal ?? 0}` : `${vpsSummary.profilesTotal ?? 0}/${vdsSummary.profilesTotal ?? 0}`;
-      if (updated) updated.textContent = isLegacyHome ? `${fmtTime(vds.generatedAt)}` : `${fmtTime(vps.generatedAt)} / ${fmtTime(vds.generatedAt)}`;
+      if (profiles) {
+        if (needsVps && needsVds) profiles.textContent = `${vpsSummary.profilesTotal ?? 0}/${vdsSummary.profilesTotal ?? 0}`;
+        else profiles.textContent = `${activeSummary.profilesTotal ?? 0}`;
+      }
+      if (updated) {
+        if (needsVps && needsVds) updated.textContent = `${fmtTime(vps?.generatedAt)} / ${fmtTime(vds?.generatedAt)}`;
+        else updated.textContent = `${fmtTime(vps?.generatedAt || vds?.generatedAt)}`;
+      }
 
       const vpsRows = (vps && Array.isArray(vps.profiles)) ? vps.profiles : [];
       const vdsRows = (vds && Array.isArray(vds.profiles)) ? vds.profiles : [];
-      const preparedVps = prepareRows(vpsRows);
-      const preparedVds = prepareRows(vdsRows);
+      const preparedVps = prepareRows(vpsRows, 'vps');
+      const preparedVds = prepareRows(vdsRows, 'vds');
       if (isLegacyHome) {
         renderLegacyHomeRows(rowsLegacy, preparedVds.main, 'No VDS live profiles yet.');
       } else {
         renderLiveRows(rowsVps, preparedVps.main, 'No VPS live profiles yet.');
         renderLiveRows(rowsVds, preparedVds.main, 'No VDS live profiles yet.');
-        renderLiveRows(document.getElementById('liveFeedRowsJordan'), preparedVds.jordan, 'No JORDAN accounts live yet.');
+        renderLiveRows(rowsJordan, preparedVds.jordan, 'No active live copier accounts yet.');
         loadLiveCharts();
       }
     } catch (error) {
@@ -505,8 +589,8 @@
       if (rowsVds) rowsVds.innerHTML = `<tr><td colspan="17">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       if (rowsJordan) rowsJordan.innerHTML = `<tr><td colspan="17">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
       if (rowsLegacy) rowsLegacy.innerHTML = `<tr><td colspan="14">Live feed error: ${error.message || 'unavailable'}</td></tr>`;
-      setFeedHealth('vpsHealthLabel', 'bad', 'VPS: OFFLINE');
-      setFeedHealth('vdsHealthLabel', 'bad', 'VDS: OFFLINE');
+      if (rowsVps) setFeedHealth('vpsHealthLabel', 'bad', 'VPS: OFFLINE');
+      if (rowsVds || rowsJordan || rowsLegacy) setFeedHealth('vdsHealthLabel', 'bad', 'VDS: OFFLINE');
       if (!rowsLegacy) loadLiveCharts();
     }
   }
@@ -555,7 +639,12 @@
   loadCopierFeedSection();
   wireCheckout();
 
-  if (document.getElementById('liveFeedRowsVps') || document.getElementById('liveFeedRowsVds')) {
+  if (
+    document.getElementById('liveFeedRowsVps')
+    || document.getElementById('liveFeedRowsVds')
+    || document.getElementById('liveFeedRowsJordan')
+    || document.getElementById('liveFeedRows')
+  ) {
     setInterval(loadLiveFeed, 3000);
   }
   if (document.getElementById('liveCopierFeedRows')) {
