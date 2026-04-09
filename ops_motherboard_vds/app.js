@@ -519,6 +519,48 @@ function buildClientOverview(profileSnapshots) {
   };
 }
 
+function buildClientSummary(profileSnapshots) {
+  const profiles = Array.isArray(profileSnapshots) ? profileSnapshots : [];
+  let dayNet = 0;
+  let dayBaseline = 0;
+  let weekNet = 0;
+  let weekBaseline = 0;
+  let totalBalance = 0;
+  let totalEquity = 0;
+  let totalOpen = 0;
+  let openPositions = 0;
+
+  profiles.forEach((p) => {
+    const day = dayMetrics(p);
+    const week = weekMetrics(p);
+    const balance = num(p.currentBalance);
+    const equity = num(p.currentEquity, balance);
+    const open = openPnlValue(p);
+    const dayBase = firstFinite(day.equityBaseline, p.dayStartEquity, p.dayStartBalance, depositStartEqValue(p));
+    const weekBase = firstFinite(week.equityBaseline, p.accountStartEquity);
+
+    dayNet += num(day.netUsdDisplay, day.netUsd);
+    dayBaseline += Math.max(0, num(dayBase));
+    weekNet += num(week.netUsd);
+    weekBaseline += Math.max(0, num(weekBase));
+    totalBalance += balance;
+    totalEquity += equity;
+    totalOpen += open;
+    openPositions += Math.max(0, num(p.openPositions));
+  });
+
+  return {
+    dayNetUsd: Number(dayNet.toFixed(2)),
+    dayReturnPct: dayBaseline > 0 ? Number(((100 * dayNet) / dayBaseline).toFixed(2)) : null,
+    weekNetUsd: Number(weekNet.toFixed(2)),
+    weekReturnPct: weekBaseline > 0 ? Number(((100 * weekNet) / weekBaseline).toFixed(2)) : null,
+    totalBalanceUsd: Number(totalBalance.toFixed(2)),
+    totalEquityUsd: Number(totalEquity.toFixed(2)),
+    totalOpenProfitUsd: Number(totalOpen.toFixed(2)),
+    totalOpenPositions: openPositions,
+  };
+}
+
 function weekMetrics(profile) {
   const m = profile?.metrics || {};
   if (m.week) {
@@ -702,13 +744,20 @@ function renderSummaryCards(data) {
   const v = data.vps || {};
   const telemetry = data.telemetry || {};
   const clientOverview = buildClientOverview(telemetry?.profiles || []);
+  const clientSummary = buildClientSummary(telemetry?.profiles || []);
   const ts = telemetry.summary || {};
   const day = ts.day || {};
   const week = ts.week || {};
   const statusCounts = ts.statusCounts || {};
-  const dayNetDisplay = num(day.netUsdLive, num(day.netUsd) + num(ts.totalOpenProfitUsd));
-  const dayRetDisplay = day.returnPctLive
-    ?? (num(day.baseline) > 0 ? Number(((100 * dayNetDisplay) / num(day.baseline)).toFixed(2)) : day.returnPct);
+  const dayNetDisplay = Number.isFinite(clientSummary.dayNetUsd)
+    ? clientSummary.dayNetUsd
+    : num(day.netUsdLive, num(day.netUsd) + num(ts.totalOpenProfitUsd));
+  const dayRetDisplay = Number.isFinite(clientSummary.dayReturnPct)
+    ? clientSummary.dayReturnPct
+    : (day.returnPctLive
+      ?? (num(day.baseline) > 0 ? Number(((100 * dayNetDisplay) / num(day.baseline)).toFixed(2)) : day.returnPct));
+  const weekNetDisplay = Number.isFinite(clientSummary.weekNetUsd) ? clientSummary.weekNetUsd : num(week.netUsd);
+  const weekRetDisplay = Number.isFinite(clientSummary.weekReturnPct) ? clientSummary.weekReturnPct : week.returnPct;
 
   const verdict = s.verdict || '-';
   const verdictNode = el('verdict');
@@ -726,7 +775,7 @@ function renderSummaryCards(data) {
   setText('telemetryUpdated', telemetry.generatedAt ? `Generated: ${new Date(telemetry.generatedAt).toLocaleTimeString()}` : 'No telemetry file yet');
   const profileRows = Array.isArray(telemetry.profiles) ? telemetry.profiles : [];
   const openProfilesHint = profileRows.filter((p) => Math.abs(openPnlValue(p)) > 0.01).length;
-  const openPosRaw = num(ts.totalOpenPositions);
+  const openPosRaw = Number.isFinite(clientSummary.totalOpenPositions) ? clientSummary.totalOpenPositions : num(ts.totalOpenPositions);
   const openPosLabel = openPosRaw > 0 ? String(openPosRaw) : (openProfilesHint > 0 ? `~${openProfilesHint}+ (PnL hint)` : '0');
   setText('openPositionsTotal', `Open positions: ${openPosLabel}`);
   setText('openOrdersTotal', `Open orders: ${ts.totalOpenOrders ?? '-'}`);
@@ -738,16 +787,16 @@ function renderSummaryCards(data) {
   setText('dayRates', `Live Ret ${pct(dayRetDisplay)} | Realized ${money(day.netUsd)} | Win ${pct(day.winRatePct)} | PF ${fmtPf(day.profitFactor)}`);
   setSignedClass('dayNetUsd', dayNetDisplay);
 
-  setText('weekNetUsd', `${money(week.netUsd)} USD`);
+  setText('weekNetUsd', `${money(weekNetDisplay)} USD`);
   setText('weekGrossUsd', `Gross +${num(week.grossProfitUsd).toFixed(2)} / -${Math.abs(num(week.grossLossUsd)).toFixed(2)} | W/L ${week.wins ?? 0}/${week.losses ?? 0}`);
   setText('weekLossUsd', `Net losses: -${Math.abs(num(week.grossLossUsd)).toFixed(2)} USD`);
-  setText('weekRates', `Ret ${pct(week.returnPct)} | Win ${pct(week.winRatePct)} | PF ${fmtPf(week.profitFactor)}`);
-  setSignedClass('weekNetUsd', week.netUsd);
+  setText('weekRates', `Ret ${pct(weekRetDisplay)} | Win ${pct(week.winRatePct)} | PF ${fmtPf(week.profitFactor)}`);
+  setSignedClass('weekNetUsd', weekNetDisplay);
 
-  const balanceTotal = num(ts.estimatedCurrentBalanceTotal);
-  const equityTotal = num(ts.estimatedCurrentEquityTotal);
+  const balanceTotal = Number.isFinite(clientSummary.totalBalanceUsd) ? clientSummary.totalBalanceUsd : num(ts.estimatedCurrentBalanceTotal);
+  const equityTotal = Number.isFinite(clientSummary.totalEquityUsd) ? clientSummary.totalEquityUsd : num(ts.estimatedCurrentEquityTotal);
   const openPnlFromProfiles = profileRows.reduce((sum, p) => sum + openPnlValue(p), 0);
-  const openPnlRaw = Number(ts.totalOpenProfitUsd);
+  const openPnlRaw = Number.isFinite(clientSummary.totalOpenProfitUsd) ? clientSummary.totalOpenProfitUsd : Number(ts.totalOpenProfitUsd);
   let openPnl = Number.isFinite(openPnlRaw) ? openPnlRaw : openPnlFromProfiles;
   if (
     Number.isFinite(openPnlRaw) &&
@@ -793,14 +842,14 @@ function renderSummaryCards(data) {
   setText('execTotalBalance', `Balance ${money(balanceTotal, false)} USD`);
   setText('execDayReturn', pct(dayRetDisplay));
   setText('execDayPnl', `Live ${money(dayNetDisplay)} USD`);
-  setText('execWeekReturn', pct(week.returnPct));
-  setText('execWeekPnl', `Net ${money(week.netUsd)} USD`);
+  setText('execWeekReturn', pct(weekRetDisplay));
+  setText('execWeekPnl', `Net ${money(weekNetDisplay)} USD`);
   setText('execOpenRisk', pct(openRiskPct));
   setText('execExposure', `${openPosLabel} open positions | ${money(openPnl)} USD`);
   setText('execAlerts', `${totalAlerts}`);
   setText('execAlertNote', `Status alerts ${failingCount} | Feed alerts ${breachHits}`);
   setSignedClass('execDayReturn', dayRetDisplay);
-  setSignedClass('execWeekReturn', week.returnPct);
+  setSignedClass('execWeekReturn', weekRetDisplay);
   setSignedClass('execOpenRisk', -openRiskPct);
   setSignedClass('execAlerts', -totalAlerts);
 
