@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import csv
 import datetime
 import glob
 import json
@@ -108,42 +109,43 @@ def load_target_profiles(csv_path):
     if not os.path.exists(csv_path):
         return out
     try:
-        with open(csv_path, "r", encoding="utf-8-sig") as fh:
-            lines = [line.strip() for line in fh.readlines() if line.strip()]
-        if len(lines) < 2:
-            return out
-        headers = [h.strip().lower() for h in lines[0].split(",")]
-        p_idx = headers.index("profile") if "profile" in headers else -1
-        a_idx = headers.index("account") if "account" in headers else -1
-        if p_idx < 0:
-            return out
-        for line in lines[1:]:
-            cols = [c.strip().strip('"') for c in line.split(",")]
-            profile = cols[p_idx] if p_idx < len(cols) else ""
-            account = cols[a_idx] if a_idx >= 0 and a_idx < len(cols) else ""
-            if not profile:
-                continue
-            if should_skip_profile(profile):
-                continue
-            if account and account.isdigit():
-                out.append(profile)
+        with open(csv_path, "r", encoding="utf-8-sig", newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                profile = str((row or {}).get("profile", "")).strip()
+                account = str((row or {}).get("account", "")).strip()
+                if not profile:
+                    continue
+                if should_skip_profile(profile):
+                    continue
+                if account and account.isdigit():
+                    out.append(profile)
         return sorted(set(out))
     except Exception:
         return out
 
 
-def probe_all_profiles():
-    rows = []
-    targets = load_target_profiles(ACCOUNTS_CSV)
+def resolve_profile_roots(targets):
     if targets:
-        roots = [os.path.join(r"C:\\MT5", p) for p in targets if os.path.isdir(os.path.join(r"C:\\MT5", p))]
-    else:
-        roots = [
+        roots = []
+        for profile in targets:
+            root = os.path.join(r"C:\\MT5", profile)
+            if os.path.isdir(root):
+                roots.append(root)
+        return sorted(roots)
+    return sorted(
+        [
             p
             for p in glob.glob(MT5_GLOB)
             if os.path.isdir(p) and not should_skip_profile(os.path.basename(p))
         ]
-    roots.sort()
+    )
+
+
+def probe_all_profiles():
+    rows = []
+    targets = load_target_profiles(ACCOUNTS_CSV)
+    roots = resolve_profile_roots(targets)
 
     for root in roots:
         term = os.path.join(root, "terminal64.exe")

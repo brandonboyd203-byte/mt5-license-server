@@ -206,6 +206,13 @@ async function readAccountsCsvMap(filePath = ACCOUNTS_CSV) {
   }
 }
 
+async function readActiveProfiles(filePath = ACCOUNTS_CSV) {
+  const map = await readAccountsCsvMap(filePath);
+  return Object.keys(map)
+    .filter((profile) => profile && !HIDDEN_PROFILES.has(profile))
+    .sort((a, b) => a.localeCompare(b));
+}
+
 async function readJsonFile(filePath, fallback) {
   try {
     const raw = await fsp.readFile(filePath, 'utf8');
@@ -1681,7 +1688,10 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
   };
 }
 
-async function listProfiles() {
+async function listProfiles(activeProfiles = null) {
+  if (Array.isArray(activeProfiles) && activeProfiles.length) {
+    return activeProfiles;
+  }
   try {
     const dirs = await fsp.readdir(MT5_ROOT, { withFileTypes: true });
     return dirs
@@ -2020,8 +2030,9 @@ async function main() {
   const today = yyyymmdd();
   const cacheDays = Math.max(WEEK_DAYS, MONTH_DAYS);
   const recentDays = daysBackList(cacheDays);
-  const profiles = await listProfiles();
   const accountMetaByProfile = await readAccountsCsvMap(ACCOUNTS_CSV);
+  const activeProfiles = await readActiveProfiles(ACCOUNTS_CSV);
+  const profiles = await listProfiles(activeProfiles);
   const liveProbe = await readLiveProbeMap();
   const emergencyOverrides = ENABLE_EMERGENCY_OVERRIDES
     ? await readEmergencyAccountOverrides()
