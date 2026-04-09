@@ -314,9 +314,11 @@ function sanitizeVdsTelemetry(telemetryRaw) {
     });
   telemetry.accounts = (Array.isArray(telemetry.accounts) ? telemetry.accounts : [])
     .filter((a) => {
-      const key = String(a?.profile || '').trim();
-      if (!key) return false;
-      return allowedProfiles.has(key);
+      const profileKeys = Array.isArray(a?.profiles) ? a.profiles : [a?.profile];
+      return profileKeys
+        .map((key) => String(key || '').trim())
+        .filter(Boolean)
+        .some((key) => allowedProfiles.has(key));
     });
   telemetry.liveFeed = (Array.isArray(telemetry.liveFeed) ? telemetry.liveFeed : [])
     .filter((row) => !shouldHideVdsProfileName(row?.profile || row?.profileLabel));
