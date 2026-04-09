@@ -424,13 +424,18 @@ function dayMetrics(profile) {
       const cap = Math.max(eqNow * 1.8, (Number.isFinite(depositStartEq) ? depositStartEq * 1.8 : 0));
       if (baseline > cap && cap > 0) baseline = firstFinite(depositStartEq, eqNow, baseline);
     }
+    if (Number.isFinite(baseline) && baseline > 0 && Number.isFinite(depositStartEq) && depositStartEq > 0) {
+      if (baseline < (depositStartEq * 0.5)) baseline = depositStartEq;
+    }
     const equityDelta = (Number.isFinite(eqNow) && Number.isFinite(baseline) && baseline > 0)
       ? Number((eqNow - baseline).toFixed(2))
       : null;
     const parsedLive = Number(d.netUsdLive);
+    const parsedVsEquityDrift = Number.isFinite(parsedLive) && Number.isFinite(equityDelta)
+      && Math.abs(parsedLive - equityDelta) > Math.max(250, Math.abs(eqNow || 0) * 0.2);
     const parsedLooksCorrupt = Number.isFinite(parsedLive) && Number.isFinite(eqNow)
       && Math.abs(parsedLive) > Math.max(5000, Math.abs(eqNow) * 3);
-    const netUsdDisplay = parsedLooksCorrupt
+    const netUsdDisplay = (parsedLooksCorrupt || parsedVsEquityDrift)
       ? num(equityDelta, num(d.netUsdEst, netUsdRealized + openFallback))
       : num(d.netUsdLive, num(d.netUsdEst, netUsdRealized + openFallback));
     const returnPctDisplay = Number.isFinite(baseline) && baseline > 0
@@ -466,6 +471,51 @@ function dayMetrics(profile) {
     returnPctDisplay,
     netUsdRealized,
     returnPctRealized: m.returnPct,
+  };
+}
+
+function buildClientOverview(profileSnapshots) {
+  const profiles = Array.isArray(profileSnapshots) ? profileSnapshots : [];
+  const ranked = profiles.map((p) => {
+    const day = dayMetrics(p);
+    const week = weekMetrics(p);
+    const status = profileStatus(p);
+    return {
+      profile: p.profile,
+      profileLabel: p.profileLabel || p.profile,
+      status: status.label,
+      reason: status.reason,
+      matchedCloses: day.matchedCloses,
+      dayNetUsd: num(day.netUsdDisplay, day.netUsd),
+      dayRetPct: num(day.returnPctDisplay, day.returnPct),
+      weekRetPct: num(week.returnPct),
+      weekNetUsd: num(week.netUsd),
+      profitFactor: day.profitFactor,
+    };
+  });
+
+  const sortedDay = ranked.slice().sort((a, b) => b.dayRetPct - a.dayRetPct);
+  const sortedWeek = ranked.slice().sort((a, b) => b.weekRetPct - a.weekRetPct);
+
+  return {
+    topWorking: sortedWeek
+      .filter((p) => p.status === 'WORKING')
+      .slice(0, 5),
+    needsAttention: sortedDay
+      .filter((p) => p.status === 'OVERTRADING' || p.status === 'FAILING')
+      .slice(0, 6),
+    leadersToday: sortedDay.slice(0, 3).map((p) => ({
+      profile: p.profile,
+      profileLabel: p.profileLabel,
+      retPct: p.dayRetPct,
+      netUsd: p.dayNetUsd,
+    })),
+    leadersWeek: sortedWeek.slice(0, 3).map((p) => ({
+      profile: p.profile,
+      profileLabel: p.profileLabel,
+      retPct: p.weekRetPct,
+      netUsd: p.weekNetUsd,
+    })),
   };
 }
 
@@ -651,6 +701,7 @@ function renderSummaryCards(data) {
   const s = data.summary || {};
   const v = data.vps || {};
   const telemetry = data.telemetry || {};
+  const clientOverview = buildClientOverview(telemetry?.profiles || []);
   const ts = telemetry.summary || {};
   const day = ts.day || {};
   const week = ts.week || {};
@@ -669,7 +720,7 @@ function renderSummaryCards(data) {
 
   setText('branch', `Branch: ${s.branch || '-'}`);
   setText('bot', `Focus bot: ${s.bot || '-'}`);
-  const leader = (telemetry?.overview?.leadersToday || [])[0] || (telemetry?.overview?.leadersWeek || [])[0] || null;
+  const leader = (clientOverview.leadersToday || [])[0] || (clientOverview.leadersWeek || [])[0] || null;
   setText('bestBotNow', leader ? `${aliasProfileName(leader.profileLabel || leader.profile)} (${pct(leader.retPct)})` : '-');
 
   setText('telemetryUpdated', telemetry.generatedAt ? `Generated: ${new Date(telemetry.generatedAt).toLocaleTimeString()}` : 'No telemetry file yet');
@@ -1675,12 +1726,13 @@ function renderActionAudit() {
 async function load() {
   const res = await fetch('/api/status');
   const data = await res.json();
+  const clientOverview = buildClientOverview(data.telemetry?.profiles || []);
 
   renderSummaryCards(data);
   renderCompilerView(data.summary || {});
   renderAccountSummary(data.telemetry?.accounts || []);
   renderCopierFeed(data.copierFeed || data.telemetry?.copierFeed || null);
-  renderPerformanceOverview(data.telemetry?.overview || {});
+  renderPerformanceOverview(clientOverview);
   renderLiveProfiles(data.telemetry || {});
   renderNexusSellHealth(data.telemetry || {});
   renderLiveFeed(data.liveFeed || data.telemetry?.liveFeed || []);
