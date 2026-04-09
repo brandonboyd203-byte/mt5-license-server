@@ -1584,9 +1584,12 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
     ? round2(currentEquity - dayBaseline)
     : round2(dayMetrics.netUsd + openProfit);
   const dayReturnLivePct = dayBaseline > 0 ? Number(((100 * dayNetLiveUsd) / dayBaseline).toFixed(2)) : null;
-  const totalBaseline = Number.isFinite(Number(state.startEquity)) && Number(state.startEquity) > 0
-    ? round2(Number(state.startEquity))
-    : round2(dayBaseline || DEFAULT_START_EQUITY);
+  const probeAccountStartEq = Number(probeRow?.accountStartEquity ?? probeRow?.startEquity);
+  const totalBaseline = Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0
+    ? round2(probeAccountStartEq)
+    : (Number.isFinite(Number(state.startEquity)) && Number(state.startEquity) > 0
+      ? round2(Number(state.startEquity))
+      : round2(dayBaseline || DEFAULT_START_EQUITY));
   const totalNetUsd = totalBaseline > 0 ? round2(currentEquity - totalBaseline) : null;
   const totalReturnPct = (totalBaseline > 0 && Number.isFinite(totalNetUsd))
     ? Number(((100 * totalNetUsd) / totalBaseline).toFixed(2))
