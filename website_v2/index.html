@@ -730,6 +730,14 @@
       return null;
     }
 
+    function isStrictLiveRow(row) {
+      return String(row?.balanceSource || '').trim() === 'mt5-probe-live';
+    }
+
+    function websiteDisplayLabel(row) {
+      return String(row?.accountName || row?.profileLabel || row?.profile || '-');
+    }
+
     function renderFeedSummary(summaryNode, profiles) {
       if (!summaryNode) return;
       const rows = Array.isArray(profiles) ? profiles : [];
@@ -739,9 +747,10 @@
       }
       summaryNode.innerHTML = `<table><thead><tr><th>Profile</th><th>Account</th><th>Risk %</th><th>Current Balance</th><th>Day PnL $</th></tr></thead><tbody>${rows.map((p)=>{
         const risk = riskPctForWebsite(p);
-        const balance = n(p?.currentBalance, n(p?.currentBalanceEst));
-        const dayPnl = n(p?.metrics?.day?.netUsdLive ?? p?.metrics?.day?.netUsd);
-        return `<tr><td>${String(p?.profileLabel || p?.profile || '-')}</td><td>${maskAccountWeb(p?.account || '-')}</td><td>${risk == null ? '-' : `${risk.toFixed(2)}%`}</td><td>${Number.isFinite(balance) ? balance.toFixed(2) : '-'}</td><td>${dayPnl.toFixed(2)}</td></tr>`;
+        const live = isStrictLiveRow(p);
+        const balance = live ? Number(p?.currentBalance) : NaN;
+        const dayPnl = live ? Number(p?.metrics?.day?.netUsdLive ?? p?.dayNetUsd) : NaN;
+        return `<tr><td>${websiteDisplayLabel(p)}</td><td>${maskAccountWeb(p?.account || '-')}</td><td>${risk == null ? '-' : `${risk.toFixed(2)}%`}</td><td>${Number.isFinite(balance) ? balance.toFixed(2) : '-'}</td><td>${Number.isFinite(dayPnl) ? dayPnl.toFixed(2) : '-'}</td></tr>`;
       }).join('')}</tbody></table>`;
     }
 
@@ -775,7 +784,8 @@
           .sort((a, b) => n(b?.metrics?.day?.netUsdLive ?? b?.metrics?.day?.netUsd) - n(a?.metrics?.day?.netUsdLive ?? a?.metrics?.day?.netUsd));
         renderFeedSummary(summary, profiles);
         const firstAccount = profiles.find((p) => p?.account)?.account || null;
-        meta.textContent = `Updated ${new Date(data.generatedAt || Date.now()).toLocaleTimeString()} | Account sample ${maskAccountWeb(firstAccount)}`;
+        const liveCount = profiles.filter(isStrictLiveRow).length;
+        meta.textContent = `Updated ${new Date(data.generatedAt || Date.now()).toLocaleTimeString()} | Live broker rows ${liveCount}/${profiles.length} | Account sample ${maskAccountWeb(firstAccount)}`;
         return profiles;
       } catch {
         renderFeedUnavailable({ list, best, meta, motherboardUrl });

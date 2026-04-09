@@ -374,6 +374,7 @@ function applyLiveProbeOverlay(telemetry, probeMap) {
     const dayStartEq = Number(probe.dayStartEquity ?? probe.startEquity);
     const grossClosed = Number(probe.grossPnlClosed);
     const grossWithOpen = Number(probe.grossPnlWithOpen);
+    const accountName = String(probe.accountName || '').trim();
 
     if (Number.isFinite(bal)) {
       p.currentBalance = round2(bal);
@@ -396,6 +397,12 @@ function applyLiveProbeOverlay(telemetry, probeMap) {
     if (Number.isFinite(grossClosed)) p.currentPnlGross = round2(grossClosed);
     if (Number.isFinite(grossWithOpen)) p.currentPnlWithOpen = round2(grossWithOpen);
     p.balanceSource = 'mt5-probe-live';
+    if (accountName) {
+      p.accountName = accountName;
+      if (String(p?.botName || '').trim().toLowerCase() === 'copier') {
+        p.profileLabel = accountName;
+      }
+    }
 
     const day = p?.metrics?.day;
     if (day) {
@@ -430,6 +437,7 @@ function applyLiveProbeOverlay(telemetry, probeMap) {
     const dayStartEq = Number(probe.dayStartEquity ?? probe.startEquity);
     const grossClosed = Number(probe.grossPnlClosed);
     const grossWithOpen = Number(probe.grossPnlWithOpen);
+    const accountName = String(probe.accountName || '').trim();
     if (Number.isFinite(bal)) {
       a.currentBalance = round2(bal);
       a.currentBalanceEst = round2(bal);
@@ -451,6 +459,7 @@ function applyLiveProbeOverlay(telemetry, probeMap) {
     if (Number.isFinite(grossClosed)) a.currentPnlGross = round2(grossClosed);
     if (Number.isFinite(grossWithOpen)) a.currentPnlWithOpen = round2(grossWithOpen);
     a.balanceSource = 'mt5-probe-live';
+    if (accountName) a.accountName = accountName;
     const live = recomputeLiveDayMetrics(a);
     if (live) {
       a.dayNetLiveUsd = live.dayNetUsd;

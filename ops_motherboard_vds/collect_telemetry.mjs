@@ -462,6 +462,20 @@ function deriveProfileLabel(profile, strategyHint) {
   return profile;
 }
 
+function pickDisplayLabel(profile, accountMeta, probeRow, fallbackLabel) {
+  const fallback = String(fallbackLabel || profile || '').trim() || String(profile || '').trim() || 'Unknown';
+  const isCopier = String(accountMeta?.bot || '').trim().toLowerCase() === 'copier';
+  if (!isCopier) return fallback;
+
+  const liveName = String(probeRow?.accountName || '').trim();
+  if (liveName) return liveName;
+
+  const csvLabel = String(accountMeta?.label || '').trim();
+  if (csvLabel) return csvLabel;
+
+  return fallback;
+}
+
 function pushEvent(state, day, profile, source, kind, line, ts) {
   const epoch = ts ? eventEpoch(day, ts) : Date.now();
   const text = shortLine(line);
@@ -1591,7 +1605,7 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
 
   const status = classifyProfile(dayMetrics, weekMetrics);
   const strategyHint = detectStrategyHint(state.recentEvents);
-  const profileLabel = deriveProfileLabel(profile, strategyHint);
+  const profileLabelBase = deriveProfileLabel(profile, strategyHint);
   const leverageEstimated = estimateLeverageFromEquity(currentEquity || currentBalance || dayBaseline);
   const leverage = state.leverage || PROFILE_LEVERAGE_HINTS[profile] || leverageEstimated || null;
   const leverageSource = state.leverageSource
@@ -1612,6 +1626,7 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
   const displayDayNetLiveUsd = tfPendingLive ? null : dayNetLiveUsd;
   const displayDayReturnLivePct = tfPendingLive ? null : dayReturnLivePct;
   const displayBalanceSource = tfPendingLive ? 'pending-live-probe' : balanceSource;
+  const profileLabel = pickDisplayLabel(profile, accountMeta, probeRow, profileLabelBase);
 
   return {
     profile,
@@ -1619,6 +1634,7 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
     strategyHint,
     account: state.account || accountMeta?.account || null,
     accountId: state.account || accountMeta?.account || null,
+    accountName: String(probeRow?.accountName || '').trim() || null,
     botName: accountMeta?.bot || null,
     symbols: accountMeta?.symbols || null,
     onlineHint: Boolean(state.lastSyncAt),

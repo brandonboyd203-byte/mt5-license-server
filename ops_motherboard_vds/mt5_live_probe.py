@@ -158,6 +158,8 @@ def probe_all_profiles():
             "ok": False,
             "error": None,
             "account": None,
+            "accountName": None,
+            "brokerServer": None,
             "balance": None,
             "equity": None,
             "profit": None,
@@ -212,6 +214,8 @@ def probe_all_profiles():
                 pass
             row["ok"] = True
             row["account"] = getattr(ai, "login", None)
+            row["accountName"] = str(getattr(ai, "name", "") or "").strip() or None
+            row["brokerServer"] = str(getattr(ai, "server", "") or "").strip() or None
             row["balance"] = float(getattr(ai, "balance", 0.0)) if ai else None
             row["equity"] = float(getattr(ai, "equity", 0.0)) if ai else None
             row["profit"] = float(getattr(ai, "profit", 0.0)) if ai else None
