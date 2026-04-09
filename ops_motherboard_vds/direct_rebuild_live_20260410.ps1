@@ -105,7 +105,6 @@ Ensure-Dir $ReportsRoot
 $downloads = @{
   'server.js'='ops_motherboard_vds/server.js';
   'collect_telemetry.mjs'='ops_motherboard_vds/collect_telemetry.mjs';
-  'run_mt5_live_probe_loop.ps1'='ops_motherboard_vds/run_mt5_live_probe_loop.ps1';
   'mt5_live_probe.py'='ops_motherboard_vds/mt5_live_probe.py';
   'install_vps_motherboard.ps1'='ops_motherboard_vds/install_vps_motherboard.ps1';
   'GoldmineBlueprint_Gold_VPS.mq5'='bots_full/GoldmineBlueprint_Gold_VPS.mq5';
@@ -120,6 +119,9 @@ foreach ($name in $downloads.Keys) {
   Invoke-WebRequest -UseBasicParsing -Uri ($BranchBase + '/' + $rel) -OutFile $dest
   Write-Host ('DOWNLOADED ' + $dest)
 }
+
+Invoke-WebRequest -UseBasicParsing -Uri ($BranchBase + '/ops_motherboard_vds/run_mt5_live_probe_loop.ps1') -OutFile (Join-Path $OpsRoot 'run_mt5_live_probe_loop.ps1')
+Write-Host ('DOWNLOADED ' + (Join-Path $OpsRoot 'run_mt5_live_probe_loop.ps1'))
 
 $liveRows |
   Select-Object profile, account, server, password, @{ n='investor_password'; e={ '' } }, @{ n='label'; e={ $_.profile } } |
