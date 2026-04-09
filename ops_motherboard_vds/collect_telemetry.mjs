@@ -1570,9 +1570,12 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
         const staleVsCurrentEquity = Number.isFinite(currentEquity) && currentEquity > 0
           && lockedBaseline < (currentEquity * 0.5);
         if (staleVsAccountStart || staleVsCurrentEquity) {
-          dayBaseline = Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0
+          const resetBaseline = Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0
             ? round2(probeAccountStartEq)
-            : round2(probeDayStartEq);
+            : (Number.isFinite(Number(state.startEquity)) && Number(state.startEquity) > 0
+              ? round2(Number(state.startEquity))
+              : round2(currentEquity || probeDayStartEq));
+          dayBaseline = resetBaseline;
           state.dayOpeningEquity = dayBaseline;
           state.dayOpeningBalance = dayBaseline;
           if (!state.dayOpeningAt) state.dayOpeningAt = nowIso();
