@@ -20,6 +20,52 @@ CTrade trade;
 CPositionInfo position;
 CAccountInfo account;
 
+
+enum ENUM_RISK_PROFILE {
+    RISK_NORMAL = 0,
+    RISK_AGGRESSIVE_15 = 15,
+    RISK_AGGRESSIVE_20 = 20
+};
+
+double gProfileRiskTargetPct = 0.0;
+double gProfileRiskScale = 1.0;
+
+const string HARD_LICENSE_SERVER_URL = "https://mt5-license-server-production.up.railway.app";
+const bool HARD_REQUIRE_REMOTE_LICENSE = true;
+
+double ResolveRiskTargetPctFromProfile() {
+    if(RiskProfile == RISK_AGGRESSIVE_15) return 15.0;
+    if(RiskProfile == RISK_AGGRESSIVE_20) return 20.0;
+    return 0.0;
+}
+
+double ProfileRiskScale() {
+    return (gProfileRiskScale > 0.0) ? gProfileRiskScale : 1.0;
+}
+
+double ScaleRiskPct(double basePct) {
+    return basePct * ProfileRiskScale();
+}
+
+void InitProfileRiskConfig() {
+    long acc = account.Login();
+    gProfileRiskTargetPct = ResolveRiskTargetPctFromProfile();
+    gProfileRiskScale = 1.0;
+    if(gProfileRiskTargetPct > 0.0 && RiskPercent > 0.0) {
+        gProfileRiskScale = gProfileRiskTargetPct / RiskPercent;
+    }
+
+    Print("ACTIVE_CONFIG Account=", IntegerToString((int)acc),
+          " RiskProfile=", IntegerToString((int)RiskProfile),
+          " RiskTarget=", DoubleToString(gProfileRiskTargetPct, 2),
+          " RiskScale=", DoubleToString(ProfileRiskScale(), 4),
+          " EffectiveRiskPerTrade=", DoubleToString(ScaleRiskPct(RiskPercent), 2),
+          " EffectiveFirstTradeRisk=", DoubleToString(ScaleRiskPct(FirstTradeRisk), 2),
+          " EffectiveScalingRisk=", DoubleToString(ScaleRiskPct(ScalingEntryRisk), 2),
+                    " EffectiveTrendlineRisk=", DoubleToString(ScaleRiskPct(TrendLine_StandaloneRiskPercent), 2),
+          " EffectiveMaxTotalRisk=", DoubleToString(ScaleRiskPct(MaxTotalRisk), 2));
+}
+
 //+------------------------------------------------------------------+
 //| Input Parameters                                                 |
 //+------------------------------------------------------------------+
@@ -28,8 +74,16 @@ input double RiskPercent = 3.0;              // Risk per trade (%) - DEFAULT (us
 input double FirstTradeRisk = 5.0;           // Risk for FIRST trade (%) - Higher risk on initial entry
 input double ScalingEntryRisk = 1.5;         // Risk for scaling entries (%) - Lower risk when adding to losing positions
 input double MaxTotalRisk = 9.0;             // Maximum total risk for all trades (%) - Safety limit
+input ENUM_RISK_PROFILE RiskProfile = RISK_NORMAL; // Optional profile: Normal / Aggressive 15 / Aggressive 20
+input bool EnforceLeverageParity = true;     // Keep signal logic same across leverage; downscale lots if margin is tight
+input double MarginSafetyFactor = 1.10;      // Require this free-margin buffer (1.10 = 10% headroom)
+input bool EnableStartupCooldown = true;     // Block new entries briefly after terminal/EA restart
+input int StartupCooldownSeconds = 300;      // Startup cooldown duration in seconds
 input bool UseDailyLossGuard = true;         // Stop new entries when daily loss hits threshold
 input double DailyLossPctFromStart = 50.0;   // Max loss % from start-of-day equity
+input bool UseDailyProfitTarget = true;      // Stop new entries after daily profit target is reached
+input double DailyProfitTargetPctFromStart = 50.0; // Profit target % from start-of-day equity
+input bool IgnoreLegacyPositionsForNewEntries = true; // Entry gating ignores positions opened before today (legacy still managed)
 input double SL_Pips = 30.0;                 // Stop Loss (pips) - Base SL (dynamic can expand)
 #ifndef SMC_SYMBOL_GOLD
 input double SL_Pips_Silver = 35.0;          // Stop Loss (pips) - Base SL for Silver (normal entry; dynamic can expand)
@@ -77,6 +131,14 @@ input int VolatilitySpike_Bars = 3;          // Bars to check for volatility spi
 input double VolatilitySpike_Multiplier = 1.5; // SL multiplier during volatility spike (1.5 = 50% wider)
 input bool UseQuickRejectionCheck = false;    // Optional: 1-bar delay if large wick detected (false = immediate entry)
 input double QuickRejection_WickSize = 3.0;   // Minimum wick size (pips) to trigger 1-bar delay
+input bool UseVolumeSpikeExpansion = true;    // Expand SL during high tick-volume bursts
+input int VolumeSpike_Bars = 3;               // Recent bars used to detect a volume surge
+input int VolumeSpike_ReferenceBars = 8;      // Older bars used as baseline for comparison
+input double VolumeSpike_Multiplier = 1.8;    // Recent volume must exceed baseline by this multiplier
+input bool UseHighVolumeEntryBlock = true;    // Skip new entries when tick volume is in extreme-spike territory
+input double HighVolumeEntryBlockMultiplier = 2.4; // Higher threshold for complete entry lockout
+input double VolumeSpike_SLMultiplier = 2.0;  // Extra SL widening during volume spikes
+input double VolumeSpike_WickBufferMultiplier = 2.0; // Expand wick buffer during volume spikes
 
 input group "=== Take Profit System ==="
 #ifdef SMC_SYMBOL_GOLD
@@ -98,8 +160,11 @@ input double RunnerSizePercent = 15.0;       // % to keep as runner - DEFAULT: 1
 input bool RunnerTo1H_SR = true;             // Runner targets 1H support/resistance
 input double MinPipsBeforeFullClose = 0;     // Min pips before ANY full-close (0 = use TP3/TP5 only; e.g. 80 = safety floor)
 input bool UseTrailSL = true;                // Trail SL when profit reaches TrailStartPips
-input double TrailStartPips = 100.0;         // Start trailing SL when profit >= this (pips)
-input double TrailDistancePips = 20.0;      // Trail SL this many pips behind price
+input double TrailStartPips = 120.0;         // Start trailing SL when profit >= this (pips)
+input double TrailDistancePips = 80.0;      // Fallback trailing distance (pips) when no structure level is available
+input bool UseStructureTrail = true;         // Prefer structure-based trailing (swing high/low) over fixed distance
+input int StructureTrail_Lookback = 15;      // Bars to scan for recent swing structure
+input double StructureTrail_BufferPips = 40.0; // Buffer from swing level (pips)
 input bool UseDynamicTrail = false;           // Close on structure reversal – set true only if you want early exit on BOS/CHoCH
 input double DynamicTrailMinPips = 80.0;    // Only close on reversal if profit >= this (avoids closing too early)
 #ifndef SMC_SYMBOL_GOLD
@@ -126,6 +191,20 @@ input int MS_SwingLength = 5;                // Swing length for structure
 input bool RequireBOS = false;               // Require BOS before entry
 
 input group "=== Entry Settings ==="
+input bool UseSessionFilter = true;           // Restrict new entries to configured Perth trading windows
+input bool SessionWindowsUsePerthTime = true; // Convert server time to Perth time for the session windows
+input int Session1StartHour = 7;              // Perth session 1 start hour
+input int Session1StartMinute = 30;           // Perth session 1 start minute
+input int Session1EndHour = 11;               // Perth session 1 end hour
+input int Session1EndMinute = 0;              // Perth session 1 end minute
+input int Session2StartHour = 14;             // Perth session 2 start hour
+input int Session2StartMinute = 0;            // Perth session 2 start minute
+input int Session2EndHour = 18;               // Perth session 2 end hour
+input int Session2EndMinute = 0;              // Perth session 2 end minute
+input int Session3StartHour = 19;             // Perth session 3 start hour
+input int Session3StartMinute = 30;           // Perth session 3 start minute
+input int Session3EndHour = 2;                // Perth session 3 end hour
+input int Session3EndMinute = 0;              // Perth session 3 end minute
 input bool MultipleEntries = true;           // Allow multiple entries
 input int MaxEntries = 4;                    // Maximum entries per direction
 input bool AllowLayeredEntries = true;       // Allow multiple entries in SAME zone (layered entries)
@@ -186,14 +265,12 @@ input int NewsBlockMinutesBefore = 5;          // Minutes before news to block t
 input int NewsBlockMinutesAfter = 15;          // Minutes after news to block trades
 
 input group "=== License Protection ==="
-input bool EnableLicenseCheck = true;         // Enable license protection (DISABLE ONLY FOR TESTING)
-input string LicenseServerURL = "https://mt5-license-server-production.up.railway.app"; // License Server URL
 input string LicenseKey = "";                 // License Key (optional - provided by developer)
 input string AllowedAccounts = "";           // Allowed Account Numbers (fallback - comma-separated)
 input string AllowedBrokers = "";            // Allowed Brokers/Servers (fallback - comma-separated)
 input datetime LicenseExpiry = 0;            // License Expiry Date (fallback - 0 = no expiry)
 input string UserName = "";                  // User Name (for tracking - embedded in trades)
-input bool UseRemoteValidation = true;        // Use remote server validation (MOST SECURE)
+input bool UseRemoteValidation = true;        // Compatibility input (ignored in hardened build)
 input int LicenseCheckTimeout = 5;            // License check timeout (seconds)
 
 input group "=== General ==="
@@ -257,6 +334,8 @@ double accountBalance;
 double dayStartEquity = 0.0;
 int    dayKey = 0;
 bool   dailyLossTripped = false;
+bool   dailyLossAmountTripped = false;
+bool   dailyProfitTargetTripped = false;
 datetime lastBarTime = 0;
 datetime lastBarTime_M1 = 0;
 datetime lastBarTime_M3 = 0;
@@ -274,9 +353,13 @@ bool tp2Hit[];
 bool tp3Hit[];
 bool tp4Hit[];
 bool tp5Hit[];
+bool tp1Pending[];
+bool tp2Pending[];
+bool tp3Pending[];
 double tp1HitPrice[];
 int partialCloseLevel[]; // Track which partial close level we're at
 double originalVolume[]; // Track original position size for accurate partial closes
+int forcedPositionType[]; // -1 unknown, POSITION_TYPE_BUY/SELL once inferred from live mismatch
 
 // Track tickets to avoid collisions (ticket % 10000 was unsafe and can collide)
 ulong trackedTickets[];
@@ -308,8 +391,12 @@ int GetTicketIndex(ulong ticket) {
     ArrayResize(tp4Hit, newIndex + 1);
     ArrayResize(tp5Hit, newIndex + 1);
     ArrayResize(tp1HitPrice, newIndex + 1);
+    ArrayResize(tp1Pending, newIndex + 1);
+    ArrayResize(tp2Pending, newIndex + 1);
+    ArrayResize(tp3Pending, newIndex + 1);
     ArrayResize(partialCloseLevel, newIndex + 1);
     ArrayResize(originalVolume, newIndex + 1);
+    ArrayResize(forcedPositionType, newIndex + 1);
 
     // Initialize this slot
     tp1Hit[newIndex] = false;
@@ -318,8 +405,12 @@ int GetTicketIndex(ulong ticket) {
     tp4Hit[newIndex] = false;
     tp5Hit[newIndex] = false;
     tp1HitPrice[newIndex] = 0;
+    tp1Pending[newIndex] = false;
+    tp2Pending[newIndex] = false;
+    tp3Pending[newIndex] = false;
     partialCloseLevel[newIndex] = 0;
     originalVolume[newIndex] = 0;
+    forcedPositionType[newIndex] = -1;
 
     return newIndex;
 }
@@ -332,7 +423,7 @@ int GetTicketIndex(ulong ticket) {
 //+------------------------------------------------------------------+
 // Remote license validation (optionally for a specific EA name).
 bool ValidateLicenseRemote(string eaNameOverride = "") {
-    if(StringLen(LicenseServerURL) == 0) {
+    if(StringLen(HARD_LICENSE_SERVER_URL) == 0) {
         Print("ERROR: License Server URL not set!");
         return false;
     }
@@ -363,7 +454,7 @@ bool ValidateLicenseRemote(string eaNameOverride = "") {
     ArrayCopy(post, data);
     
     // Make HTTP request
-    string url = LicenseServerURL;
+    string url = HARD_LICENSE_SERVER_URL;
     if(StringFind(url, "http://") != 0 && StringFind(url, "https://") != 0) {
         url = "https://" + url;
     }
@@ -465,130 +556,53 @@ bool ValidateLicenseRemote(string eaNameOverride = "") {
 //| License Check Function                                           |
 //+------------------------------------------------------------------+
 bool CheckLicense() {
-    if(!EnableLicenseCheck) {
-        Print("WARNING: License check is DISABLED - EA is running in test mode!");
-        return true; // Allow if disabled
-    }
-    
     long accountNumber = account.Login();
     string accountServer = account.Server();
-    datetime currentTime = TimeCurrent();
     
     Print("=== LICENSE CHECK ===");
     Print("Account Number: ", accountNumber);
     Print("Broker/Server: ", accountServer);
-    Print("Current Time: ", TimeToString(currentTime, TIME_DATE|TIME_MINUTES));
-    
-    // REMOTE VALIDATION (MOST SECURE)
-    if(UseRemoteValidation) {
-        Print("Using REMOTE license server validation...");
+    Print("Current Time: ", TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES));
 
-        // Try new EA name first (retry on startup to avoid false alert after recompile/reload)
-        int maxTries = 3;
-        for(int tryCount = 1; tryCount <= maxTries; tryCount++) {
-            if(ValidateLicenseRemote("Goldmine Blueprint - Gold")) {
-                Print("=== LICENSE: VALID (Remote) ===");
-                return true;
-            }
-            if(tryCount < maxTries) {
-                Print("Remote check failed, retry ", tryCount, "/", maxTries, " in 2 sec...");
-                Sleep(2000);
-            }
-        }
-        Print("=== LICENSE: INVALID (Remote) after ", maxTries, " attempts ===");
-        Print("Falling back to local validation...");
-        // Fall through to local validation as backup
+    if(!HARD_REQUIRE_REMOTE_LICENSE) {
+        Print("ERROR: Hardened remote-license build flag disabled unexpectedly.");
+        return false;
     }
-    
-    // LOCAL VALIDATION (Fallback)
-    Print("Using LOCAL license validation (fallback)...");
-    
-    // Check 1: License Key (if provided)
-    if(StringLen(LicenseKey) > 0) {
-        // Simple key validation (you can make this more complex)
-        string expectedKey = "GOLDMINE_" + IntegerToString(accountNumber) + "_2024";
-        if(LicenseKey != expectedKey && LicenseKey != "DEMO_KEY_12345") {
-            Print("ERROR: Invalid License Key!");
-            Print("Provided: ", LicenseKey);
-            Alert("LICENSE ERROR: Invalid License Key! Contact developer.");
-            return false;
+
+    // Hardened distribution build: remote validation only, no local fallback path.
+    Print("Using HARDENED REMOTE license validation (fallback disabled)...");
+    int maxTries = 3;
+    for(int tryCount = 1; tryCount <= maxTries; tryCount++) {
+        if(ValidateLicenseRemote("Goldmine Blueprint - Gold")) {
+            Print("=== LICENSE: VALID (Remote) ===");
+            return true;
         }
-        Print("License Key: VALID");
+        if(tryCount < maxTries) {
+            Print("Remote check failed, retry ", tryCount, "/", maxTries, " in 2 sec...");
+            Sleep(2000);
+        }
     }
-    
-    // Check 2: Allowed Accounts (whitelist)
-    if(StringLen(AllowedAccounts) > 0) {
-        bool accountAllowed = false;
-        string accounts[];
-        int accountCount = StringSplit(AllowedAccounts, ',', accounts);
-        
-        for(int i = 0; i < accountCount; i++) {
-            StringTrimLeft(accounts[i]);
-            StringTrimRight(accounts[i]);
-            if(IntegerToString(accountNumber) == accounts[i]) {
-                accountAllowed = true;
-                break;
-            }
-        }
-        
-        if(!accountAllowed) {
-            Print("ERROR: Account ", accountNumber, " is NOT in the allowed accounts list!");
-            Print("Allowed Accounts: ", AllowedAccounts);
-            Alert("LICENSE ERROR: Account not authorized! Contact developer.");
-            return false;
-        }
-        Print("Account Authorization: VALID");
-    }
-    
-    // Check 3: Allowed Brokers/Servers (if specified)
-    if(StringLen(AllowedBrokers) > 0) {
-        bool brokerAllowed = false;
-        string brokers[];
-        int brokerCount = StringSplit(AllowedBrokers, ',', brokers);
-        
-        for(int i = 0; i < brokerCount; i++) {
-            StringTrimLeft(brokers[i]);
-            StringTrimRight(brokers[i]);
-            if(StringFind(accountServer, brokers[i]) >= 0) {
-                brokerAllowed = true;
-                break;
-            }
-        }
-        
-        if(!brokerAllowed) {
-            Print("ERROR: Broker/Server '", accountServer, "' is NOT in the allowed list!");
-            Print("Allowed Brokers: ", AllowedBrokers);
-            Alert("LICENSE ERROR: Broker not authorized! Contact developer.");
-            return false;
-        }
-        Print("Broker Authorization: VALID");
-    }
-    
-    // Check 4: License Expiry
-    if(LicenseExpiry > 0) {
-        if(currentTime > LicenseExpiry) {
-            Print("ERROR: License has EXPIRED!");
-            Print("Expiry Date: ", TimeToString(LicenseExpiry, TIME_DATE|TIME_MINUTES));
-            Print("Current Date: ", TimeToString(currentTime, TIME_DATE|TIME_MINUTES));
-            Alert("LICENSE ERROR: License has expired! Contact developer to renew.");
-            return false;
-        }
-        
-        int daysRemaining = (int)((LicenseExpiry - currentTime) / 86400);
-        Print("License Expiry: ", TimeToString(LicenseExpiry, TIME_DATE|TIME_MINUTES), " (", daysRemaining, " days remaining)");
+
+    Print("=== LICENSE: INVALID (Remote) after ", maxTries, " attempts ===");
+    Alert("LICENSE ERROR: Remote validation failed. Check key/account/server authorization.");
+    return false;
+}
+
+void EnsureChartAttachedToM5() {
+    ENUM_TIMEFRAMES currentTf = (ENUM_TIMEFRAMES)Period();
+    if(currentTf == PERIOD_M5) return;
+
+    ResetLastError();
+    if(ChartSetSymbolPeriod(0, _Symbol, PERIOD_M5)) {
+        Print("CHART_TIMEFRAME_FORCED Symbol=", _Symbol,
+              " From=", EnumToString(currentTf),
+              " To=PERIOD_M5");
     } else {
-        Print("License Expiry: NO EXPIRY");
+        int err = GetLastError();
+        Print("CHART_TIMEFRAME_FORCE_FAILED Symbol=", _Symbol,
+              " From=", EnumToString(currentTf),
+              " Err=", IntegerToString(err));
     }
-    
-    // Check 5: User Name (for tracking)
-    if(StringLen(UserName) > 0) {
-        Print("Licensed User: ", UserName);
-    } else {
-        Print("WARNING: User Name not set - cannot track usage!");
-    }
-    
-    Print("=== LICENSE: VALID (Local Fallback) ===");
-    return true;
 }
 
 //+------------------------------------------------------------------+
@@ -631,6 +645,7 @@ int OnInit() {
     trade.SetDeviationInPoints(Slippage);
     trade.SetTypeFilling(ORDER_FILLING_FOK);
     trade.SetAsyncMode(false);
+    InitProfileRiskConfig();
     
     // Get symbol properties
     point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
@@ -688,20 +703,24 @@ int OnInit() {
 #ifdef SMC_SYMBOL_GOLD
     double bePipsForSymbol = BreakEvenPips;
     Print("Goldmine Blueprint - Gold EA initialized for ", symbolName, " (", _Symbol, ")");
-    Print("Risk per trade: ", RiskPercent, "%");
+    Print("Risk per trade: ", DoubleToString(ScaleRiskPct(RiskPercent), 2), "% (base ", DoubleToString(RiskPercent, 2), "%)");
     Print("Break-Even: ", bePipsForSymbol, " pips (Gold)");
 #else
     bool isSilverSymbol = (StringFind(symbolUpper, "XAG") >= 0 || StringFind(symbolUpper, "SILVER") >= 0);
     double bePipsForSymbol = isSilverSymbol ? BreakEvenPips_Silver : BreakEvenPips;
     Print("Goldmine Blueprint - Gold EA initialized for ", symbolName, " (", _Symbol, ")");
-    Print("Risk per trade: ", RiskPercent, "%");
+    Print("Risk per trade: ", DoubleToString(ScaleRiskPct(RiskPercent), 2), "% (base ", DoubleToString(RiskPercent, 2), "%)");
     Print("Break-Even: ", bePipsForSymbol, " pips (", (isSilverSymbol ? "Silver" : "Gold"), ")");
 #endif
     Print("Primary TF: ", EnumToString(PrimaryTF));
     
-    // Set initialization time for startup cooldown (20 seconds)
+    // Set initialization time for startup cooldown
     initTime = TimeCurrent();
-    Print("Startup cooldown: 5 seconds - trades will be blocked until ", TimeToString(initTime + 5, TIME_DATE|TIME_SECONDS));
+    if(EnableStartupCooldown && StartupCooldownSeconds > 0) {
+        Print("Startup cooldown: ", IntegerToString(StartupCooldownSeconds), " seconds - trades will be blocked until ", TimeToString(initTime + StartupCooldownSeconds, TIME_DATE|TIME_SECONDS));
+    } else {
+        Print("Startup cooldown disabled.");
+    }
     
 #ifdef SMC_SYMBOL_GOLD
     if(StringFind(symbolUpper, "XAU") < 0 && StringFind(symbolUpper, "GOLD") < 0) {
@@ -717,6 +736,8 @@ int OnInit() {
     }
     Print("Goldmine Blueprint – Silver: BE/TP use 1 pip = 0.01 (hardcoded).");
 #endif
+
+    EnsureChartAttachedToM5();
 
     // VPS: Adopt existing positions on restart
     int adopted = 0;
@@ -754,31 +775,107 @@ void OnDeinit(const int reason) {
 }
 
 //+------------------------------------------------------------------+
-//| Daily loss guard: block new entries after daily loss threshold   |
+//| Refresh daily risk state                                         |
 //+------------------------------------------------------------------+
-bool DailyLossExceeded() {
-    if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
+void RefreshDailyRiskState() {
     datetime now = TimeCurrent();
-    int key = (int)TimeYear(now) * 10000 + (int)TimeMonth(now) * 100 + (int)TimeDay(now);
+    if(now <= 0) return;
+
+    MqlDateTime dt;
+    TimeToStruct(now, dt);
+    int key = dt.year * 10000 + dt.mon * 100 + dt.day;
     if(key != dayKey) {
         dayKey = key;
         dayStartEquity = account.Equity();
         dailyLossTripped = false;
+        dailyLossAmountTripped = false;
+        dailyProfitTargetTripped = false;
         Print("Blueprint VPS: Daily equity reset. StartEquity=", DoubleToString(dayStartEquity, 2));
     }
+}
+
+//+------------------------------------------------------------------+
+//| Get daily floating + realized PnL from day-start equity          |
+//+------------------------------------------------------------------+
+double GetDailyPnLAmount() {
+    RefreshDailyRiskState();
+    if(dayStartEquity <= 0) return 0.0;
+    return account.Equity() - dayStartEquity;
+}
+
+//+------------------------------------------------------------------+
+//| Clamp percentage inputs to 5% steps between 5 and 100           |
+//+------------------------------------------------------------------+
+double NormalizeRiskPercentStep(double rawPercent) {
+    double clamped = MathMax(5.0, MathMin(100.0, rawPercent));
+    return MathRound(clamped / 5.0) * 5.0;
+}
+
+//+------------------------------------------------------------------+
+//| Daily loss guard: block new entries after daily loss threshold   |
+//+------------------------------------------------------------------+
+bool DailyLossExceeded() {
+    if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
+    RefreshDailyRiskState();
     if(dayStartEquity <= 0) return false;
+    double maxLossPct = NormalizeRiskPercentStep(DailyLossPctFromStart);
     double lossPct = (dayStartEquity - account.Equity()) / dayStartEquity * 100.0;
-    if(!dailyLossTripped && lossPct >= DailyLossPctFromStart) {
+    if(!dailyLossTripped && lossPct >= maxLossPct) {
         dailyLossTripped = true;
-        Print("Blueprint VPS: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(DailyLossPctFromStart, 2), "%). New entries blocked.");
+        Print("Blueprint VPS: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(maxLossPct, 2), "%). New entries blocked.");
     }
     return dailyLossTripped;
 }
 
 //+------------------------------------------------------------------+
+//| Daily profit target guard                                        |
+//+------------------------------------------------------------------+
+bool DailyProfitTargetReached() {
+    if(!UseDailyProfitTarget || DailyProfitTargetPctFromStart <= 0) return false;
+    RefreshDailyRiskState();
+    if(dayStartEquity <= 0) return false;
+    double targetPct = NormalizeRiskPercentStep(DailyProfitTargetPctFromStart);
+    double profitPct = (account.Equity() - dayStartEquity) / dayStartEquity * 100.0;
+    if(!dailyProfitTargetTripped && profitPct >= targetPct) {
+        dailyProfitTargetTripped = true;
+        Print("Blueprint VPS: DAILY PROFIT TARGET REACHED. Profit=", DoubleToString(profitPct, 2),
+              "% (target ", DoubleToString(targetPct, 2), "%). New entries blocked.");
+    }
+    return dailyProfitTargetTripped;
+}
+
+//+------------------------------------------------------------------+
+//| Combined daily entry guard                                       |
+//+------------------------------------------------------------------+
+bool DailyEntryGuardTriggered() {
+    return DailyLossExceeded() || DailyProfitTargetReached();
+}
+
+//+------------------------------------------------------------------+
 //| Expert tick function                                            |
 //+------------------------------------------------------------------+
+
+void LogAccountSnapshotHeartbeat() {
+    static datetime lastSnapshotLog = 0;
+    datetime now = TimeCurrent();
+    if(now == 0) return;
+    if(now - lastSnapshotLog < 60) return;
+
+    double bal = account.Balance();
+    double eq = account.Equity();
+    double prof = account.Profit();
+    double freeMargin = account.FreeMargin();
+    Print("ACCOUNT_SNAPSHOT Balance=", DoubleToString(bal, 2),
+          " Equity=", DoubleToString(eq, 2),
+          " Profit=", DoubleToString(prof, 2),
+          " FreeMargin=", DoubleToString(freeMargin, 2),
+          " Account=", IntegerToString((int)account.Login()));
+    lastSnapshotLog = now;
+}
+
 void OnTick() {
+    LogAccountSnapshotHeartbeat();
+
     // HEARTBEAT: So you always see something in Experts tab (every 60 sec)
     static datetime lastHeartbeat = 0;
     if(TimeCurrent() - lastHeartbeat >= 60) {
@@ -803,8 +900,8 @@ void OnTick() {
     // ALWAYS manage positions on every tick (critical for TP/SL management)
     ManagePositions();
 
-    // Block new entries after daily loss threshold
-    if(DailyLossExceeded()) return;
+    // Block new entries after daily loss/profit thresholds
+    if(DailyEntryGuardTriggered()) return;
     
     // Re-entry after BE: check if tracked position closed at BE; expire reentry flag after N bars
     CheckBEClosedAndAllowReentry();
@@ -1557,7 +1654,7 @@ bool HasOppositeTradeNearby(bool isBuy, double entryPrice, double zoneBottom = 0
         if(!position.SelectByIndex(pos)) continue;
         if(position.Symbol() != _Symbol) continue;
         if(position.Magic() != MagicNumber) continue;
-        
+        if(IsLegacyPositionForEntry()) continue;
         double posPrice = position.PriceOpen();
         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)position.Type();
         
@@ -1699,15 +1796,33 @@ bool CheckFVG_Retest_M15(double &fvgTop, double &fvgBottom, bool &isBullishFVG) 
 //| Check Entry Signals                                              |
 //+------------------------------------------------------------------+
 void CheckEntrySignals() {
-    // STARTUP COOLDOWN: Block trades for 5 seconds (was 20 - reduced so you can trade sooner)
-    if(initTime > 0 && TimeCurrent() - initTime < 5) {
+    // STARTUP COOLDOWN: block trades immediately after restart
+    if(EnableStartupCooldown && StartupCooldownSeconds > 0 && initTime > 0 && TimeCurrent() - initTime < StartupCooldownSeconds) {
         static datetime lastCooldownLog = 0;
         if(TimeCurrent() - lastCooldownLog >= 2) {
-            int remainingSeconds = 5 - (int)(TimeCurrent() - initTime);
+            int remainingSeconds = StartupCooldownSeconds - (int)(TimeCurrent() - initTime);
             Print("*** STARTUP COOLDOWN: ", remainingSeconds, " sec - trades blocked ***");
             lastCooldownLog = TimeCurrent();
         }
         return; // Exit early - no trades during cooldown
+    }
+
+    if(!IsWithinTradingSession()) {
+        static datetime lastSessionLog = 0;
+        if(TimeCurrent() - lastSessionLog >= 60) {
+            Print("*** SESSION FILTER: Outside Perth windows 07:30-11:00, 14:00-18:00, 19:30-02:00 - entries blocked ***");
+            lastSessionLog = TimeCurrent();
+        }
+        return;
+    }
+
+    if(UseHighVolumeEntryBlock && IsHighVolumeEntryBlocked()) {
+        static datetime lastHighVolumeLog = 0;
+        if(TimeCurrent() - lastHighVolumeLog >= 60) {
+            Print("*** HIGH VOLUME FILTER: Extreme tick-volume spike detected - entries blocked ***");
+            lastHighVolumeLog = TimeCurrent();
+        }
+        return;
     }
     
     static datetime lastDebugLog = 0;
@@ -1914,6 +2029,7 @@ void CheckEntrySignals() {
                         if(!position.SelectByIndex(pos)) continue;
                         if(position.Symbol() != _Symbol) continue;
                         if(position.Magic() != MagicNumber) continue;
+                        if(IsLegacyPositionForEntry()) continue;
                         if(position.Type() != POSITION_TYPE_BUY) continue;
                         
                         double existingEntry = position.PriceOpen();
@@ -1994,6 +2110,7 @@ void CheckEntrySignals() {
                             if(!position.SelectByIndex(pos)) continue;
                             if(position.Symbol() != _Symbol) continue;
                             if(position.Magic() != MagicNumber) continue;
+                            if(IsLegacyPositionForEntry()) continue;
                             if(position.Type() != POSITION_TYPE_BUY) continue;
                             
                             existingEntryPrice = position.PriceOpen();
@@ -2058,7 +2175,7 @@ void CheckEntrySignals() {
                     
                     // CRITICAL: Check total risk before opening new trade
                     double currentTotalRisk = CalculateTotalRisk();
-                    double newTradeRisk = RiskPercent;
+                    double newTradeRisk = isFirstTrade ? FirstTradeRisk : (canScale ? ScalingEntryRisk : RiskPercent);
                     double totalRiskAfter = currentTotalRisk + newTradeRisk;
                     
                     if(totalRiskAfter > MaxTotalRisk) {
@@ -2182,6 +2299,7 @@ void CheckEntrySignals() {
                         if(!position.SelectByIndex(pos)) continue;
                         if(position.Symbol() != _Symbol) continue;
                         if(position.Magic() != MagicNumber) continue;
+                        if(IsLegacyPositionForEntry()) continue;
                         if(position.Type() != POSITION_TYPE_SELL) continue;
                         
                         double existingEntry = position.PriceOpen();
@@ -2262,6 +2380,7 @@ void CheckEntrySignals() {
                             if(!position.SelectByIndex(pos)) continue;
                             if(position.Symbol() != _Symbol) continue;
                             if(position.Magic() != MagicNumber) continue;
+                            if(IsLegacyPositionForEntry()) continue;
                             if(position.Type() != POSITION_TYPE_SELL) continue;
                             
                             existingEntryPrice = position.PriceOpen();
@@ -2631,7 +2750,12 @@ void OpenBuyOrder(OrderBlock &ob, double useSL = 0, double riskPercent = 0) {
     double actualRisk = (riskPercent > 0) ? riskPercent : RiskPercent;
     double riskAmount = accountBalance * (actualRisk / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_BUY, entryPrice, sl);
+    lotSize = AdjustLotForMargin(ORDER_TYPE_BUY, entryPrice, lotSize);
+    if(lotSize <= 0.0) {
+        Print("BUY signal skipped: insufficient free margin for minimum lot after leverage parity clamp.");
+        return;
+    }
     
     // Normalize prices
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
@@ -2726,7 +2850,12 @@ void OpenSellOrder(OrderBlock &ob, double useSL = 0, double riskPercent = 0) {
     double slDistance = MathAbs(entryPrice - sl);
     double pvSell = (StringFind(_Symbol, "XAU") >= 0 || StringFind(_Symbol, "GOLD") >= 0) ? 0.1 : pipValue;
     if(slDistance < 20.0 * pvSell) slDistance = 20.0 * pvSell;
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_SELL, entryPrice, sl);
+    lotSize = AdjustLotForMargin(ORDER_TYPE_SELL, entryPrice, lotSize);
+    if(lotSize <= 0.0) {
+        Print("SELL signal skipped: insufficient free margin for minimum lot after leverage parity clamp.");
+        return;
+    }
     
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
@@ -2873,6 +3002,9 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
     // Declare variables for logging (must be in function scope)
     double atrPips = 0;
     double confluenceBonus = 0;
+    bool volatilitySpikeDetected = false;
+    bool volumeSpikeDetected = false;
+    double adaptiveWickBuffer = WickProtection_Buffer;
     
     // SMART EXPANSION: Only expand SL if there's strong confluence (2+ factors) OR if structure/zone requires it
     bool shouldExpand = true;
@@ -2958,6 +3090,12 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
             }
         }
         
+        volatilitySpikeDetected = (UseVolatilitySpikeExpansion && IsVolatilitySpikeDetected());
+        volumeSpikeDetected = (UseVolumeSpikeExpansion && IsVolumeSpikeDetected());
+        if(volumeSpikeDetected && VolumeSpike_WickBufferMultiplier > 1.0) {
+            adaptiveWickBuffer *= VolumeSpike_WickBufferMultiplier;
+        }
+
         // 5. WICK PROTECTION: Place SL beyond recent wicks (if enabled)
         if(UseWickProtection) {
             double wickBasedSL = 0;
@@ -2966,7 +3104,7 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
                 double recentWickLow = FindRecentWickLow(WickProtection_Lookback);
                 if(recentWickLow > 0 && recentWickLow < entryPrice) {
                     double wickDistance = (entryPrice - recentWickLow) / pv;
-                    wickBasedSL = wickDistance + WickProtection_Buffer; // Add buffer beyond wick
+                    wickBasedSL = wickDistance + adaptiveWickBuffer; // Add adaptive buffer beyond wick
                     if(wickBasedSL > slPips && wickBasedSL < maxPips) {
                         slPips = wickBasedSL;
                         Print("  Wick-based SL applied: ", wickBasedSL, " pips (wick low: ", recentWickLow, ")");
@@ -2977,7 +3115,7 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
                 double recentWickHigh = FindRecentWickHigh(WickProtection_Lookback);
                 if(recentWickHigh > 0 && recentWickHigh > entryPrice) {
                     double wickDistance = (recentWickHigh - entryPrice) / pv;
-                    wickBasedSL = wickDistance + WickProtection_Buffer; // Add buffer beyond wick
+                    wickBasedSL = wickDistance + adaptiveWickBuffer; // Add adaptive buffer beyond wick
                     if(wickBasedSL > slPips && wickBasedSL < maxPips) {
                         slPips = wickBasedSL;
                         Print("  Wick-based SL applied: ", wickBasedSL, " pips (wick high: ", recentWickHigh, ")");
@@ -2987,11 +3125,15 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
         }
         
         // 6. VOLATILITY SPIKE EXPANSION: Widen SL during recent volatility spikes
-        if(UseVolatilitySpikeExpansion && IsVolatilitySpikeDetected()) {
-            double expandedSL = slPips * VolatilitySpike_Multiplier;
+        double spikeMultiplier = 1.0;
+        if(volatilitySpikeDetected) spikeMultiplier = MathMax(spikeMultiplier, VolatilitySpike_Multiplier);
+        if(volumeSpikeDetected) spikeMultiplier = MathMax(spikeMultiplier, VolumeSpike_SLMultiplier);
+        if(spikeMultiplier > 1.0) {
+            double expandedSL = slPips * spikeMultiplier;
             if(expandedSL < maxPips) {
                 slPips = expandedSL;
-                Print("  Volatility spike detected: SL expanded to ", slPips, " pips (", VolatilitySpike_Multiplier, "x)");
+                Print("  Spike expansion applied: SL expanded to ", slPips, " pips (", DoubleToString(spikeMultiplier, 2),
+                      "x, ATR=", (volatilitySpikeDetected ? "Y" : "N"), ", Volume=", (volumeSpikeDetected ? "Y" : "N"), ")");
             } else {
                 slPips = maxPips; // Cap at max
             }
@@ -3039,8 +3181,9 @@ double CalculateDynamicSL(bool isBuy, double entryPrice, double zoneBottom, doub
     Print("  Zone-based: ", ((zoneTop - zoneBottom) / pv + DynamicSL_ZoneBuffer), " pips");
     Print("  ATR-based: ", atrPips, " pips");
     Print("  Confluence bonus: ", confluenceBonus, " pips");
-    if(UseWickProtection) Print("  Wick protection: ENABLED");
-    if(UseVolatilitySpikeExpansion && IsVolatilitySpikeDetected()) Print("  Volatility spike: DETECTED");
+    if(UseWickProtection) Print("  Wick protection: ENABLED | Buffer=", DoubleToString(adaptiveWickBuffer, 1), " pips");
+    if(volatilitySpikeDetected) Print("  Volatility spike: DETECTED");
+    if(volumeSpikeDetected) Print("  Volume spike: DETECTED");
     Print("  Min/Max: ", minPips, "/", maxPips, " pips");
     
     return dynamicSL;
@@ -3197,6 +3340,87 @@ bool IsVolatilitySpikeDetected() {
 }
 
 //+------------------------------------------------------------------+
+//| Check if volume spike detected                                   |
+//+------------------------------------------------------------------+
+double GetVolumeSpikeRatio() {
+    if(VolumeSpike_Bars <= 0 || VolumeSpike_ReferenceBars <= 0) return 0.0;
+
+    int barsNeeded = VolumeSpike_Bars + VolumeSpike_ReferenceBars;
+    if(Bars(_Symbol, PERIOD_CURRENT) < barsNeeded + 2) return 0.0;
+
+    double recentVolume = 0.0;
+    for(int i = 1; i <= VolumeSpike_Bars; i++) {
+        recentVolume += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    }
+    recentVolume /= VolumeSpike_Bars;
+
+    double referenceVolume = 0.0;
+    for(int i = VolumeSpike_Bars + 1; i <= barsNeeded; i++) {
+        referenceVolume += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    }
+    referenceVolume /= VolumeSpike_ReferenceBars;
+
+    if(referenceVolume <= 0.0) return 0.0;
+    return recentVolume / referenceVolume;
+}
+
+//+------------------------------------------------------------------+
+//| Check if volume spike detected                                   |
+//+------------------------------------------------------------------+
+bool IsVolumeSpikeDetected(double multiplier = 0.0) {
+    if(!UseVolumeSpikeExpansion) return false;
+    double threshold = (multiplier > 1.0) ? multiplier : VolumeSpike_Multiplier;
+    if(threshold <= 1.0) return false;
+    return GetVolumeSpikeRatio() >= threshold;
+}
+
+//+------------------------------------------------------------------+
+//| Check if volume is too high for new entries                      |
+//+------------------------------------------------------------------+
+bool IsHighVolumeEntryBlocked() {
+    if(!UseHighVolumeEntryBlock) return false;
+    if(HighVolumeEntryBlockMultiplier <= 1.0) return false;
+    return GetVolumeSpikeRatio() >= HighVolumeEntryBlockMultiplier;
+}
+
+//+------------------------------------------------------------------+
+//| Convert a time window into minute-of-day comparisons             |
+//+------------------------------------------------------------------+
+bool IsMinuteWithinWindow(int currentMinutes, int startHour, int startMinute, int endHour, int endMinute) {
+    int startMinutes = startHour * 60 + startMinute;
+    int endMinutes = endHour * 60 + endMinute;
+    if(startMinutes == endMinutes) return true;
+    if(startMinutes < endMinutes) return (currentMinutes >= startMinutes && currentMinutes < endMinutes);
+    return (currentMinutes >= startMinutes || currentMinutes < endMinutes);
+}
+
+//+------------------------------------------------------------------+
+//| Get current minute-of-day using Perth time when requested        |
+//+------------------------------------------------------------------+
+int GetSessionClockMinutes() {
+    datetime sessionNow = TimeCurrent();
+    if(SessionWindowsUsePerthTime) {
+        sessionNow += ((8 * 60) - (int)((TimeCurrent() - TimeGMT()) / 60)) * 60;
+    }
+
+    MqlDateTime nowStruct;
+    TimeToStruct(sessionNow, nowStruct);
+    return nowStruct.hour * 60 + nowStruct.min;
+}
+
+//+------------------------------------------------------------------+
+//| Check if current time is inside configured trading session       |
+//+------------------------------------------------------------------+
+bool IsWithinTradingSession() {
+    if(!UseSessionFilter) return true;
+    int currentMinutes = GetSessionClockMinutes();
+    if(IsMinuteWithinWindow(currentMinutes, Session1StartHour, Session1StartMinute, Session1EndHour, Session1EndMinute)) return true;
+    if(IsMinuteWithinWindow(currentMinutes, Session2StartHour, Session2StartMinute, Session2EndHour, Session2EndMinute)) return true;
+    if(IsMinuteWithinWindow(currentMinutes, Session3StartHour, Session3StartMinute, Session3EndHour, Session3EndMinute)) return true;
+    return false;
+}
+
+//+------------------------------------------------------------------+
 //| Check if Large Wick Detected (for quick rejection check)        |
 //+------------------------------------------------------------------+
 bool HasLargeWick(bool isBuy) {
@@ -3299,6 +3523,7 @@ double CalculateTotalRisk() {
         if(!position.SelectByIndex(i)) continue;
         if(position.Symbol() != _Symbol) continue;
         if(position.Magic() != MagicNumber) continue;
+        if(IsLegacyPositionForEntry()) continue;
         
         // Position is open, calculate its risk
         double openPrice = position.PriceOpen();
@@ -3343,7 +3568,12 @@ void OpenBuyOrderFromFVG(FVG &fvg, double riskPercent = 0) {
     double actualRisk = (riskPercent > 0) ? riskPercent : RiskPercent;
     double riskAmount = accountBalance * (actualRisk / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_BUY, entryPrice, sl);
+    lotSize = AdjustLotForMargin(ORDER_TYPE_BUY, entryPrice, lotSize);
+    if(lotSize <= 0.0) {
+        Print("BUY FVG signal skipped: insufficient free margin for minimum lot after leverage parity clamp.");
+        return;
+    }
     
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
@@ -3386,7 +3616,12 @@ void OpenSellOrderFromFVG(FVG &fvg, double riskPercent = 0) {
     double slDistance = MathAbs(entryPrice - sl);
     double pvSell = (StringFind(_Symbol, "XAU") >= 0 || StringFind(_Symbol, "GOLD") >= 0) ? 0.1 : pipValue;
     if(slDistance < 20.0 * pvSell) slDistance = 20.0 * pvSell;
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_SELL, entryPrice, sl);
+    lotSize = AdjustLotForMargin(ORDER_TYPE_SELL, entryPrice, lotSize);
+    if(lotSize <= 0.0) {
+        Print("SELL FVG signal skipped: insufficient free margin for minimum lot after leverage parity clamp.");
+        return;
+    }
     
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
@@ -3420,7 +3655,12 @@ void OpenBuyOrderFromTrendline(double trendlineLevel, double riskPercent) {
     double actualRisk = (riskPercent > 0) ? riskPercent : TrendLine_StandaloneRiskPercent;
     double riskAmount = accountBalance * (actualRisk / 100.0);
     double slDistance = MathAbs(entryPrice - sl);
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_BUY, entryPrice, sl);
+    lotSize = AdjustLotForMargin(ORDER_TYPE_BUY, entryPrice, lotSize);
+    if(lotSize <= 0.0) {
+        Print("BUY trendline signal skipped: insufficient free margin for minimum lot after leverage parity clamp.");
+        return;
+    }
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
     string finalComment = TradeComment + "_TL";
@@ -3448,7 +3688,12 @@ void OpenSellOrderFromTrendline(double trendlineLevel, double riskPercent) {
     double slDistance = MathAbs(entryPrice - sl);
     double pvSell = (StringFind(_Symbol, "XAU") >= 0 || StringFind(_Symbol, "GOLD") >= 0) ? 0.1 : pipValue;
     if(slDistance < 20.0 * pvSell) slDistance = 20.0 * pvSell;
-    double lotSize = CalculateLotSize(riskAmount, slDistance);
+    double lotSize = CalculateLotSize(riskAmount, slDistance, ORDER_TYPE_SELL, entryPrice, sl);
+    lotSize = AdjustLotForMargin(ORDER_TYPE_SELL, entryPrice, lotSize);
+    if(lotSize <= 0.0) {
+        Print("SELL trendline signal skipped: insufficient free margin for minimum lot after leverage parity clamp.");
+        return;
+    }
     entryPrice = NormalizeDouble(entryPrice, symbolDigits);
     sl = NormalizeDouble(sl, symbolDigits);
     string finalComment = TradeComment + "_TL";
@@ -3465,7 +3710,24 @@ void OpenSellOrderFromTrendline(double trendlineLevel, double riskPercent) {
 //| Calculate Lot Size Based on Risk                                 |
 //| SAFETY: Cap so we never risk more than intended (broker tick value can be wrong for Gold) |
 //+------------------------------------------------------------------+
-double CalculateLotSize(double riskAmount, double slDistance) {
+int VolumeDigitsFromStep(double step) {
+    int digits = 2;
+    if(step <= 0.0) return digits;
+    while(digits < 8) {
+        double scaled = step * MathPow(10.0, digits);
+        if(MathAbs(scaled - MathRound(scaled)) < 1e-8) break;
+        digits++;
+    }
+    return digits;
+}
+
+double CalculateLotSize(double riskAmount, double slDistance, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY, double entryPrice = 0.0, double slPrice = 0.0) {
+    riskAmount *= ProfileRiskScale();
+    static bool profileRiskScaleLogged = false;
+    if(!profileRiskScaleLogged) {
+        Print("PROFILE_RISK_SCALE_APPLIED ", DoubleToString(ProfileRiskScale(), 4));
+        profileRiskScaleLogged = true;
+    }
     double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
     double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
     double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -3474,7 +3736,17 @@ double CalculateLotSize(double riskAmount, double slDistance) {
     
     if(slDistance <= 0 || tickSize <= 0) return minLot;
     
-    double riskPerLot = (slDistance / tickSize) * tickValue;
+    // Prefer broker-native loss estimation per 1 lot so lot sizing adapts to broker tick model.
+    double riskPerLot = 0.0;
+    if(entryPrice > 0.0 && slPrice > 0.0 && MathAbs(entryPrice - slPrice) >= point) {
+        double oneLotLoss = 0.0;
+        if(OrderCalcProfit(orderType, _Symbol, 1.0, entryPrice, slPrice, oneLotLoss)) {
+            riskPerLot = MathAbs(oneLotLoss);
+        }
+    }
+    if(riskPerLot <= 0.0) {
+        riskPerLot = (slDistance / tickSize) * tickValue;
+    }
     if(riskPerLot <= 0) return minLot;
     
     double lotSize = riskAmount / riskPerLot;
@@ -3520,13 +3792,68 @@ double CalculateLotSize(double riskAmount, double slDistance) {
     // Clamp to min/max
     if(lotSize < minLot) lotSize = minLot;
     if(lotSize > maxLot) lotSize = maxLot;
-    
-    return lotSize;
+
+    int volDigits = VolumeDigitsFromStep(lotStep);
+    return NormalizeDouble(lotSize, volDigits);
+}
+
+//+------------------------------------------------------------------+
+//| Clamp lot by available margin (for leverage parity)              |
+//+------------------------------------------------------------------+
+double AdjustLotForMargin(ENUM_ORDER_TYPE orderType, double entryPrice, double proposedLot) {
+    if(!EnforceLeverageParity || proposedLot <= 0.0) return proposedLot;
+
+    double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+    double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+    if(minLot <= 0.0 || lotStep <= 0.0) return proposedLot;
+
+    double freeMargin = account.FreeMargin();
+    double allowedMargin = freeMargin / MathMax(1.0, MarginSafetyFactor);
+    if(allowedMargin <= 0.0) return 0.0;
+
+    double reqMargin = 0.0;
+    if(OrderCalcMargin(orderType, _Symbol, proposedLot, entryPrice, reqMargin) && reqMargin <= allowedMargin) {
+        return proposedLot;
+    }
+
+    int volDigits = VolumeDigitsFromStep(lotStep);
+    double lot = MathFloor(proposedLot / lotStep) * lotStep;
+    for(int i = 0; i < 2000 && lot >= minLot; i++) {
+        lot = NormalizeDouble(lot, volDigits);
+        if(!OrderCalcMargin(orderType, _Symbol, lot, entryPrice, reqMargin)) {
+            lot -= lotStep;
+            continue;
+        }
+        if(reqMargin <= allowedMargin) {
+            Print("LEVERAGE_PARITY: lot reduced from ", DoubleToString(proposedLot, 2),
+                  " to ", DoubleToString(lot, volDigits),
+                  " | RequiredMargin=", DoubleToString(reqMargin, 2),
+                  " FreeMargin=", DoubleToString(freeMargin, 2));
+            return lot;
+        }
+        lot -= lotStep;
+    }
+
+    Print("LEVERAGE_PARITY: no margin for minimum lot. Signal kept but execution skipped.");
+    return 0.0;
 }
 
 //+------------------------------------------------------------------+
 //| Count Positions                                                  |
 //+------------------------------------------------------------------+
+int DayKeyFromTime(datetime t) {
+    MqlDateTime dt;
+    TimeToStruct(t, dt);
+    return dt.year * 10000 + dt.mon * 100 + dt.day;
+}
+
+bool IsLegacyPositionForEntry() {
+    if(!IgnoreLegacyPositionsForNewEntries) return false;
+    datetime posTime = position.Time();
+    if(posTime <= 0) return false;
+    return DayKeyFromTime(posTime) < DayKeyFromTime(TimeCurrent());
+}
+
 int CountPositions(ENUM_POSITION_TYPE type) {
     int count = 0;
     for(int i = PositionsTotal() - 1; i >= 0; i--) {
@@ -3534,6 +3861,7 @@ int CountPositions(ENUM_POSITION_TYPE type) {
             if(position.Symbol() == _Symbol && 
                position.Magic() == MagicNumber &&
                position.Type() == type) {
+                if(IsLegacyPositionForEntry()) continue;
                 count++;
             }
         }
@@ -3687,26 +4015,48 @@ void ManagePositions() {
         if(posType == POSITION_TYPE_SELL)
             currentProfitPips = (openPrice - currentASK) / (isSilver ? 0.01 : 0.1);
         
+        int ticketIndex = GetTicketIndex(ticket);
+        if(ticketIndex >= 0 && ticketIndex < ArraySize(forcedPositionType) && forcedPositionType[ticketIndex] >= 0) {
+            posType = (ENUM_POSITION_TYPE)forcedPositionType[ticketIndex];
+        }
         double currentPrice = (posType == POSITION_TYPE_BUY) ? currentBID : currentASK;
         
         // Auto-correct position type if MT5 reports wrong type (e.g. SELL shown as BUY after broker/MT issue)
         double pipVal = isSilver ? 0.01 : 0.1;
         double profitIfBuy  = (currentBID - openPrice) / pipVal;
         double profitIfSell = (openPrice - currentASK) / pipVal;
-        const double TYPE_CORRECT_PIP_THRESH = 5.0;
-        if(posType == POSITION_TYPE_BUY && profitIfBuy < -TYPE_CORRECT_PIP_THRESH && profitIfSell > TYPE_CORRECT_PIP_THRESH) {
-            posType = POSITION_TYPE_SELL;
-            currentProfitPips = profitIfSell;
-            currentPrice = currentASK;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported BUY but price below entry (SELL in profit ", DoubleToString(currentProfitPips, 1), " pips) - treating as SELL ***");
-        } else if(posType == POSITION_TYPE_SELL && profitIfSell < -TYPE_CORRECT_PIP_THRESH && profitIfBuy > TYPE_CORRECT_PIP_THRESH) {
-            posType = POSITION_TYPE_BUY;
-            currentProfitPips = profitIfBuy;
-            currentPrice = currentBID;
-            Print("*** TYPE AUTO-CORRECT: #", ticket, " reported SELL but price above entry (BUY in profit) - treating as BUY ***");
+        const double TYPE_CORRECT_PIP_THRESH = 80.0; // strict: avoid false flips in normal drawdown
+        const bool HARD_DISABLE_TYPE_AUTOCORRECT = false;
+        if(!HARD_DISABLE_TYPE_AUTOCORRECT) {
+            double expectedPipsByType = (posType == POSITION_TYPE_BUY) ? profitIfBuy : profitIfSell;
+            double oppositePips = (posType == POSITION_TYPE_BUY) ? profitIfSell : profitIfBuy;
+            bool impossibleTypeMismatch = (expectedPipsByType <= -TYPE_CORRECT_PIP_THRESH &&
+                                           oppositePips >= TYPE_CORRECT_PIP_THRESH);
+            int inferredType = posType;
+            if(mt5ProfitUSD > 0.0) {
+                if(oppositePips > 2.0 && expectedPipsByType < -2.0)
+                    inferredType = (posType == POSITION_TYPE_BUY) ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+            } else if(mt5ProfitUSD < 0.0) {
+                if(oppositePips < -2.0 && expectedPipsByType > 2.0)
+                    inferredType = (posType == POSITION_TYPE_BUY) ? POSITION_TYPE_SELL : POSITION_TYPE_BUY;
+            }
+            bool shouldFlipType = impossibleTypeMismatch || (inferredType != posType);
+            if(shouldFlipType) {
+                if(posType == POSITION_TYPE_BUY) {
+                    posType = POSITION_TYPE_SELL;
+                    if(ticketIndex >= 0 && ticketIndex < ArraySize(forcedPositionType)) forcedPositionType[ticketIndex] = POSITION_TYPE_SELL;
+                    currentProfitPips = profitIfSell;
+                    currentPrice = currentASK;
+                    Print("*** TYPE AUTO-CORRECT: #", ticket, " impossible BUY mismatch detected; treating as SELL (", DoubleToString(currentProfitPips, 1), " pips) ***");
+                } else if(posType == POSITION_TYPE_SELL) {
+                    posType = POSITION_TYPE_BUY;
+                    if(ticketIndex >= 0 && ticketIndex < ArraySize(forcedPositionType)) forcedPositionType[ticketIndex] = POSITION_TYPE_BUY;
+                    currentProfitPips = profitIfBuy;
+                    currentPrice = currentBID;
+                    Print("*** TYPE AUTO-CORRECT: #", ticket, " impossible SELL mismatch detected; treating as BUY (", DoubleToString(currentProfitPips, 1), " pips) ***");
+                }
+            }
         }
-        
-        int ticketIndex = GetTicketIndex(ticket);
         if(ticketIndex < 0 || ticketIndex >= ArraySize(tp1Hit)) continue; // Prevent array out of range crash / EA removal
         
         // Log position status every 10 seconds for debugging
@@ -3813,27 +4163,36 @@ void ManagePositions() {
             double pipSize = isGold ? 0.1 : (isSilver ? 0.01 : posPipValue);
             double sellPips = (openPrice - currentASK) / pipSize;
             if(sellPips > currentProfitPips) currentProfitPips = sellPips;
+            // Latch BE once triggered and keep retrying while trade remains in profit.
+            bool beArmed = (tp1Hit[ticketIndex] && currentASK < openPrice);
             if(sellPips >= bePips && sellPips > 0) {
+                beArmed = true;
                 if(!tp1Hit[ticketIndex]) { tp1Hit[ticketIndex] = true; tp1HitPrice[ticketIndex] = currentPrice; }
                 if(posType == POSITION_TYPE_SELL)
-                    Print("*** SELL BE FLAG (Silver): ", DoubleToString(sellPips, 1), " pips >= ", bePips, " | Ticket #", ticket, " → TP enabled ***");
-                if(UseBreakEven) {
-                    double newSL = openPrice;
-                    bool needToModify = (currentSL == 0 || newSL < currentSL);
-                    if(needToModify) {
-                        if(trade.PositionModify(ticket, newSL, 0)) {
-                            Print("*** SELL BE SET | Ticket #", ticket, " | ", DoubleToString(sellPips, 1), " pips ***");
-                        } else if(isSilver) {
-                            // Silver SELL: BE = entry. If broker rejects, try 1 pip in profit (SL slightly below entry)
-                            double cushionSL = NormalizeDouble(openPrice - 0.01, posDigits);
+                    Print("*** SELL BE FLAG (", (isGold ? "Gold" : "Silver"), "): ", DoubleToString(sellPips, 1), " pips >= ", bePips, " | Ticket #", ticket, " → TP enabled ***");
+            }
+            if(beArmed && UseBreakEven) {
+                double newSL = openPrice;
+                bool needToModify = (currentSL == 0 || newSL < currentSL);
+                if(needToModify) {
+                    if(trade.PositionModify(ticket, newSL, 0)) {
+                        Print("*** SELL BE SET | Ticket #", ticket, " | ", DoubleToString(sellPips, 1), " pips ***");
+                    } else if(isSilver) {
+                        // Silver SELL: BE = entry. If broker rejects, try 1 pip in profit (SL slightly below entry)
+                        double cushionSL = NormalizeDouble(openPrice - 0.01, posDigits);
+                        if(trade.PositionModify(ticket, cushionSL, 0)) {
+                            Print("*** SELL BE SET (cushion -1 pip) | Ticket #", ticket, " | ", DoubleToString(sellPips, 1), " pips ***");
+                        } else if(posDigits >= 3) {
+                            cushionSL = NormalizeDouble(openPrice, 2);
                             if(trade.PositionModify(ticket, cushionSL, 0)) {
-                                Print("*** SELL BE SET (cushion -1 pip) | Ticket #", ticket, " | ", DoubleToString(sellPips, 1), " pips ***");
-                            } else if(posDigits >= 3) {
-                                cushionSL = NormalizeDouble(openPrice, 2);
-                                if(trade.PositionModify(ticket, cushionSL, 0)) {
-                                    Print("*** SELL BE SET (2 decimals) | Ticket #", ticket, " ***");
-                                }
+                                Print("*** SELL BE SET (2 decimals) | Ticket #", ticket, " ***");
                             }
+                        }
+                    } else if(isGold) {
+                        // Gold SELL: fallback to 1 pip in profit if exact BE is rejected by stops/freeze checks.
+                        double cushionSL = NormalizeDouble(openPrice - 0.1, posDigits);
+                        if(trade.PositionModify(ticket, cushionSL, 0)) {
+                            Print("*** SELL BE SET (gold cushion -1 pip) | Ticket #", ticket, " | ", DoubleToString(sellPips, 1), " pips ***");
                         }
                     }
                 }
@@ -4117,6 +4476,22 @@ void ManagePositions() {
             }
             
             int currentLevel = partialCloseLevel[ticketIndex];
+
+            // Safety unlock: if TP1 threshold is already hit, arm TP logic even when BE flag was missed on a fast move.
+            if(!tp1Hit[ticketIndex] && currentProfitPips >= TP1_Pips) {
+                tp1Hit[ticketIndex] = true;
+                tp1HitPrice[ticketIndex] = currentPrice;
+                Print("*** TP1 UNLOCK: threshold reached before BE latch | Ticket #", ticket, " | Profit=", DoubleToString(currentProfitPips, 1), " pips ***");
+            }
+
+            // TP latch: if TP was touched but close failed (e.g. frozen), keep retrying even after small retrace.
+            if(currentLevel <= 0 && tp1Hit[ticketIndex] && currentProfitPips >= TP1_Pips) tp1Pending[ticketIndex] = true;
+            if(currentLevel <= 1 && currentProfitPips >= TP2_Pips) tp2Pending[ticketIndex] = true;
+            if(currentLevel <= 2 && currentProfitPips >= TP3_Pips) tp3Pending[ticketIndex] = true;
+            if(currentLevel > 0) tp1Pending[ticketIndex] = false;
+            if(currentLevel > 1) tp2Pending[ticketIndex] = false;
+            if(currentLevel > 2) tp3Pending[ticketIndex] = false;
+
             
             // CRITICAL: Remove hasRunner check - TP should work even if we're at runner size
             // Only skip if we're actually at the minimum runner size (can't close more)
@@ -4125,7 +4500,7 @@ void ManagePositions() {
             // TP1: 10 pips - Close 25%
             // CRITICAL: TP1 requires tp1Hit to be true (either BE was moved, or auto-marked)
             // FIXED: For SELL trades, ensure BE is marked even if SL move failed
-            if(currentLevel == 0 && currentProfitPips >= TP1_Pips && tp1Hit[ticketIndex] && canCloseMore) {
+            if(currentLevel == 0 && (currentProfitPips >= TP1_Pips || tp1Pending[ticketIndex]) && tp1Hit[ticketIndex] && canCloseMore) {
                 // TP1: close ONLY TP1_Percent at TP1_Pips (never more than designated %)
                 double closeVolume = NormalizeDouble(origVol * (TP1_Percent / 100.0), 2);
                 double maxByInput = origVol * (TP1_Percent / 100.0) * 1.01; // strict: never exceed input %
@@ -4208,6 +4583,7 @@ void ManagePositions() {
                         
                         if(trade.PositionClosePartial(ticket, closeVolume)) {
                             partialCloseLevel[ticketIndex] = 1;
+                            tp1Pending[ticketIndex] = false;
                             Print("*** TP1 HIT: Closed ", closeVolume, " lots (", TP1_Percent, "% of ", origVol, " lots) at ", TP1_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                             closed = true;
                             break;
@@ -4237,7 +4613,7 @@ void ManagePositions() {
                 }
             }
             // TP2: 20 pips - Close 20%
-            else if(currentLevel == 1 && currentProfitPips >= TP2_Pips && canCloseMore) {
+            else if(currentLevel == 1 && (currentProfitPips >= TP2_Pips || tp2Pending[ticketIndex]) && canCloseMore) {
                 double closeVolume = NormalizeDouble(origVol * (TP2_Percent / 100.0), 2);
                 double maxByInput = origVol * (TP2_Percent / 100.0) * 1.01;
                 if(closeVolume > maxByInput) closeVolume = maxByInput;
@@ -4303,6 +4679,7 @@ void ManagePositions() {
                         
                         if(trade.PositionClosePartial(ticket, closeVolume)) {
                             partialCloseLevel[ticketIndex] = 2;
+                            tp2Pending[ticketIndex] = false;
                             Print("*** TP2 HIT: Closed ", closeVolume, " lots (", TP2_Percent, "% of ", origVol, " lots) at ", TP2_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                             closed = true;
                             break;
@@ -4330,7 +4707,7 @@ void ManagePositions() {
                 }
             }
             // TP3: at TP3_Pips - Close only TP3_Percent (designated %)
-            else if(currentLevel == 2 && currentProfitPips >= TP3_Pips && canCloseMore) {
+            else if(currentLevel == 2 && (currentProfitPips >= TP3_Pips || tp3Pending[ticketIndex]) && canCloseMore) {
                 double closeVolume = NormalizeDouble(origVol * (TP3_Percent / 100.0), 2);
                 double maxByInput = origVol * (TP3_Percent / 100.0) * 1.01;
                 if(closeVolume > maxByInput) closeVolume = maxByInput;
@@ -4392,6 +4769,7 @@ void ManagePositions() {
                         
                         if(trade.PositionClosePartial(ticket, closeVolume)) {
                             partialCloseLevel[ticketIndex] = 3;
+                            tp3Pending[ticketIndex] = false;
                             Print("*** TP3 HIT: Closed ", closeVolume, " lots (", TP3_Percent, "% of ", origVol, " lots) at ", TP3_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                             closed = true;
                             break;
@@ -4506,21 +4884,41 @@ void ManagePositions() {
             }
         }
         
-        // Step 5b: Trail SL from TrailStartPips, TrailDistancePips behind price
+        // Step 5b: Trail SL at >=120 pips. Prefer structure (40 pip buffer), fallback to fixed 80 pip distance.
         if(UseTrailSL && currentProfitPips >= TrailStartPips && currentProfitPips > 0) {
             double trailPipValue = isSilver ? 0.01 : (isGold ? 0.1 : posPipValue);
             double newSL = 0;
             if(posType == POSITION_TYPE_BUY) {
-                newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPipValue, posDigits);
-                if(newSL > openPrice && (currentSL == 0 || newSL > currentSL)) {
+                if(UseStructureTrail) {
+                    int swingIdx = iLowest(posSymbol, PERIOD_M5, MODE_LOW, StructureTrail_Lookback, 1);
+                    if(swingIdx >= 0) {
+                        double swingLow = iLow(posSymbol, PERIOD_M5, swingIdx);
+                        if(swingLow > 0) {
+                            newSL = NormalizeDouble(swingLow - StructureTrail_BufferPips * trailPipValue, posDigits);
+                        }
+                    }
+                }
+                if(newSL <= 0) newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPipValue, posDigits);
+                if(newSL > openPrice && newSL < currentPrice && (currentSL == 0 || newSL > currentSL)) {
                     if(trade.PositionModify(ticket, newSL, 0))
-                        Print("*** Trail SL (BUY): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                        Print("*** Trail SL (BUY): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL,
+                              (UseStructureTrail ? " (structure)" : " (distance)"), " ***");
                 }
             } else {
-                newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPipValue, posDigits);
-                if(newSL < openPrice && (currentSL == 0 || newSL < currentSL)) {
+                if(UseStructureTrail) {
+                    int swingIdx = iHighest(posSymbol, PERIOD_M5, MODE_HIGH, StructureTrail_Lookback, 1);
+                    if(swingIdx >= 0) {
+                        double swingHigh = iHigh(posSymbol, PERIOD_M5, swingIdx);
+                        if(swingHigh > 0) {
+                            newSL = NormalizeDouble(swingHigh + StructureTrail_BufferPips * trailPipValue, posDigits);
+                        }
+                    }
+                }
+                if(newSL <= 0) newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPipValue, posDigits);
+                if(newSL < openPrice && newSL > currentPrice && (currentSL == 0 || newSL < currentSL)) {
                     if(trade.PositionModify(ticket, newSL, 0))
-                        Print("*** Trail SL (SELL): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                        Print("*** Trail SL (SELL): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL,
+                              (UseStructureTrail ? " (structure)" : " (distance)"), " ***");
                 }
             }
         }
