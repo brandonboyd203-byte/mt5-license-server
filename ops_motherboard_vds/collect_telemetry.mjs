@@ -184,13 +184,14 @@ async function readAccountsCsvMap(filePath = ACCOUNTS_CSV) {
     const raw = await fsp.readFile(filePath, 'utf8');
     const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (lines.length < 2) return {};
-    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    const cleanCsvCell = (value) => String(value || '').trim().replace(/^"|"$/g, '');
+    const headers = lines[0].split(',').map((h) => cleanCsvCell(h).toLowerCase());
     const idx = (name) => headers.indexOf(name);
     const pIdx = idx('profile');
     if (pIdx < 0) return {};
     const out = {};
     for (let i = 1; i < lines.length; i += 1) {
-      const cols = lines[i].split(',').map((c) => c.trim());
+      const cols = lines[i].split(',').map((c) => cleanCsvCell(c));
       const profile = cols[pIdx];
       if (!profile) continue;
       out[profile] = {
