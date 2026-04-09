@@ -27,7 +27,12 @@ function Ensure-Dir([string]$Path) {
 }
 
 function Set-IniSectionValue([string]$Path, [string]$Section, [string]$Key, [string]$Value) {
-  $lines = if (Test-Path $Path) { [System.Collections.Generic.List[string]](Get-Content $Path) } else { [System.Collections.Generic.List[string]]::new() }
+  $lines = [System.Collections.Generic.List[string]]::new()
+  if (Test-Path $Path) {
+    foreach ($line in @(Get-Content $Path -ErrorAction SilentlyContinue)) {
+      $lines.Add([string]$line)
+    }
+  }
   if ($lines.Count -eq 0) {
     $lines.Add("[$Section]")
   }
@@ -108,7 +113,13 @@ function Rebuild-Task([string]$Profile, [string]$Account, [string]$ServerName, [
     return
   }
   $taskName = "MT5_$Profile"
-  $runCmd = "$term /portable /profile:Default /config:$startup /login:$Account /password:$Pass /server:$ServerName"
+  $launcher = Join-Path $root 'run_terminal.cmd'
+  $launcherLines = @(
+    '@echo off',
+    "start \"\" \"$term\" /portable /profile:Default /config:\"$startup\" /login:$Account /password:$Pass /server:$ServerName"
+  )
+  Set-Content -Path $launcher -Value $launcherLines -Encoding ASCII
+  $runCmd = "cmd /c \"$launcher\""
   schtasks /Delete /TN $taskName /F | Out-Null
   schtasks /Delete /TN "${taskName}_SYS" /F | Out-Null
   schtasks /Create /TN $taskName /SC ONLOGON /RL HIGHEST /RU Administrator /IT /TR $runCmd /F | Out-Host
