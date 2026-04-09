@@ -1,0 +1,362 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Goldmine Motherboard Ops VDS</title>
+  <link rel="stylesheet" href="styles.css?v=20260410a" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <header class="topbar">
+    <div>
+      <h1>Goldmine Motherboard Ops VDS</h1>
+      <p class="subtitle">Live command center for bots, MT5 telemetry, and Discord health</p>
+    </div>
+    <div class="pill" id="lastUpdated">Live</div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="live">Live Lab</button>
+    <button class="tab" data-tab="bots">Bots</button>
+    <button class="tab" data-tab="discord">Discord</button>
+    <button class="tab" data-tab="fixes">Fixes</button>
+  </nav>
+
+  <section class="tab-pane" data-pane="overview">
+    <div class="exec-strip">
+      <section class="card glass">
+        <h2>Total Equity</h2>
+        <div id="execTotalEquity" class="exec-value">-</div>
+        <div id="execTotalBalance" class="muted">-</div>
+      </section>
+      <section class="card glass">
+        <h2>Day Return</h2>
+        <div id="execDayReturn" class="exec-value">-</div>
+        <div id="execDayPnl" class="muted">-</div>
+      </section>
+      <section class="card glass">
+        <h2>Week Return</h2>
+        <div id="execWeekReturn" class="exec-value">-</div>
+        <div id="execWeekPnl" class="muted">-</div>
+      </section>
+      <section class="card glass">
+        <h2>Open Risk</h2>
+        <div id="execOpenRisk" class="exec-value">-</div>
+        <div id="execExposure" class="muted">-</div>
+      </section>
+      <section class="card glass">
+        <h2>Breach Alerts</h2>
+        <div id="execAlerts" class="exec-value">-</div>
+        <div id="execAlertNote" class="muted">-</div>
+      </section>
+      <section class="card glass">
+        <h2>Reliability</h2>
+        <div id="freshnessBadge">-</div>
+        <div id="staleWarnings" class="muted">-</div>
+        <div id="discordState" class="muted">-</div>
+      </section>
+    </div>
+
+    <div class="grid kpis">
+      <section class="card">
+        <h2>Run Verdict</h2>
+        <div id="verdict" class="badge badge-warn">-</div>
+        <div id="branch" class="muted"></div>
+        <div id="bot" class="muted"></div>
+        <div id="bestBotNow" class="muted">-</div>
+      </section>
+      <section class="card">
+        <h2>Live Exposure</h2>
+        <div id="telemetryUpdated" class="muted">-</div>
+        <div id="openPositionsTotal">-</div>
+        <div id="openOrdersTotal">-</div>
+        <div id="profilesSyncTotal" class="muted">-</div>
+      </section>
+      <section class="card">
+        <h2>Day PnL</h2>
+        <div id="dayNetUsd">-</div>
+        <div id="dayGrossUsd" class="muted">-</div>
+        <div id="dayLossUsd" class="muted">-</div>
+        <div id="dayRates" class="muted">-</div>
+      </section>
+      <section class="card">
+        <h2>Week PnL</h2>
+        <div id="weekNetUsd">-</div>
+        <div id="weekGrossUsd" class="muted">-</div>
+        <div id="weekLossUsd" class="muted">-</div>
+        <div id="weekRates" class="muted">-</div>
+      </section>
+      <section class="card">
+        <h2>Balance & Quality</h2>
+        <div id="totalBalanceUsd">-</div>
+        <div id="openPnlUsd">-</div>
+        <div id="qualityCounts" class="muted">-</div>
+      </section>
+      <section class="card">
+        <h2>Process Health</h2>
+        <div id="terminals">-</div>
+        <div id="metaeditors">-</div>
+        <div id="feedMismatchState" class="muted">Feed check: -</div>
+      </section>
+    </div>
+
+    <div class="grid two-col">
+      <section class="card glass">
+        <h2>Working Leaders</h2>
+        <ul id="topWorkingList" class="timeline compact"></ul>
+      </section>
+      <section class="card glass">
+        <h2>Needs Attention</h2>
+        <ul id="attentionList" class="timeline compact"></ul>
+      </section>
+    </div>
+
+    <section class="card glass">
+      <h2>Account PnL Overview</h2>
+      <table id="accountSummary" class="pro-table compact-table">
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>DEPOSIT STARTING EQ</th>
+            <th>WITHDRAW</th>
+            <th>DAY STARTING EQ</th>
+            <th>RISK %</th>
+            <th>W/L</th>
+            <th>CURRENT TRADES OPEN</th>
+            <th>DAILY %</th>
+            <th>WEEKLY % MADE</th>
+            <th>MONTHLY % MADE</th>
+            <th>WIN RATE %</th>
+            <th>BUY % TAKEN</th>
+            <th>SELL % TAKEN</th>
+            <th>PROFIT FACTOR</th>
+            <th>DAILY P/L $</th>
+            <th>WEEK P/L</th>
+            <th>CURRENT P/L (TOTAL)</th>
+            <th>TOTAL PROFIT %</th>
+            <th>OpenPnL$</th>
+            <th>Balance$</th>
+            <th>Profiles</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </section>
+
+  <section class="tab-pane hidden" data-pane="live">
+    <section class="card glass">
+      <h2>Live Profiles</h2>
+      <div class="table-scroll-x live-profiles-scroll">
+        <table id="liveProfiles" class="pro-table compact-table">
+          <thead>
+            <tr>
+              <th>Profile</th>
+              <th>Bot</th>
+              <th>Account</th>
+              <th>DEPOSIT STARTING EQ</th>
+              <th>WITHDRAW</th>
+              <th>DAY STARTING EQ</th>
+              <th>RISK %</th>
+              <th>Leverage</th>
+              <th>W/L</th>
+              <th>OpenPnL$</th>
+              <th class="col-open-trades">OPEN</th>
+              <th>Balance$</th>
+              <th>DAILY P/L $</th>
+              <th>WEEK P/L</th>
+              <th>CURRENT P/L (TOTAL)</th>
+              <th>TOTAL PROFIT %</th>
+              <th>DAILY %</th>
+              <th>WEEKLY % MADE</th>
+              <th>MONTHLY % MADE</th>
+              <th>WIN RATE %</th>
+              <th>BUY % TAKEN</th>
+              <th>SELL % TAKEN</th>
+              <th>PROFIT FACTOR</th>
+              <th>Runtime</th>
+              <th>Charts</th>
+              <th>Faults (10h)</th>
+              <th>Status</th>
+              <th>Last</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card glass">
+      <h2>Live Copier Feed</h2>
+      <div class="table-scroll-x live-profiles-scroll">
+        <table id="copierFeed" class="pro-table compact-table">
+          <thead>
+            <tr>
+              <th>Bot</th>
+              <th>Account</th>
+              <th>Client</th>
+              <th>EA</th>
+              <th>Risk%</th>
+              <th>Leverage</th>
+              <th>Deposit</th>
+              <th>Withdraw</th>
+              <th>Account Start Eq</th>
+              <th>Day Start Eq</th>
+              <th>Balance</th>
+              <th>Equity</th>
+              <th>Open P/L</th>
+              <th>Current P/L (Total)</th>
+              <th>Day P/L</th>
+              <th>Day %</th>
+              <th>Week P/L</th>
+              <th>Week %</th>
+              <th>Status</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card glass">
+      <h2>Best Bot Terminal Live Feed</h2>
+      <div id="chartViewGrid" class="grid two-col"></div>
+    </section>
+
+    <section class="card glass">
+      <h2>Nexus Sell Health</h2>
+      <table id="nexusSellHealth" class="pro-table compact-table">
+        <thead>
+          <tr>
+            <th>Profile</th>
+            <th>Account</th>
+            <th>Risk%</th>
+            <th>Sell Trades Seen</th>
+            <th>BE Triggered%</th>
+            <th>BE Set%</th>
+            <th>TP1 Hit%</th>
+            <th>TP Fail Rate%</th>
+            <th>Frozen Rate%</th>
+            <th>AutoCorrect Hits</th>
+            <th>Last Update</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <div class="grid two-col">
+      <section class="card glass">
+        <h2>Profile Drilldown</h2>
+        <div id="selectedTitle" class="exec-value">-</div>
+        <div id="selectedSnapshot" class="muted">Select a profile row to inspect.</div>
+        <div id="selectedHealth" class="chip-row"></div>
+        <table id="positionLadder" class="pro-table compact-table">
+          <thead>
+            <tr>
+              <th>Ticket</th>
+              <th>Type</th>
+              <th>Open</th>
+              <th>Current</th>
+              <th>Pips</th>
+              <th>SL</th>
+              <th>TP</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <h2 style="margin-top:12px;">Last 20 Actions</h2>
+        <ul id="profileActions" class="timeline compact"></ul>
+      </section>
+      <section class="card glass">
+        <h2>Global Live Feed</h2>
+        <ul id="liveFeed" class="timeline"></ul>
+      </section>
+    </div>
+  </section>
+
+  <section class="tab-pane hidden" data-pane="bots">
+    <section class="card glass">
+      <h2>Profiles</h2>
+      <table id="profiles" class="pro-table">
+        <thead><tr><th>Profile</th><th>Compile</th><th>Errors</th><th>Warnings</th><th>Runtime hits</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card glass">
+      <h2>Bot Cards</h2>
+      <div id="botCards" class="bot-cards"></div>
+    </section>
+
+    <section class="card glass">
+      <h2>Profile Filter</h2>
+      <div id="filters" class="filters"></div>
+    </section>
+  </section>
+
+  <section class="tab-pane hidden" data-pane="fixes">
+    <div class="grid two-col">
+      <section class="card glass">
+        <h2>Fix Tracker (SELL BE/TP)</h2>
+        <div id="fixTracker">-</div>
+        <canvas id="runtimeChart" height="90"></canvas>
+      </section>
+
+      <section class="card glass">
+        <h2>Discord Service Health</h2>
+        <div id="discordHealth">-</div>
+        <pre id="discordMetrics">-</pre>
+      </section>
+    </div>
+
+    <section class="card glass">
+      <h2>Issue Timeline (Today)</h2>
+      <ul id="timeline" class="timeline"></ul>
+    </section>
+
+    <section class="card glass">
+      <h2>Live Control Actions</h2>
+      <div class="controls">
+        <button class="ctl pause" data-action="pause">Pause Live</button>
+        <button class="ctl resume" data-action="resume">Resume Live</button>
+        <button class="ctl restart" data-action="restart">Restart MT5</button>
+        <button class="ctl status" data-action="status">Get Status</button>
+        <button class="ctl" data-action="telemetry-refresh">Refresh Telemetry</button>
+      </div>
+      <pre id="controlOut">Ready.</pre>
+    </section>
+
+    <section class="card glass">
+      <h2>Action Audit Trail</h2>
+      <ul id="actionAudit" class="timeline compact"></ul>
+    </section>
+  </section>
+
+  <section class="tab-pane hidden" data-pane="discord">
+    <div class="grid two-col">
+      <section class="card glass">
+        <h2>Discord Service Health</h2>
+        <div id="discordHealthMirror">-</div>
+        <pre id="discordMetricsMirror">-</pre>
+      </section>
+
+      <section class="card glass">
+        <h2>Latest Reports</h2>
+        <pre id="reports">-</pre>
+      </section>
+    </div>
+
+    <section class="card glass">
+      <h2>Run Context</h2>
+      <pre id="context">-</pre>
+    </section>
+  </section>
+
+  <script src="app.js?v=20260410a"></script>
+</body>
+</html>
