@@ -174,7 +174,7 @@
       };
 
       if (a) {
-        const bot = a.profileLabel || a.profile || 'Best Bot #1';
+        const bot = jordanDisplayName({ profileLabel: a.profileLabel, profile: a.profile, client: a.profileLabel }) || a.profileLabel || a.profile || 'Best Bot #1';
         const ea = a.botName || '-';
         const sym = (a.symbols || '-').replace(/\+/g, ',');
         if (t1) t1.textContent = `#1 ${bot} | EA ${ea} | ${sym} M5 | Acct ${maskAcc(a.account)} | Risk ${fmtRisk(a.riskPct)}% | ${fmtPnl(a.dayNetUsd)}`;
@@ -186,7 +186,7 @@
       }
 
       if (b) {
-        const bot = b.profileLabel || b.profile || 'Best Bot #2';
+        const bot = jordanDisplayName({ profileLabel: b.profileLabel, profile: b.profile, client: b.profileLabel }) || b.profileLabel || b.profile || 'Best Bot #2';
         const ea = b.botName || '-';
         const sym = (b.symbols || '-').replace(/\+/g, ',');
         if (t2) t2.textContent = `#2 ${bot} | EA ${ea} | ${sym} M5 | Acct ${maskAcc(b.account)} | Risk ${fmtRisk(b.riskPct)}% | ${fmtPnl(b.dayNetUsd)}`;
@@ -245,15 +245,28 @@
     return 0;
   }
 
+  function dayPnlDisplayValue(row) {
+    const dayNet = Number(row?.dayNetUsd);
+    const open = openPnlValue(row);
+    if (Number.isFinite(dayNet)) {
+      if (Math.abs(dayNet) < 0.01 && Number.isFinite(open) && Math.abs(open) > 0.01) {
+        return Number((dayNet + open).toFixed(2));
+      }
+      return dayNet;
+    }
+    if (Number.isFinite(open)) return open;
+    return 0;
+  }
+
   function rowDayReturnPct(row) {
     const direct = Number(row?.dayReturnPct);
-    if (Number.isFinite(direct)) return direct;
+    if (Number.isFinite(direct) && Math.abs(direct) > 0.0001) return direct;
     const dayStart = Number(row?.dayStartEquity ?? row?.dayStartBalance ?? row?.dayBaseline);
-    const dayNet = Number(row?.dayNetUsd);
+    const dayNet = dayPnlDisplayValue(row);
     if (Number.isFinite(dayStart) && dayStart > 0 && Number.isFinite(dayNet)) {
       return Number(((100 * dayNet) / dayStart).toFixed(2));
     }
-    return null;
+    return Number.isFinite(direct) ? direct : null;
   }
 
   function profileName(row) {
@@ -289,10 +302,11 @@
 
   function isAllowedMainBotRow(row) {
     const key = normalizedLabel(profileName(row));
-    return key === 'BLUEPRINTGOLD'
-      || key === 'BLUEPRINTGOLDSILVER'
-      || key === 'BLUEPRINTSILVER'
-      || key === 'BLUEPRINT20';
+    if (!(key.startsWith('BLUEPRINT') || key.startsWith('NEXUS'))) return false;
+    if (key.includes('TF')) return false;
+    if (key.includes('SETUP')) return false;
+    if (key === 'SELLBLUEPRINT') return false;
+    return true;
   }
 
   function isActiveJordanRow(row) {
@@ -308,7 +322,7 @@
   function jordanDisplayName(row) {
     const key = `${normalizedLabel(profileName(row))} ${normalizedLabel(row?.client)}`;
     if (key.includes('JORDAN4') || key.includes('CHRIS')) return 'CHRIS';
-    if (key.includes('JORDAN3') || key.includes('SARAH')) return 'SARAH';
+    if (key.includes('JORDAN3') || key.includes('SARAH')) return 'BRANDON';
     if (key.includes('JORDAN2') || key.includes('SEAN')) return 'SEAN';
     if (key.includes('JORDAN1') || key.includes('JORDAN')) return 'JORDAN';
     return row?.profileLabel || row?.profile || '-';
@@ -383,6 +397,28 @@
     return { deposit: 0, withdraw: 0 };
   }
 
+  function isStrictLiveRow(row) {
+    return String(row?.balanceSource || '').trim() === 'mt5-probe-live';
+  }
+
+  function exactMoneyCell(value, row) {
+    return isStrictLiveRow(row) && Number.isFinite(Number(value))
+      ? `$${Number(value).toFixed(2)}`
+      : '-';
+  }
+
+  function exactSignedMoneyCell(value, row) {
+    return isStrictLiveRow(row) && Number.isFinite(Number(value))
+      ? money(value)
+      : '-';
+  }
+
+  function exactPctCell(value, row) {
+    return isStrictLiveRow(row) && Number.isFinite(Number(value))
+      ? pct(value)
+      : '-';
+  }
+
   function renderLiveRows(targetEl, rows, emptyText = 'No live profiles yet.', options = {}) {
     if (!targetEl) return;
     const list = Array.isArray(rows) ? rows.slice(0, 25) : [];
@@ -409,16 +445,16 @@
             <td>${lev}</td>
             <td>${money(displayDeposit)}</td>
             <td>${money(flows.withdraw)}</td>
-            <td>${Number.isFinite(Number(row?.dayStartEquity ?? row?.dayStartBalance))
+            <td>${isStrictLiveRow(row) && Number.isFinite(Number(row?.dayStartEquity ?? row?.dayStartBalance))
               ? `$${Number(row.dayStartEquity ?? row.dayStartBalance).toFixed(2)}`
               : '-'}</td>
-            <td>$${Number(row.balance || 0).toFixed(2)}</td>
-            <td>$${Number(row.equity || 0).toFixed(2)}</td>
-            <td class="${numClass(openPnlValue(row))}">${money(openPnlValue(row))}</td>
-            <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
+            <td>${exactMoneyCell(row.balance, row)}</td>
+            <td>${exactMoneyCell(row.equity, row)}</td>
+            <td class="${numClass(openPnlValue(row))}">${exactSignedMoneyCell(openPnlValue(row), row)}</td>
+            <td class="${numClass(dayPnlDisplayValue(row))}">${exactSignedMoneyCell(dayPnlDisplayValue(row), row)}</td>
             <td class="${numClass(row.totalNetUsd)}">${money(row.totalNetUsd)}</td>
             <td class="${numClass(row.totalReturnPct)}">${pct(row.totalReturnPct)}</td>
-            <td class="${numClass(rowDayReturnPct(row))}">${pct(rowDayReturnPct(row))}</td>
+            <td class="${numClass(rowDayReturnPct(row))}">${exactPctCell(rowDayReturnPct(row), row)}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
             <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
             <td title="${row.statusReason || ''}">${row.status || '-'}</td>
@@ -444,17 +480,17 @@
           : '-';
         return `
           <tr>
-            <td>${row.profileLabel || row.profile || '-'}</td>
+            <td>${row.accountName || row.profileLabel || row.profile || '-'}</td>
             <td>${row.account || '-'}</td>
             <td>${inferRiskPct(row)}</td>
             <td>${lev}</td>
-            <td>$${Number(row.balance || 0).toFixed(2)}</td>
-            <td>$${Number(row.equity || 0).toFixed(2)}</td>
-            <td class="${numClass(openPnlValue(row))}">${money(openPnlValue(row))}</td>
-            <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
+            <td>${exactMoneyCell(row.balance, row)}</td>
+            <td>${exactMoneyCell(row.equity, row)}</td>
+            <td class="${numClass(openPnlValue(row))}">${exactSignedMoneyCell(openPnlValue(row), row)}</td>
+            <td class="${numClass(dayPnlDisplayValue(row))}">${exactSignedMoneyCell(dayPnlDisplayValue(row), row)}</td>
             <td class="${numClass(row.totalNetUsd)}">${money(row.totalNetUsd)}</td>
             <td class="${numClass(row.totalReturnPct)}">${pct(row.totalReturnPct)}</td>
-            <td class="${numClass(rowDayReturnPct(row))}">${pct(rowDayReturnPct(row))}</td>
+            <td class="${numClass(rowDayReturnPct(row))}">${exactPctCell(rowDayReturnPct(row), row)}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
             <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
             <td title="${row.statusReason || ''}">${row.status || '-'}</td>
@@ -486,14 +522,14 @@
             <td>${lev}</td>
             <td>${money(displayDeposit)}</td>
             <td>${money(row.withdrawAmount)}</td>
-            <td>${Number.isFinite(Number(row?.dayStartEquity))
+            <td>${isStrictLiveRow(row) && Number.isFinite(Number(row?.dayStartEquity))
               ? `$${Number(row.dayStartEquity).toFixed(2)}`
               : '-'}</td>
-            <td>$${Number(row.balance || 0).toFixed(2)}</td>
-            <td>$${Number(row.equity || 0).toFixed(2)}</td>
-            <td class="${numClass(row.openProfit)}">${money(row.openProfit)}</td>
-            <td class="${numClass(row.dayNetUsd)}">${money(row.dayNetUsd)}</td>
-            <td class="${numClass(row.dayReturnPct)}">${pct(row.dayReturnPct)}</td>
+            <td>${exactMoneyCell(row.balance, row)}</td>
+            <td>${exactMoneyCell(row.equity, row)}</td>
+            <td class="${numClass(row.openProfit)}">${exactSignedMoneyCell(row.openProfit, row)}</td>
+            <td class="${numClass(dayPnlDisplayValue(row))}">${exactSignedMoneyCell(dayPnlDisplayValue(row), row)}</td>
+            <td class="${numClass(row.dayReturnPct)}">${exactPctCell(row.dayReturnPct, row)}</td>
             <td class="${numClass(row.weekNetUsd)}">${money(row.weekNetUsd)}</td>
             <td class="${numClass(row.weekReturnPct)}">${pct(row.weekReturnPct)}</td>
             <td>${row.status || '-'}</td>
@@ -590,8 +626,38 @@
       const vdsRows = (vds && Array.isArray(vds.profiles)) ? vds.profiles : [];
       const preparedVps = prepareRows(vpsRows, 'vps');
       const preparedVds = prepareRows(vdsRows, 'vds');
+      const jordanProfileByAccount = new Map(
+        preparedVds.jordan
+          .map((r) => [String(r?.account || '').trim(), r])
+          .filter(([k]) => k.length > 0),
+      );
+      const jordanProfileByName = new Map(
+        preparedVds.jordan
+          .map((r) => [normalizedLabel(profileName(r)), r])
+          .filter(([k]) => k.length > 0),
+      );
       const jordanFromCopier = Array.isArray(vds?.copierFeed?.rows)
-        ? vds.copierFeed.rows.filter((r) => isActiveJordanRow(r))
+        ? vds.copierFeed.rows
+          .filter((r) => isActiveJordanRow(r))
+          .map((r) => {
+            const byAccount = jordanProfileByAccount.get(String(r?.account || '').trim());
+            const byName = jordanProfileByName.get(normalizedLabel(profileName(r)));
+            const base = byAccount || byName || null;
+            if (!base) return r;
+            const merged = { ...base, ...r };
+            // Prefer copier identity fields, but keep live telemetry performance fields when copier is null.
+            if (!Number.isFinite(Number(r?.openProfit)) && Number.isFinite(Number(base?.openProfit))) merged.openProfit = base.openProfit;
+            if (!Number.isFinite(Number(r?.dayNetUsd)) && Number.isFinite(Number(base?.dayNetUsd))) merged.dayNetUsd = base.dayNetUsd;
+            if (!Number.isFinite(Number(r?.weekNetUsd)) && Number.isFinite(Number(base?.weekNetUsd))) merged.weekNetUsd = base.weekNetUsd;
+            if (!Number.isFinite(Number(r?.currentPnlWithOpen)) && Number.isFinite(Number(base?.currentPnlWithOpen))) merged.currentPnlWithOpen = base.currentPnlWithOpen;
+            if (!Number.isFinite(Number(r?.totalNetUsd)) && Number.isFinite(Number(base?.totalNetUsd))) merged.totalNetUsd = base.totalNetUsd;
+            if (!Number.isFinite(Number(r?.totalReturnPct)) && Number.isFinite(Number(base?.totalReturnPct))) merged.totalReturnPct = base.totalReturnPct;
+            if (!Number.isFinite(Number(r?.dayReturnPct)) && Number.isFinite(Number(base?.dayReturnPct))) merged.dayReturnPct = base.dayReturnPct;
+            if (!Number.isFinite(Number(r?.weekReturnPct)) && Number.isFinite(Number(base?.weekReturnPct))) merged.weekReturnPct = base.weekReturnPct;
+            if (!merged?.status && base?.status) merged.status = base.status;
+            if (!merged?.statusReason && base?.statusReason) merged.statusReason = base.statusReason;
+            return merged;
+          })
         : preparedVds.jordan;
       if (isLegacyHome) {
         renderLegacyHomeRows(rowsLegacy, preparedVds.main, 'No VDS live profiles yet.');

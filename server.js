@@ -40,9 +40,6 @@ const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || 'GOLDMINE';
 const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
-const MOTHERBOARD_VPS_TELEMETRY_URL = process.env.MOTHERBOARD_VPS_TELEMETRY_URL || process.env.MOTHERBOARD_TELEMETRY_URL || 'http://217.15.164.104:8788/api/telemetry';
-const MOTHERBOARD_VPS_DASHBOARD_URL = process.env.MOTHERBOARD_VPS_DASHBOARD_URL || process.env.MOTHERBOARD_DASHBOARD_URL || 'http://217.15.164.104:8788/';
-const MOTHERBOARD_VPS_CHARTS_URL = process.env.MOTHERBOARD_VPS_CHARTS_URL || MOTHERBOARD_VPS_TELEMETRY_URL.replace(/\/api\/telemetry$/i, '/api/charts/live');
 const MOTHERBOARD_VDS_TELEMETRY_URL = process.env.MOTHERBOARD_VDS_TELEMETRY_URL || 'http://46.250.244.188:8788/api/telemetry';
 const MOTHERBOARD_VDS_DASHBOARD_URL = process.env.MOTHERBOARD_VDS_DASHBOARD_URL || 'http://46.250.244.188:8788/';
 const MOTHERBOARD_VDS_CHARTS_URL = process.env.MOTHERBOARD_VDS_CHARTS_URL || MOTHERBOARD_VDS_TELEMETRY_URL.replace(/\/api\/telemetry$/i, '/api/charts/live');
@@ -152,55 +149,94 @@ async function fetchJsonWithTimeout(url, timeoutMs = 4000) {
     }
 }
 
+function withCacheBust(url) {
+    try {
+        const u = new URL(url);
+        u.searchParams.set('_t', String(Date.now()));
+        return u.toString();
+    } catch {
+        const sep = String(url).includes('?') ? '&' : '?';
+        return `${url}${sep}_t=${Date.now()}`;
+    }
+}
+
 function n(v, fallback = 0) {
     const x = Number(v);
     return Number.isFinite(x) ? x : fallback;
 }
 
-function getMotherboardConfig(sourceRaw) {
-    const source = String(sourceRaw || 'vps').toLowerCase() === 'vds' ? 'vds' : 'vps';
-    if (source === 'vds') {
-        return {
-            source,
-            telemetryUrl: MOTHERBOARD_VDS_TELEMETRY_URL,
-            dashboardUrl: MOTHERBOARD_VDS_DASHBOARD_URL,
-            chartsUrl: MOTHERBOARD_VDS_CHARTS_URL
-        };
-    }
+function getMotherboardConfig(_sourceRaw) {
     return {
-        source,
-        telemetryUrl: MOTHERBOARD_VPS_TELEMETRY_URL,
-        dashboardUrl: MOTHERBOARD_VPS_DASHBOARD_URL,
-        chartsUrl: MOTHERBOARD_VPS_CHARTS_URL
+        source: 'vds',
+        telemetryUrl: MOTHERBOARD_VDS_TELEMETRY_URL,
+        dashboardUrl: MOTHERBOARD_VDS_DASHBOARD_URL,
+        chartsUrl: MOTHERBOARD_VDS_CHARTS_URL
     };
 }
 
 function shapeLiveBotPayload(raw, cfg) {
     const telemetry = raw?.telemetry || raw || {};
     const copierFeedRaw = raw?.copierFeed || telemetry?.copierFeed || null;
-    const profiles = Array.isArray(telemetry.profiles) ? telemetry.profiles : [];
+    const vdsHideNameParts = ['BASE', 'PRESET', 'LAB', 'DOMINION', 'EDGE', 'SURGE', 'FRESH', 'BRAND_NEW', 'COPIER_NEW', 'COPIER_CLEAN', 'TF_SETUP'];
+    const shouldHideVdsProfile = (nameRaw) => {
+        const name = String(nameRaw || '').trim().toUpperCase();
+        if (!name) return true;
+        if (name.endsWith(':BASE') || name.endsWith(':PRESETS')) return true;
+        return vdsHideNameParts.some((part) => name.includes(part));
+    };
+    const profilesRaw = Array.isArray(telemetry.profiles) ? telemetry.profiles : [];
+    const profiles = cfg?.source === 'vds'
+        ? profilesRaw.filter((p) => !shouldHideVdsProfile(p?.profile || p?.profileLabel))
+        : profilesRaw;
     const summary = telemetry.summary || {};
     const day = summary.day || {};
     const week = summary.week || {};
 
-    const rows = profiles
+    let rows = profiles
         .map((p) => {
             const dayMetrics = p?.metrics?.day || {};
             const weekMetrics = p?.metrics?.week || {};
             const totalMetrics = p?.metrics?.total || {};
             const status = p?.metrics?.status || {};
-            const dayNet = dayMetrics.netUsdLive ?? dayMetrics.netUsd;
-            const dayRet = dayMetrics.returnPctLive ?? dayMetrics.returnPct;
-            const balance = n(p.currentBalance, 0);
-            const equity = n(p.currentEquity, 0);
+            const balance = Number.isFinite(Number(p.currentBalance)) ? Number(p.currentBalance) : null;
+            const equity = Number.isFinite(Number(p.currentEquity)) ? Number(p.currentEquity) : null;
+            const depositAmount = Number.isFinite(Number(p.depositAmount)) ? Number(p.depositAmount) : (Number.isFinite(Number(p.deposit)) ? Number(p.deposit) : null);
+            const withdrawAmount = Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount) : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw) : null);
+            const accountStartEquity = Number.isFinite(Number(p.accountStartEquity)) ? Number(p.accountStartEquity) : null;
+            let dayStart = Number(p.dayStartEquity ?? p.dayStartBalance ?? dayMetrics.equityBaseline);
+            const baselineFallback = Number.isFinite(accountStartEquity) && accountStartEquity > 0
+                ? accountStartEquity
+                : (Number.isFinite(depositAmount) && depositAmount > 0 ? depositAmount : null);
+            if (!Number.isFinite(dayStart) || dayStart <= 0) dayStart = Number(baselineFallback);
+            if (Number.isFinite(dayStart) && dayStart > 0) {
+                const cap = Math.max(equity * 1.8, Number.isFinite(baselineFallback) ? Number(baselineFallback) * 1.8 : 0);
+                if (cap > 0 && dayStart > cap) dayStart = Number(baselineFallback ?? equity);
+            }
+            let liveDayFromEq = (Number.isFinite(dayStart) && dayStart > 0)
+                ? Number((equity - dayStart).toFixed(2))
+                : null;
+            if (Number.isFinite(withdrawAmount) && Number.isFinite(liveDayFromEq) && liveDayFromEq < 0 && Math.abs(liveDayFromEq) <= (withdrawAmount + 75)) {
+                liveDayFromEq = Number((liveDayFromEq + withdrawAmount).toFixed(2));
+            }
+            const liveDayPctFromEq = (Number.isFinite(dayStart) && dayStart > 0 && Number.isFinite(liveDayFromEq))
+                ? Number(((100 * liveDayFromEq) / dayStart).toFixed(2))
+                : null;
+            // Keep Day P/L as realized daily performance; Open P/L is displayed separately.
+            const dayNet = Number.isFinite(Number(dayMetrics.netUsd))
+                ? Number(dayMetrics.netUsd)
+                : (Number.isFinite(Number(dayMetrics.netUsdLive))
+                    ? Number(dayMetrics.netUsdLive)
+                    : (Number.isFinite(liveDayFromEq) ? liveDayFromEq : 0));
+            const dayRet = Number.isFinite(Number(dayMetrics.returnPct))
+                ? Number(dayMetrics.returnPct)
+                : (Number.isFinite(Number(dayMetrics.returnPctLive))
+                    ? Number(dayMetrics.returnPctLive)
+                    : (Number.isFinite(liveDayPctFromEq) ? liveDayPctFromEq : null));
             const reportedOpen = Number(p.openProfit);
             const openPositions = n(p.openPositions, 0);
             const openProfit = Number.isFinite(reportedOpen)
                 ? (openPositions > 0 ? reportedOpen : 0)
                 : 0;
-            const depositAmount = Number.isFinite(Number(p.depositAmount)) ? Number(p.depositAmount) : (Number.isFinite(Number(p.deposit)) ? Number(p.deposit) : null);
-            const withdrawAmount = Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount) : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw) : null);
-            const accountStartEquity = Number.isFinite(Number(p.accountStartEquity)) ? Number(p.accountStartEquity) : null;
             const totalBaseline = Number.isFinite(accountStartEquity) && accountStartEquity > 0
                 ? accountStartEquity
                 : (Number.isFinite(depositAmount) && depositAmount > 0 ? depositAmount : null);
@@ -213,7 +249,9 @@ function shapeLiveBotPayload(raw, cfg) {
             return {
                 profile: p.profile,
                 profileLabel: p.profileLabel || p.profile,
+                accountName: p.accountName || null,
                 account: p.account || null,
+                balanceSource: p.balanceSource || null,
                 riskPct: p.riskPct ?? null,
                 leverage: p.leverage || null,
                 leverageSource: p.leverageSource || null,
@@ -256,27 +294,34 @@ function shapeLiveBotPayload(raw, cfg) {
         })
         .sort((a, b) => b.dayNetUsd - a.dayNetUsd);
 
+
+    const summaryDayNetUsd = rows.reduce((a, r) => a + n(r.dayNetUsd, 0), 0);
+    const summaryOpenProfitUsd = rows.reduce((a, r) => a + n(r.openProfit, 0), 0);
+    const summaryDayBaseline = rows.reduce((a, r) => {
+        const b = Number(r.dayStartEquity ?? r.dayStartBalance ?? r.accountStartEquity);
+        return a + (Number.isFinite(b) && b > 0 ? b : 0);
+    }, 0);
+    const summaryDayReturnPct = summaryDayBaseline > 0
+        ? Number(((100 * summaryDayNetUsd) / summaryDayBaseline).toFixed(2))
+        : null;
+
     return {
         ok: true,
         generatedAt: telemetry.generatedAt || new Date().toISOString(),
         source: {
-            node: cfg?.source || 'vps',
+            node: cfg?.source || 'vds',
             telemetryUrl: cfg?.telemetryUrl || null,
             dashboardUrl: cfg?.dashboardUrl || null
         },
         summary: {
-            profilesTotal: n(summary.profilesTotal, rows.length),
+            profilesTotal: rows.length,
             openPositions: n(summary.totalOpenPositions, 0),
             openOrders: n(summary.totalOpenOrders, 0),
-            dayNetUsd: n(day.netUsdLive ?? day.netUsd, 0),
-            dayReturnPct: Number.isFinite(Number(day.returnPctLive ?? day.returnPct)) ? Number(day.returnPctLive ?? day.returnPct) : null,
+            dayNetUsd: Number(summaryDayNetUsd.toFixed(2)),
+            dayReturnPct: summaryDayReturnPct,
             weekNetUsd: n(week.netUsd, 0),
             weekReturnPct: Number.isFinite(Number(week.returnPct)) ? Number(week.returnPct) : null,
-            openProfitUsd: (() => {
-                const reported = Number(summary.totalOpenProfitUsd);
-                if (Number.isFinite(reported)) return reported;
-                return rows.reduce((a, r) => a + n(r.openProfit, 0), 0);
-            })()
+            openProfitUsd: Number(summaryOpenProfitUsd.toFixed(2))
         },
         profiles: rows,
         copierFeed: {
@@ -646,6 +691,11 @@ const CHECKOUT_PLANS = {
         amount: 8600,
         description: 'Blueprint bundle (Gold + Silver) - 3-month installment total'
     },
+    blueprint_20_full: {
+        name: 'Blueprint 20',
+        amount: 5000,
+        description: 'Blueprint 20 license - full pay'
+    },
     nexus_single_full: {
         name: 'Nexus - 1 Version Full Pay',
         amount: 5000,
@@ -991,7 +1041,7 @@ app.get('/api/bots/live', async (req, res) => {
         if (cached?.payload && (now - cached.ts) < 5000) {
             return res.json(cached.payload);
         }
-        const raw = await fetchJsonWithTimeout(cfg.telemetryUrl, 4500);
+        const raw = await fetchJsonWithTimeout(withCacheBust(cfg.telemetryUrl), 4500);
         const payload = shapeLiveBotPayload(raw, cfg);
         botFeedCache.bySource.set(cacheKey, { ts: now, payload });
         res.json(payload);
@@ -1027,7 +1077,7 @@ app.get('/api/bots/charts', async (req, res) => {
         }
 
         const q = new URLSearchParams({ symbols: symbolsRaw, limit: String(limit) });
-        const url = `${cfg.chartsUrl}?${q.toString()}`;
+        const url = withCacheBust(`${cfg.chartsUrl}?${q.toString()}`);
         const raw = await fetchJsonWithTimeout(url, 4500);
         const payload = {
             ok: true,
