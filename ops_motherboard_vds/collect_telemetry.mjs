@@ -1545,6 +1545,7 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
     const probeProfit = Number(probeRow.profit);
     const probeOpenPositions = Number(probeRow.openPositions);
     const probeDayStartEq = Number(probeRow.dayStartEquity ?? probeRow.startEquity);
+    const probeAccountStartEq = Number(probeRow.accountStartEquity ?? probeRow.startEquity);
     if (Number.isFinite(probeBalance) && probeBalance > 0) currentBalance = round2(probeBalance);
     if (Number.isFinite(probeEquity) && probeEquity > 0) currentEquity = round2(probeEquity);
     if (Number.isFinite(probeProfit)) openProfit = round2(probeProfit);
@@ -1563,7 +1564,22 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
         if (!state.dayOpeningAt) state.dayOpeningAt = nowIso();
         state.dayOpeningLocked = true;
       } else {
-        dayBaseline = round2(Number(state.dayOpeningEquity));
+        const lockedBaseline = round2(Number(state.dayOpeningEquity));
+        const staleVsAccountStart = Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0
+          && lockedBaseline < (probeAccountStartEq * 0.5);
+        const staleVsCurrentEquity = Number.isFinite(currentEquity) && currentEquity > 0
+          && lockedBaseline < (currentEquity * 0.5);
+        if (staleVsAccountStart || staleVsCurrentEquity) {
+          dayBaseline = Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0
+            ? round2(probeAccountStartEq)
+            : round2(probeDayStartEq);
+          state.dayOpeningEquity = dayBaseline;
+          state.dayOpeningBalance = dayBaseline;
+          if (!state.dayOpeningAt) state.dayOpeningAt = nowIso();
+          state.dayOpeningLocked = true;
+        } else {
+          dayBaseline = lockedBaseline;
+        }
       }
     }
     balanceSource = 'mt5-probe';
