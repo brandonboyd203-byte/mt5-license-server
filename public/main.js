@@ -288,12 +288,24 @@
   function isJordanRow(row) {
     const name = profileName(row).toUpperCase();
     const client = String(row?.client || '').toUpperCase();
+    const accountName = String(row?.accountName || '').toUpperCase();
+    const profile = String(row?.profile || '').toUpperCase();
     return name.includes('JORDAN')
+      || name.includes('CHRIS')
+      || name.includes('BRANDON')
       || name.includes('SEAN')
       || name.includes('SARAH')
+      || client.includes('CHRIS')
+      || client.includes('BRANDON')
       || client.includes('JORDAN')
       || client.includes('SEAN')
-      || client.includes('SARAH');
+      || client.includes('SARAH')
+      || accountName.includes('CHRIS')
+      || accountName.includes('BRANDON')
+      || accountName.includes('JORDAN')
+      || accountName.includes('SEAN')
+      || profile.includes('JORDAN4')
+      || profile.includes('SARAH');
   }
 
   function normalizedLabel(value) {
@@ -310,19 +322,32 @@
   }
 
   function isActiveJordanRow(row) {
-    const key = `${normalizedLabel(profileName(row))} ${normalizedLabel(row?.client)}`;
+    const key = [
+      normalizedLabel(profileName(row)),
+      normalizedLabel(row?.client),
+      normalizedLabel(row?.accountName),
+      normalizedLabel(row?.profile),
+    ].join(' ');
     return key.includes('JORDAN')
       || key.includes('JORDAN1')
       || key.includes('JORDAN2')
       || key.includes('JORDAN3')
+      || key.includes('JORDAN4')
+      || key.includes('CHRIS')
+      || key.includes('BRANDON')
       || key.includes('SEAN')
       || key.includes('SARAH');
   }
 
   function jordanDisplayName(row) {
-    const key = `${normalizedLabel(profileName(row))} ${normalizedLabel(row?.client)}`;
+    const key = [
+      normalizedLabel(profileName(row)),
+      normalizedLabel(row?.client),
+      normalizedLabel(row?.accountName),
+      normalizedLabel(row?.profile),
+    ].join(' ');
     if (key.includes('JORDAN4') || key.includes('CHRIS')) return 'CHRIS';
-    if (key.includes('JORDAN3') || key.includes('SARAH')) return 'BRANDON';
+    if (key.includes('JORDAN3') || key.includes('SARAH') || key.includes('BRANDON')) return 'BRANDON';
     if (key.includes('JORDAN2') || key.includes('SEAN')) return 'SEAN';
     if (key.includes('JORDAN1') || key.includes('JORDAN')) return 'JORDAN';
     return row?.profileLabel || row?.profile || '-';
