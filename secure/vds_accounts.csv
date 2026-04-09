@@ -1,8 +1,12 @@
 profile,account,server,password,bot,symbols
-Blueprint_Risk15,433441396,Exness-MT5Trial7,Goldmine#26,GoldmineBlueprint_Gold_VPS+GoldmineBlueprint_Silver_VPS,XAUUSD+XAGUSD
+BLUEPRINT_GOLD_SILVER20,433441396,Exness-MT5Trial7,Goldmine#26,GoldmineBlueprint_Gold_VPS+GoldmineBlueprint_Silver_VPS,XAUUSD+XAGUSD
 BLUEPRINT_GOLD_SILVER,433441393,Exness-MT5Trial7,Goldmine#26,GoldmineBlueprint_Gold_VPS+GoldmineBlueprint_Silver_VPS,XAUUSD+XAGUSD
 BLUEPRINT_SILVER,433441392,Exness-MT5Trial7,Goldmine#26,GoldmineBlueprint_Silver_VPS,XAGUSD
 BLUEPRINT_GOLD,433441391,Exness-MT5Trial7,Goldmine#26,GoldmineBlueprint_Gold_VPS,XAUUSD
 NEXUS_GOLD_SILVER,433441426,Exness-MT5Trial7,Goldmine#26,GoldmineNexus_Gold_VPS+GoldmineNexus_Silver_VPS,XAUUSD+XAGUSD
 NEXUS_SILVER,433441425,Exness-MT5Trial7,Goldmine#26,GoldmineNexus_Silver_VPS,XAGUSD
 NEXUS_GOLD,433441422,Exness-MT5Trial7,Goldmine#26,GoldmineNexus_Gold_VPS,XAUUSD
+JORDAN,128603696,Exness-MT5Real7,,Copier,XAUUSD+XAGUSD
+JORDAN4,128624955,Exness-MT5Real7,,Copier,XAUUSD+XAGUSD
+SARAH,128617381,Exness-MT5Real7,,Copier,XAUUSD+XAGUSD
+SEAN,128623939,Exness-MT5Real7,,Copier,XAUUSD+XAGUSD

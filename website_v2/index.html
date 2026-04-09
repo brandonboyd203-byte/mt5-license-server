@@ -227,7 +227,7 @@
       <p class="section-lead">Website mirror of the motherboard feed with masked account display.</p>
       <div class="live-grid">
         <article class="card live-panel">
-          <h3 style="margin:0 0 8px">VPS LIVE FEED: <span id="bestBotWebsiteVPS">-</span></h3>
+          <h3 style="margin:0 0 8px">VPS TEST BOTS LIVE FEED: <span id="bestBotWebsiteVPS">-</span></h3>
           <p class="mini" id="liveMetaWebsiteVPS">Connecting...</p>
           <ul id="liveFeedWebsiteVPS" class="live-list"></ul>
           <div class="feed-summary" id="liveSummaryWebsiteVPS"></div>
@@ -732,16 +732,16 @@
 
     function renderFeedSummary(summaryNode, profiles) {
       if (!summaryNode) return;
-      const rows = (Array.isArray(profiles) ? profiles : []).slice(0, 8);
+      const rows = Array.isArray(profiles) ? profiles : [];
       if (!rows.length) {
         summaryNode.innerHTML = '<div class="mini" style="padding:8px">No profile summary available yet.</div>';
         return;
       }
-      summaryNode.innerHTML = `<table><thead><tr><th>Profile</th><th>Risk %</th><th>Day Starting Eq</th><th>Current PnL $</th></tr></thead><tbody>${rows.map((p)=>{
+      summaryNode.innerHTML = `<table><thead><tr><th>Profile</th><th>Account</th><th>Risk %</th><th>Current Balance</th><th>Day PnL $</th></tr></thead><tbody>${rows.map((p)=>{
         const risk = riskPctForWebsite(p);
-        const dayStart = dayStartEqForWebsite(p);
+        const balance = n(p?.currentBalance, n(p?.currentBalanceEst));
         const dayPnl = n(p?.metrics?.day?.netUsdLive ?? p?.metrics?.day?.netUsd);
-        return `<tr><td>${String(p?.profileLabel || p?.profile || '-')}</td><td>${risk == null ? '-' : `${risk.toFixed(2)}%`}</td><td>${dayStart == null ? '-' : dayStart.toFixed(2)}</td><td>${dayPnl.toFixed(2)}</td></tr>`;
+        return `<tr><td>${String(p?.profileLabel || p?.profile || '-')}</td><td>${maskAccountWeb(p?.account || '-')}</td><td>${risk == null ? '-' : `${risk.toFixed(2)}%`}</td><td>${Number.isFinite(balance) ? balance.toFixed(2) : '-'}</td><td>${dayPnl.toFixed(2)}</td></tr>`;
       }).join('')}</tbody></table>`;
     }
 
