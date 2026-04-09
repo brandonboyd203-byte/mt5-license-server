@@ -1562,6 +1562,14 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
     if (Number.isFinite(probeEquity) && probeEquity > 0) currentEquity = round2(probeEquity);
     if (Number.isFinite(probeProfit)) openProfit = round2(probeProfit);
     if (Number.isFinite(probeOpenPositions) && probeOpenPositions >= 0) openPositions = Math.round(probeOpenPositions);
+    const lockedBaseline = round2(Number(state.dayOpeningEquity));
+    const lockedBaselineLooksStale = Number.isFinite(lockedBaseline) && lockedBaseline > 0 && (
+      (Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0 && lockedBaseline < (probeAccountStartEq * 0.5))
+      || (Number.isFinite(currentEquity) && currentEquity > 0 && lockedBaseline < (currentEquity * 0.5))
+    );
+    if (lockedBaselineLooksStale) {
+      resetDayBaseline();
+    }
     if (Number.isFinite(probeDayStartEq) && probeDayStartEq > 0) {
       const probeDayLooksStale = (
         (Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0 && probeDayStartEq < (probeAccountStartEq * 0.5))
@@ -1582,12 +1590,7 @@ function profileSnapshot(profile, state, week, month, runtimeState = null, accou
         if (!state.dayOpeningAt) state.dayOpeningAt = nowIso();
         state.dayOpeningLocked = true;
       } else {
-        const lockedBaseline = round2(Number(state.dayOpeningEquity));
-        const staleVsAccountStart = Number.isFinite(probeAccountStartEq) && probeAccountStartEq > 0
-          && lockedBaseline < (probeAccountStartEq * 0.5);
-        const staleVsCurrentEquity = Number.isFinite(currentEquity) && currentEquity > 0
-          && lockedBaseline < (currentEquity * 0.5);
-        if (staleVsAccountStart || staleVsCurrentEquity) {
+        if (lockedBaselineLooksStale) {
           resetDayBaseline();
         } else {
           dayBaseline = lockedBaseline;
