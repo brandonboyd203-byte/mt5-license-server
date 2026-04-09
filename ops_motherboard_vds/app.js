@@ -227,6 +227,14 @@ function firstFinite(...values) {
   return null;
 }
 
+function firstPositive(...values) {
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 function money(v, signed = true) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '-';
@@ -374,7 +382,7 @@ function dayReturnPctValue(row, dayNet = null, dayStartEq = null) {
     const n = Number(c);
     if (Number.isFinite(n)) return n;
   }
-  const baseline = firstFinite(
+  const baseline = firstPositive(
     dayStartEq,
     row?.dayStartEquity,
     row?.dayStartBalance,
@@ -385,6 +393,25 @@ function dayReturnPctValue(row, dayNet = null, dayStartEq = null) {
   const net = Number(dayNet);
   if (Number.isFinite(baseline) && baseline > 0 && Number.isFinite(net)) {
     return Number(((100 * net) / baseline).toFixed(2));
+  }
+  return null;
+}
+
+function totalWinRatePctValue(row) {
+  const candidates = [
+    [row?.monthWins, row?.monthMatchedCloses],
+    [row?.weekWins, row?.weekMatchedCloses],
+    [row?.dayWins, row?.dayMatchedCloses],
+    [row?.metrics?.month?.wins, row?.metrics?.month?.matchedCloses],
+    [row?.metrics?.week?.wins, row?.metrics?.week?.matchedCloses],
+    [row?.metrics?.day?.wins, row?.metrics?.day?.matchedCloses],
+  ];
+  for (const [winsRaw, matchedRaw] of candidates) {
+    const wins = Number(winsRaw);
+    const matched = Number(matchedRaw);
+    if (Number.isFinite(wins) && Number.isFinite(matched) && matched > 0) {
+      return Number(((100 * wins) / matched).toFixed(2));
+    }
   }
   return null;
 }
@@ -417,8 +444,8 @@ function dayMetrics(profile) {
     const openFallback = num(d.openProfitUsd, openPnlValue(profile));
     const eqNow = firstFinite(profile?.currentEquity, profile?.currentBalance);
     const depositStartEq = depositStartEqValue(profile);
-    let baseline = firstFinite(d.equityBaseline, profile?.dayStartEquity, profile?.dayStartBalance, depositStartEq);
-    if (!Number.isFinite(baseline) || baseline <= 0) baseline = firstFinite(depositStartEq, eqNow);
+    let baseline = firstPositive(d.equityBaseline, profile?.dayStartEquity, profile?.dayStartBalance, depositStartEq);
+    if (!Number.isFinite(baseline) || baseline <= 0) baseline = firstPositive(depositStartEq, eqNow);
     // Guard against stale/corrupt day baseline carried from an old account state.
     if (Number.isFinite(baseline) && baseline > 0 && Number.isFinite(eqNow)) {
       const cap = Math.max(eqNow * 1.8, (Number.isFinite(depositStartEq) ? depositStartEq * 1.8 : 0));
@@ -536,8 +563,8 @@ function buildClientSummary(profileSnapshots) {
     const balance = num(p.currentBalance);
     const equity = num(p.currentEquity, balance);
     const open = openPnlValue(p);
-    const dayBase = firstFinite(day.equityBaseline, p.dayStartEquity, p.dayStartBalance, depositStartEqValue(p));
-    const weekBase = firstFinite(week.equityBaseline, p.accountStartEquity);
+    const dayBase = firstPositive(day.equityBaseline, p.dayStartEquity, p.dayStartBalance, depositStartEqValue(p));
+    const weekBase = firstPositive(week.equityBaseline, p.accountStartEquity);
 
     dayNet += num(day.netUsdDisplay, day.netUsd);
     dayBaseline += Math.max(0, num(dayBase));
@@ -925,10 +952,10 @@ function renderAccountSummary(accounts) {
     const weekNet = num(a.weekNetUsd);
     const totalNet = totalNetValue(a);
     const totalRet = totalReturnPctValue(a);
-    const dayWinPct = num(a.dayMatchedCloses) > 0 ? Number(((100 * num(a.dayWins)) / num(a.dayMatchedCloses)).toFixed(2)) : null;
+    const totalWinPct = totalWinRatePctValue(a);
     const tr = document.createElement('tr');
     const depositStartEq = depositStartEqValue(a);
-    const dayStartEq = firstFinite(a.dayStartEquity, a.dayBaseline, a.dayOpeningEquity, depositStartEq);
+    const dayStartEq = firstPositive(a.dayStartEquity, a.dayBaseline, a.dayOpeningEquity, depositStartEq);
     const dayRet = dayReturnPctValue(a, dayNet, dayStartEq);
     const withdrawUsd = withdrawUsdValue(a);
     const wl = `${a.dayWins ?? 0}/${a.dayLosses ?? 0}`;
@@ -944,7 +971,7 @@ function renderAccountSummary(accounts) {
       <td>${pct(dayRet)}</td>
       <td>${pct(a.weekReturnPct)}</td>
       <td>${pct(a.monthReturnPct)}</td>
-      <td>${pct(dayWinPct)}</td>
+      <td>${pct(totalWinPct)}</td>
       <td>${pct(a.buyPct)}</td>
       <td>${pct(a.sellPct)}</td>
       <td>${fmtPf(a.dayProfitFactor)} / ${fmtPf(a.weekProfitFactor)} / ${fmtPf(a.monthProfitFactor)}</td>
@@ -1173,7 +1200,7 @@ function renderLiveProfiles(telemetry) {
     const openPosHinted = openPosKnown <= 0 && Math.abs(openPnl) > 0.01;
     const openPosText = openPosHinted ? '~1+' : String(p.openPositions ?? '-');
     const depositStartEq = depositStartEqValue(p);
-    const dayStartEq = firstFinite(p.dayStartEquity, p.dayOpeningEquity, p.dayBaseline, depositStartEq);
+    const dayStartEq = firstPositive(p.dayStartEquity, p.dayOpeningEquity, p.dayBaseline, depositStartEq);
     const dayRetDisplay = dayReturnPctValue(p, dayNetDisplay, dayStartEq) ?? (day.returnPctDisplay ?? day.returnPct);
     const withdrawUsd = withdrawUsdValue(p);
     const weekNetDisplay = num(week.netUsd);
@@ -1186,6 +1213,7 @@ function renderLiveProfiles(telemetry) {
     const runtimeReason = Array.isArray(p.runtimeDriftReasons) && p.runtimeDriftReasons.length ? p.runtimeDriftReasons.join(', ') : 'runtime synced';
     const charts = Number.isFinite(num(p.chartCount, NaN)) ? `${num(p.chartCount, 0)}` : '-';
     const wl = `${day.wins ?? 0}/${day.losses ?? 0}`;
+    const totalWinPct = totalWinRatePctValue(p);
 
     const tr = document.createElement('tr');
     if (p.profile === selectedProfile) tr.classList.add('selected-row');
@@ -1214,7 +1242,7 @@ function renderLiveProfiles(telemetry) {
       <td class="${num(dayRetDisplay) >= 0 ? 'positive' : 'negative'}" title="Realized: ${pct(day.returnPctRealized)}">${pct(dayRetDisplay)}</td>
       <td class="${num(week.returnPct) >= 0 ? 'positive' : 'negative'}">${pct(week.returnPct)}</td>
       <td class="${num(month.returnPct) >= 0 ? 'positive' : 'negative'}">${pct(month.returnPct)}</td>
-      <td>${pct(day.winRatePct)}</td>
+      <td>${pct(totalWinPct)}</td>
       <td>${pct(day.buyPct)}</td>
       <td>${pct(day.sellPct)}</td>
       <td>${fmtPf(day.profitFactor)} / ${fmtPf(week.profitFactor)} / ${fmtPf(month.profitFactor)}</td>

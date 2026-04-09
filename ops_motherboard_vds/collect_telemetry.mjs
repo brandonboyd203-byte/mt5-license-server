@@ -1794,6 +1794,8 @@ function aggregateAccounts(profileSnapshots) {
         profiles: [],
         openPositions: 0,
         openOrders: 0,
+        accountStartEquity: null,
+        dayStartEquity: null,
         dayBaseline: 0,
         weekBaseline: 0,
         monthBaseline: 0,
@@ -1854,6 +1856,14 @@ function aggregateAccounts(profileSnapshots) {
     a.monthMatchedCloses += Number(p.metrics?.month?.matchedCloses || 0);
     a.dayBuyCloses += Number(p.metrics?.day?.buyCloses || 0);
     a.daySellCloses += Number(p.metrics?.day?.sellCloses || 0);
+    const accountStartEquity = Number(p.accountStartEquity);
+    if (Number.isFinite(accountStartEquity) && accountStartEquity > 0) {
+      a.accountStartEquity = Math.max(Number(a.accountStartEquity || 0), accountStartEquity);
+    }
+    const dayStartEquity = Number(p.dayStartEquity || p.dayOpeningEquity || p.dayBaseline || p.metrics?.day?.equityBaseline);
+    if (Number.isFinite(dayStartEquity) && dayStartEquity > 0) {
+      a.dayStartEquity = Math.max(Number(a.dayStartEquity || 0), dayStartEquity);
+    }
     a.currentBalance += Number(p.currentBalance || p.currentBalanceEst || 0);
     a.currentEquity += Number(p.currentEquity || p.currentBalance || p.currentBalanceEst || 0);
     a.openProfit += Number(p.openProfit || 0);
@@ -1913,6 +1923,12 @@ function aggregateAccounts(profileSnapshots) {
       monthMatchedCloses: a.monthMatchedCloses,
       dayBuyCloses: a.dayBuyCloses,
       daySellCloses: a.daySellCloses,
+      accountStartEquity: Number.isFinite(Number(a.accountStartEquity)) && Number(a.accountStartEquity) > 0
+        ? round2(Number(a.accountStartEquity))
+        : null,
+      dayStartEquity: Number.isFinite(Number(a.dayStartEquity)) && Number(a.dayStartEquity) > 0
+        ? round2(Number(a.dayStartEquity))
+        : dayBaseline,
       currentBalance,
       currentBalanceEst: currentBalance,
       currentEquity,
