@@ -84,6 +84,20 @@ bool VerifyPartialCloseExecution(ulong ticket, double volumeBefore, double reque
     return false;
 }
 
+double VolumeComparisonTolerance(double volumeStep) {
+    return MathMax(volumeStep * 0.1, 0.0000001);
+}
+
+bool WouldEffectivelyFullClose(double currentVolume, double closeVolume, double requiredRemainingVolume, double volumeStep) {
+    double tolerance = VolumeComparisonTolerance(volumeStep);
+    double normalizedCurrent = NormalizeDouble(currentVolume, 8);
+    double normalizedClose = NormalizeDouble(closeVolume, 8);
+    double normalizedRemaining = NormalizeDouble(normalizedCurrent - normalizedClose, 8);
+
+    return normalizedClose > normalizedCurrent - requiredRemainingVolume + tolerance
+        || normalizedRemaining + tolerance < requiredRemainingVolume;
+}
+
 bool ExecuteVerifiedPartialClose(ulong ticket, string posSymbol, double requestedVolume, double volumeBefore, double volumeStep,
                                  double &volumeAfter, uint &retcodeOut, string &retcodeDescOut, int &lastErrorOut) {
     trade.SetTypeFillingBySymbol(posSymbol);
@@ -4503,7 +4517,7 @@ void ManagePositions() {
                 // NEVER partial-close if it would amount to full close (some brokers close full on round)
                 double maxSafeClose = MathMin(currentVolume * 0.45, currentVolume - minLot * 2.0);
                 if(closeVolume > maxSafeClose) closeVolume = maxSafeClose;
-                if(closeVolume >= currentVolume - minLot) {
+                if(WouldEffectivelyFullClose(currentVolume, closeVolume, minLot, posVolumeStep)) {
                     Print("*** TP1 SKIP: closeVolume would effectively full-close (currentVolume ", currentVolume, ") ***");
                     continue;
                 }
@@ -4516,7 +4530,7 @@ void ManagePositions() {
                 remainingVolume = currentVolume - closeVolume;
                 if(remainingVolume < minLot) continue;
                 // CRITICAL: Never full-close on "partial" - some brokers close full if closeVolume is too near currentVolume
-                if(closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0) {
+                if(WouldEffectivelyFullClose(currentVolume, closeVolume, minLot * 2.0, posVolumeStep)) {
                     Print("*** TP1 SKIP: closeVolume ", closeVolume, " would effectively full-close (currentVol ", currentVolume, " step ", posVolumeStep, ") - skip to avoid full TP at ~50 pips ***");
                     continue;
                 }
@@ -4618,7 +4632,7 @@ void ManagePositions() {
                 }
                 double maxSafeClose2 = MathMin(currentVolume * 0.45, currentVolume - minLot * 2.0);
                 if(closeVolume > maxSafeClose2) closeVolume = maxSafeClose2;
-                if(closeVolume >= currentVolume - minLot) {
+                if(WouldEffectivelyFullClose(currentVolume, closeVolume, minLot, posVolumeStep)) {
                     Print("*** TP2 SKIP: would effectively full-close (currentVolume ", currentVolume, ") ***");
                     continue;
                 }
@@ -4630,7 +4644,7 @@ void ManagePositions() {
                 closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2);
                 remainingVolume = currentVolume - closeVolume;
                 if(remainingVolume < minLot) continue;
-                if(closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0) {
+                if(WouldEffectivelyFullClose(currentVolume, closeVolume, minLot * 2.0, posVolumeStep)) {
                     Print("*** TP2 SKIP: would effectively full-close (currentVol ", currentVolume, " step ", posVolumeStep, ") - skip ***");
                     continue;
                 }
@@ -4714,7 +4728,7 @@ void ManagePositions() {
                 }
                 double maxSafeClose3 = MathMin(currentVolume * 0.45, currentVolume - minLot * 2.0);
                 if(closeVolume > maxSafeClose3) closeVolume = maxSafeClose3;
-                if(closeVolume >= currentVolume - minLot) {
+                if(WouldEffectivelyFullClose(currentVolume, closeVolume, minLot, posVolumeStep)) {
                     Print("*** TP3 SKIP: would effectively full-close (currentVolume ", currentVolume, ") ***");
                     continue;
                 }
@@ -4726,7 +4740,7 @@ void ManagePositions() {
                 closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2);
                 remainingVolume = currentVolume - closeVolume;
                 if(remainingVolume < minLot) continue;
-                if(closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0) {
+                if(WouldEffectivelyFullClose(currentVolume, closeVolume, minLot * 2.0, posVolumeStep)) {
                     Print("*** TP3 SKIP: would effectively full-close (currentVol ", currentVolume, " step ", posVolumeStep, ") - skip ***");
                     continue;
                 }
