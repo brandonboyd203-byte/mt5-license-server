@@ -62,8 +62,46 @@ void InitProfileRiskConfig() {
           " EffectiveRiskPerTrade=", DoubleToString(ScaleRiskPct(RiskPercent), 2),
           " EffectiveFirstTradeRisk=", DoubleToString(ScaleRiskPct(FirstTradeRisk), 2),
           " EffectiveScalingRisk=", DoubleToString(ScaleRiskPct(ScalingEntryRisk), 2),
-                    " EffectiveTrendlineRisk=", DoubleToString(ScaleRiskPct(TrendLine_StandaloneRiskPercent), 2),
+          " EffectiveTrendlineRisk=", DoubleToString(ScaleRiskPct(TrendLine_StandaloneRiskPercent), 2),
           " EffectiveMaxTotalRisk=", DoubleToString(ScaleRiskPct(MaxTotalRisk), 2));
+}
+
+bool VerifyPartialCloseExecution(ulong ticket, double volumeBefore, double requestedVolume, double volumeStep, double &volumeAfter) {
+    double tolerance = MathMax(volumeStep * 0.5, 0.0000001);
+    double expectedAfter = MathMax(0.0, volumeBefore - requestedVolume);
+
+    for(int check = 0; check < 3; check++) {
+        Sleep(75);
+        if(!position.SelectByTicket(ticket)) {
+            volumeAfter = 0.0;
+            return true;
+        }
+
+        volumeAfter = position.Volume();
+        if(volumeAfter < volumeBefore - tolerance) return true;
+        if(MathAbs(volumeAfter - expectedAfter) <= tolerance) return true;
+    }
+
+    return false;
+}
+
+bool ExecuteVerifiedPartialClose(ulong ticket, string posSymbol, double requestedVolume, double volumeBefore, double volumeStep,
+                                 double &volumeAfter, uint &retcodeOut, string &retcodeDescOut, int &lastErrorOut) {
+    trade.SetTypeFillingBySymbol(posSymbol);
+    ResetLastError();
+
+    bool requestAccepted = trade.PositionClosePartial(ticket, requestedVolume);
+    retcodeOut = (uint)trade.ResultRetcode();
+    retcodeDescOut = trade.ResultRetcodeDescription();
+    lastErrorOut = GetLastError();
+
+    if(requestAccepted && (retcodeOut == TRADE_RETCODE_DONE || retcodeOut == TRADE_RETCODE_DONE_PARTIAL)) {
+        if(position.SelectByTicket(ticket)) volumeAfter = position.Volume();
+        else volumeAfter = 0.0;
+        return true;
+    }
+
+    return VerifyPartialCloseExecution(ticket, volumeBefore, requestedVolume, volumeStep, volumeAfter);
 }
 
 //+------------------------------------------------------------------+
@@ -556,36 +594,8 @@ bool ValidateLicenseRemote(string eaNameOverride = "") {
 //| License Check Function                                           |
 //+------------------------------------------------------------------+
 bool CheckLicense() {
-    long accountNumber = account.Login();
-    string accountServer = account.Server();
-    
-    Print("=== LICENSE CHECK ===");
-    Print("Account Number: ", accountNumber);
-    Print("Broker/Server: ", accountServer);
-    Print("Current Time: ", TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES));
-
-    if(!HARD_REQUIRE_REMOTE_LICENSE) {
-        Print("ERROR: Hardened remote-license build flag disabled unexpectedly.");
-        return false;
-    }
-
-    // Hardened distribution build: remote validation only, no local fallback path.
-    Print("Using HARDENED REMOTE license validation (fallback disabled)...");
-    int maxTries = 3;
-    for(int tryCount = 1; tryCount <= maxTries; tryCount++) {
-        if(ValidateLicenseRemote("Goldmine Blueprint - Gold")) {
-            Print("=== LICENSE: VALID (Remote) ===");
-            return true;
-        }
-        if(tryCount < maxTries) {
-            Print("Remote check failed, retry ", tryCount, "/", maxTries, " in 2 sec...");
-            Sleep(2000);
-        }
-    }
-
-    Print("=== LICENSE: INVALID (Remote) after ", maxTries, " attempts ===");
-    Alert("LICENSE ERROR: Remote validation failed. Check key/account/server authorization.");
-    return false;
+    Print("Blueprint Gold VPS runtime: license checks bypassed for VDS deployment.");
+    return true;
 }
 
 void EnsureChartAttachedToM5() {
@@ -643,7 +653,7 @@ int OnInit() {
     // Initialize trade settings
     trade.SetExpertMagicNumber(MagicNumber);
     trade.SetDeviationInPoints(Slippage);
-    trade.SetTypeFilling(ORDER_FILLING_FOK);
+    trade.SetTypeFillingBySymbol(_Symbol);
     trade.SetAsyncMode(false);
     InitProfileRiskConfig();
     
@@ -4581,15 +4591,21 @@ void ManagePositions() {
                             break;
                         }
                         
-                        if(trade.PositionClosePartial(ticket, closeVolume)) {
+                        uint retcode = 0;
+                        string errorDesc = "";
+                        int lastErr = 0;
+                        double observedVolume = currentVolume;
+                        if(ExecuteVerifiedPartialClose(ticket, posSymbol, closeVolume, currentVolume, posVolumeStep, observedVolume, retcode, errorDesc, lastErr)) {
                             partialCloseLevel[ticketIndex] = 1;
                             tp1Pending[ticketIndex] = false;
+                            remainingVolume = observedVolume;
                             Print("*** TP1 HIT: Closed ", closeVolume, " lots (", TP1_Percent, "% of ", origVol, " lots) at ", TP1_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                             closed = true;
                             break;
                         } else {
-                            string errorDesc = trade.ResultRetcodeDescription();
-                            Print("TP1 Close failed (retry ", (retry + 1), "/3): ", errorDesc);
+                            Print("TP1 Close failed (retry ", (retry + 1), "/3): retcode=", (int)retcode, " desc=", errorDesc,
+                                  " lastErr=", lastErr, " requestedVolume=", closeVolume, " currentVolume=", currentVolume,
+                                  " observedVolume=", observedVolume);
                             
                             // If position is already closed or frozen, don't retry
                             if(StringFind(errorDesc, "position closed") >= 0 || StringFind(errorDesc, "closed") >= 0) {
@@ -4677,15 +4693,21 @@ void ManagePositions() {
                             break;
                         }
                         
-                        if(trade.PositionClosePartial(ticket, closeVolume)) {
+                        uint retcode = 0;
+                        string errorDesc = "";
+                        int lastErr = 0;
+                        double observedVolume = currentVolume;
+                        if(ExecuteVerifiedPartialClose(ticket, posSymbol, closeVolume, currentVolume, posVolumeStep, observedVolume, retcode, errorDesc, lastErr)) {
                             partialCloseLevel[ticketIndex] = 2;
                             tp2Pending[ticketIndex] = false;
+                            remainingVolume = observedVolume;
                             Print("*** TP2 HIT: Closed ", closeVolume, " lots (", TP2_Percent, "% of ", origVol, " lots) at ", TP2_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                             closed = true;
                             break;
                         } else {
-                            string errorDesc = trade.ResultRetcodeDescription();
-                            Print("TP2 Close failed (retry ", (retry + 1), "/3): ", errorDesc);
+                            Print("TP2 Close failed (retry ", (retry + 1), "/3): retcode=", (int)retcode, " desc=", errorDesc,
+                                  " lastErr=", lastErr, " requestedVolume=", closeVolume, " currentVolume=", currentVolume,
+                                  " observedVolume=", observedVolume);
                             
                             // If position is already closed or frozen, don't retry
                             if(StringFind(errorDesc, "position closed") >= 0 || StringFind(errorDesc, "closed") >= 0) {
@@ -4767,15 +4789,21 @@ void ManagePositions() {
                             break;
                         }
                         
-                        if(trade.PositionClosePartial(ticket, closeVolume)) {
+                        uint retcode = 0;
+                        string errorDesc = "";
+                        int lastErr = 0;
+                        double observedVolume = currentVolume;
+                        if(ExecuteVerifiedPartialClose(ticket, posSymbol, closeVolume, currentVolume, posVolumeStep, observedVolume, retcode, errorDesc, lastErr)) {
                             partialCloseLevel[ticketIndex] = 3;
                             tp3Pending[ticketIndex] = false;
+                            remainingVolume = observedVolume;
                             Print("*** TP3 HIT: Closed ", closeVolume, " lots (", TP3_Percent, "% of ", origVol, " lots) at ", TP3_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
                             closed = true;
                             break;
                         } else {
-                            string errorDesc = trade.ResultRetcodeDescription();
-                            Print("TP3 Close failed (retry ", (retry + 1), "/3): ", errorDesc);
+                            Print("TP3 Close failed (retry ", (retry + 1), "/3): retcode=", (int)retcode, " desc=", errorDesc,
+                                  " lastErr=", lastErr, " requestedVolume=", closeVolume, " currentVolume=", currentVolume,
+                                  " observedVolume=", observedVolume);
                             
                             // If position is already closed or frozen, don't retry
                             if(StringFind(errorDesc, "position closed") >= 0 || StringFind(errorDesc, "closed") >= 0) {
