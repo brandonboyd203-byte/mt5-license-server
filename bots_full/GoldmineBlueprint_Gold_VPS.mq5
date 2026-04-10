@@ -95,8 +95,7 @@ bool WouldEffectivelyFullClose(double currentVolume, double closeVolume, double 
     double normalizedClose = NormalizeDouble(closeVolume, 8);
     double normalizedRemaining = NormalizeDouble(normalizedCurrent - normalizedClose, 8);
 
-    return normalizedClose > normalizedCurrent - requiredRemainingVolume + tolerance
-        || normalizedRemaining + tolerance < requiredRemainingVolume;
+    return (normalizedClose > normalizedCurrent - requiredRemainingVolume + tolerance) || (normalizedRemaining + tolerance < requiredRemainingVolume);
 }
 
 bool ExecuteVerifiedPartialClose(ulong ticket, string posSymbol, double requestedVolume, double volumeBefore, double volumeStep,
