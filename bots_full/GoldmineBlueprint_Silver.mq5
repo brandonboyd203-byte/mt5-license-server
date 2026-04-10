@@ -19,6 +19,18 @@ CTrade trade;
 CPositionInfo position;
 CAccountInfo account;
 
+double VolumeComparisonTolerance(double volumeStep) {
+    return MathMax(volumeStep * 0.1, 0.0000001);
+}
+
+bool AllowTinyThreeStepPartial(double currentVolume, double closeVolume, double minLot, double volumeStep) {
+    double tolerance = VolumeComparisonTolerance(volumeStep);
+    double normalizedRemaining = NormalizeDouble(currentVolume - closeVolume, 8);
+    return currentVolume <= (minLot * 3.0) + tolerance
+        && closeVolume <= minLot + tolerance
+        && normalizedRemaining + tolerance >= (minLot * 2.0);
+}
+
 //+------------------------------------------------------------------+
 //| Input Parameters                                                 |
 //+------------------------------------------------------------------+
@@ -95,8 +107,11 @@ input double RunnerSizePercent = 15.0;       // % to keep as runner - DEFAULT: 1
 input bool RunnerTo1H_SR = true;             // Runner targets 1H support/resistance
 input double MinPipsBeforeFullClose = 0;     // Min pips before ANY full-close (0 = use TP3/TP5 only; e.g. 80 = safety floor)
 input bool UseTrailSL = true;                // Trail SL when profit reaches TrailStartPips
-input double TrailStartPips = 100.0;         // Start trailing SL when profit >= this (pips)
-input double TrailDistancePips = 20.0;       // Trail SL this many pips behind price
+input double TrailStartPips = 120.0;         // Start trailing SL when profit >= this (pips)
+input double TrailDistancePips = 80.0;       // Fallback trailing distance (pips) when no structure level is available
+input bool UseStructureTrail = true;         // Prefer structure-based trailing (swing high/low) over fixed distance
+input int StructureTrail_Lookback = 15;      // Bars to scan for recent swing structure
+input double StructureTrail_BufferPips = 40.0; // Buffer from swing level (pips)
 input bool UseDynamicTrail = false;           // Close on structure reversal – set true only if you want early exit on BOS/CHoCH
 input double DynamicTrailMinPips = 80.0;    // Only close on reversal if profit >= this (avoids closing too early)
 #ifndef SMC_SYMBOL_SILVER
@@ -733,7 +748,9 @@ void OnDeinit(const int reason) {
 bool DailyLossExceeded() {
     if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
     datetime now = TimeCurrent();
-    int key = (int)TimeYear(now) * 10000 + (int)TimeMonth(now) * 100 + (int)TimeDay(now);
+    MqlDateTime dt;
+    TimeToStruct(now, dt);
+    int key = dt.year * 10000 + dt.mon * 100 + dt.day;
     if(key != dayKey) {
         dayKey = key;
         dayStartEquity = account.Equity();
@@ -4118,19 +4135,31 @@ void ManagePositions() {
                 if(closeVolume > maxSafeClose) closeVolume = maxSafeClose;
                 if(closeVolume >= currentVolume - minLot) {
                     Print("*** TP1 SKIP: closeVolume would effectively full-close (currentVolume ", currentVolume, ") ***");
+                    if(partialCloseLevel[ticketIndex] < 1) {
+                        partialCloseLevel[ticketIndex] = 1;
+                        Print("*** TP1 FALLBACK: Marking TP1 complete (no partial close) to avoid closeVolume loop ***");
+                    }
                     continue;
                 }
                 // Normalize to broker volume step (fix "invalid volume" error on partial close)
+                int volumeDigits = (int)MathRound(-MathLog10(posVolumeStep));
+                if(volumeDigits < 0) volumeDigits = 0;
+                if(volumeDigits > 8) volumeDigits = 8;
                 closeVolume = MathRound(closeVolume / posVolumeStep) * posVolumeStep;
-                closeVolume = NormalizeDouble(closeVolume, 2);
+                closeVolume = NormalizeDouble(closeVolume, volumeDigits);
                 if(closeVolume < minLot) closeVolume = minLot;
                 if(closeVolume > currentVolume - minLot) closeVolume = MathFloor((currentVolume - minLot) / posVolumeStep) * posVolumeStep;
-                closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2);
+                closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), volumeDigits);
                 remainingVolume = currentVolume - closeVolume;
                 if(remainingVolume < minLot) continue;
                 // CRITICAL: Never full-close on "partial" - some brokers close full if closeVolume is too near currentVolume
-                if(closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0) {
+                if(!AllowTinyThreeStepPartial(currentVolume, closeVolume, minLot, posVolumeStep) &&
+                   (closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0)) {
                     Print("*** TP1 SKIP: closeVolume ", closeVolume, " would effectively full-close (currentVol ", currentVolume, " step ", posVolumeStep, ") - skip to avoid full TP at ~50 pips ***");
+                    if(partialCloseLevel[ticketIndex] < 1) {
+                        partialCloseLevel[ticketIndex] = 1;
+                        Print("*** TP1 FALLBACK: closeVolume too low for safe partial. Advancing to TP2 state. ***");
+                    }
                     continue;
                 }
                 
@@ -4160,7 +4189,7 @@ void ManagePositions() {
                         }
                     }
                     
-                    // Retry up to 3 times if it fails
+                    // Retry up to 3 times if it fails or if broker accepts but volume does not move yet.
                     bool closed = false;
                     for(int retry = 0; retry < 3; retry++) {
                         // Re-check position exists before each retry
@@ -4170,28 +4199,52 @@ void ManagePositions() {
                             break;
                         }
                         
-                        if(trade.PositionClosePartial(ticket, closeVolume)) {
+                        double volBefore = position.Volume();
+                        bool reqOk = trade.PositionClosePartial(ticket, closeVolume);
+                        int retcode = (int)trade.ResultRetcode();
+                        string errorDesc = trade.ResultRetcodeDescription();
+                        bool brokerAccepted = reqOk ||
+                                              retcode == TRADE_RETCODE_DONE ||
+                                              retcode == TRADE_RETCODE_DONE_PARTIAL ||
+                                              retcode == TRADE_RETCODE_PLACED;
+
+                        // Give server a moment and then verify position volume actually moved.
+                        Sleep(120);
+                        bool stillExists = position.SelectByTicket(ticket);
+                        double volAfter = stillExists ? position.Volume() : 0.0;
+                        double movedBy = volBefore - volAfter;
+                        bool volumeReduced = (!stillExists) || (movedBy >= (minLot * 0.5));
+
+                        if(brokerAccepted && volumeReduced) {
                             partialCloseLevel[ticketIndex] = 1;
-                            Print("*** TP1 HIT: Closed ", closeVolume, " lots (", TP1_Percent, "% of ", origVol, " lots) at ", TP1_Pips, " pips profit | Remaining: ", remainingVolume, " lots ***");
+                            Print("*** TP1 HIT: Requested ", closeVolume, " lots (", TP1_Percent, "% of ", origVol, " lots) at ", TP1_Pips,
+                                  " pips | Volume before=", DoubleToString(volBefore, volumeDigits),
+                                  " after=", DoubleToString(volAfter, volumeDigits),
+                                  " closed=", DoubleToString(MathMax(0.0, movedBy), volumeDigits), " ***");
                             closed = true;
                             break;
-                        } else {
-                            string errorDesc = trade.ResultRetcodeDescription();
-                            Print("TP1 Close failed (retry ", (retry + 1), "/3): ", errorDesc);
-                            
-                            // If position is already closed or frozen, don't retry
-                            if(StringFind(errorDesc, "position closed") >= 0 || StringFind(errorDesc, "closed") >= 0) {
-                                Print("*** TP1: Position already closed - marking as success ***");
-                                closed = true;
-                                break;
-                            }
-                            if(StringFind(errorDesc, "frozen") >= 0) {
-                                Print("*** TP1: Position frozen - will retry next tick ***");
-                                break; // Don't mark as closed, will retry next tick
-                            }
-                            
-                            if(retry < 2) Sleep(100);
                         }
+
+                        // If request says done but volume is unchanged, treat as retryable (fixes false failure loops).
+                        if(brokerAccepted && !volumeReduced) {
+                            Print("TP1 Close ambiguous (retry ", (retry + 1), "/3): accepted retcode=", retcode, " (", errorDesc, "), but volume unchanged ",
+                                  DoubleToString(volBefore, volumeDigits), " -> ", DoubleToString(volAfter, volumeDigits));
+                        } else {
+                            Print("TP1 Close failed (retry ", (retry + 1), "/3): rc=", retcode, " ", errorDesc);
+                        }
+                        
+                        // If position is already closed or frozen, don't retry
+                        if(StringFind(errorDesc, "position closed") >= 0 || StringFind(errorDesc, "closed") >= 0 || !stillExists) {
+                            Print("*** TP1: Position already closed - marking as success ***");
+                            closed = true;
+                            break;
+                        }
+                        if(StringFind(errorDesc, "frozen") >= 0) {
+                            Print("*** TP1: Position frozen - will retry next tick ***");
+                            break; // Don't mark as closed, will retry next tick
+                        }
+                        
+                        if(retry < 2) Sleep(150);
                     }
                     if(!closed) {
                         Print("*** ERROR: TP1 failed to close after 3 attempts! Profit: ", currentProfitPips, " pips ***");
@@ -4236,7 +4289,8 @@ void ManagePositions() {
                 closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2);
                 remainingVolume = currentVolume - closeVolume;
                 if(remainingVolume < minLot) continue;
-                if(closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0) {
+                if(!AllowTinyThreeStepPartial(currentVolume, closeVolume, minLot, posVolumeStep) &&
+                   (closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0)) {
                     Print("*** TP2 SKIP: would effectively full-close (currentVol ", currentVolume, " step ", posVolumeStep, ") - skip ***");
                     continue;
                 }
@@ -4325,7 +4379,8 @@ void ManagePositions() {
                 closeVolume = NormalizeDouble(MathMax(minLot, closeVolume), 2);
                 remainingVolume = currentVolume - closeVolume;
                 if(remainingVolume < minLot) continue;
-                if(closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0) {
+                if(!AllowTinyThreeStepPartial(currentVolume, closeVolume, minLot, posVolumeStep) &&
+                   (closeVolume >= currentVolume - posVolumeStep || remainingVolume < minLot * 2.0)) {
                     Print("*** TP3 SKIP: would effectively full-close (currentVol ", currentVolume, " step ", posVolumeStep, ") - skip ***");
                     continue;
                 }
@@ -4470,21 +4525,47 @@ void ManagePositions() {
             }
         }
         
-        // Step 5b: Trail SL from TrailStartPips, TrailDistancePips behind price
+        // Step 5b: Trail SL at >=120 pips. Prefer structure (40 pip buffer), fallback to fixed 80 pip distance.
         if(UseTrailSL && currentProfitPips >= TrailStartPips && currentProfitPips > 0) {
             double trailPipValue = isSilver ? 0.01 : (isGold ? 0.1 : posPipValue);
             double newSL = 0;
             if(posType == POSITION_TYPE_BUY) {
-                newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPipValue, posDigits);
-                if(newSL > openPrice && (currentSL == 0 || newSL > currentSL)) {
+                if(UseStructureTrail) {
+                    int swingIdx = iLowest(posSymbol, PERIOD_M5, MODE_LOW, StructureTrail_Lookback, 1);
+                    if(swingIdx >= 0) {
+                        double swingLow = iLow(posSymbol, PERIOD_M5, swingIdx);
+                        if(swingLow > 0) {
+                            newSL = NormalizeDouble(swingLow - StructureTrail_BufferPips * trailPipValue, posDigits);
+                        }
+                    }
+                }
+                if(newSL <= 0) newSL = NormalizeDouble(currentPrice - TrailDistancePips * trailPipValue, posDigits);
+                int minTrailPtsBuy = (int)MathMax(SymbolInfoInteger(posSymbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(posSymbol, SYMBOL_TRADE_FREEZE_LEVEL));
+                double minTrailGapBuy = (double)minTrailPtsBuy * posPoint;
+                bool trailBuyAllowed = (minTrailGapBuy <= 0.0) || ((currentPrice - newSL) > (minTrailGapBuy + posPoint));
+                if(newSL > openPrice && newSL < currentPrice && (currentSL == 0 || newSL > currentSL) && trailBuyAllowed) {
                     if(trade.PositionModify(ticket, newSL, 0))
-                        Print("*** Trail SL (BUY): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                        Print("*** Trail SL (BUY): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL,
+                              (UseStructureTrail ? " (structure)" : " (distance)"), " ***");
                 }
             } else {
-                newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPipValue, posDigits);
-                if(newSL < openPrice && (currentSL == 0 || newSL < currentSL)) {
+                if(UseStructureTrail) {
+                    int swingIdx = iHighest(posSymbol, PERIOD_M5, MODE_HIGH, StructureTrail_Lookback, 1);
+                    if(swingIdx >= 0) {
+                        double swingHigh = iHigh(posSymbol, PERIOD_M5, swingIdx);
+                        if(swingHigh > 0) {
+                            newSL = NormalizeDouble(swingHigh + StructureTrail_BufferPips * trailPipValue, posDigits);
+                        }
+                    }
+                }
+                if(newSL <= 0) newSL = NormalizeDouble(currentPrice + TrailDistancePips * trailPipValue, posDigits);
+                int minTrailPtsSell = (int)MathMax(SymbolInfoInteger(posSymbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(posSymbol, SYMBOL_TRADE_FREEZE_LEVEL));
+                double minTrailGapSell = (double)minTrailPtsSell * posPoint;
+                bool trailSellAllowed = (minTrailGapSell <= 0.0) || ((newSL - currentPrice) > (minTrailGapSell + posPoint));
+                if(newSL < openPrice && newSL > currentPrice && (currentSL == 0 || newSL < currentSL) && trailSellAllowed) {
                     if(trade.PositionModify(ticket, newSL, 0))
-                        Print("*** Trail SL (SELL): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL, " (", TrailDistancePips, " pips behind) ***");
+                        Print("*** Trail SL (SELL): ", DoubleToString(currentProfitPips, 1), " pips | SL moved to ", newSL,
+                              (UseStructureTrail ? " (structure)" : " (distance)"), " ***");
                 }
             }
         }
@@ -4505,7 +4586,12 @@ void ManagePositions() {
             } else {
                 newSL = NormalizeDouble(openPrice + (slPipsUse * pvUse), posDigits);
             }
-            trade.PositionModify(ticket, newSL, 0);
+            int minVerifyPts = (int)MathMax(SymbolInfoInteger(posSymbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(posSymbol, SYMBOL_TRADE_FREEZE_LEVEL));
+            double minVerifyGap = (double)minVerifyPts * posPoint;
+            bool verifyAllowed = (minVerifyGap <= 0.0)
+                || (posType == POSITION_TYPE_BUY && (currentPrice - newSL) > (minVerifyGap + posPoint))
+                || (posType == POSITION_TYPE_SELL && (newSL - currentPrice) > (minVerifyGap + posPoint));
+            if(verifyAllowed) trade.PositionModify(ticket, newSL, 0);
         }
     }
 }
