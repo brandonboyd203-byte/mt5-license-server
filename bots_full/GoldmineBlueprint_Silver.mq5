@@ -41,6 +41,8 @@ input double ScalingEntryRisk = 1.5;         // Risk for scaling entries (%) - L
 input double MaxTotalRisk = 9.0;             // Maximum total risk for all trades (%) - Safety limit
 input bool UseDailyLossGuard = true;         // Stop new entries when daily loss hits threshold
 input double DailyLossPctFromStart = 50.0;   // Max loss % from start-of-day equity
+input bool UseDailyProfitTarget = true;      // Stop new entries after daily profit target is reached
+input double DailyProfitTargetPctFromStart = 50.0; // Profit target % from start-of-day equity
 #ifndef SMC_SYMBOL_SILVER
 input double SL_Pips = 30.0;                 // Stop Loss (pips) - Base SL for Gold (normal entry; dynamic can expand)
 #endif
@@ -84,6 +86,8 @@ input double WickProtection_Buffer = 2.0;     // Buffer beyond wick (pips) - add
 input bool UseVolatilitySpikeExpansion = true; // Expand SL during recent volatility spikes
 input int VolatilitySpike_Bars = 3;          // Bars to check for volatility spike (3 = last 3 bars)
 input double VolatilitySpike_Multiplier = 1.5; // SL multiplier during volatility spike (1.5 = 50% wider)
+input bool UseHighVolumeEntryBlock = true;    // Skip new entries when tick volume is in extreme-spike territory
+input double HighVolumeEntryBlockMultiplier = 2.4; // Higher threshold for complete entry lockout
 input bool UseQuickRejectionCheck = false;    // Optional: 1-bar delay if large wick detected (false = immediate entry)
 input double QuickRejection_WickSize = 3.0;   // Minimum wick size (pips) to trigger 1-bar delay
 
@@ -138,6 +142,20 @@ input int MS_SwingLength = 5;                // Swing length for structure
 input bool RequireBOS = false;               // Require BOS before entry
 
 input group "=== Entry Settings ==="
+input bool UseSessionFilter = true;           // Restrict new entries to configured Perth trading windows
+input bool SessionWindowsUsePerthTime = true; // Convert server time to Perth time for the session windows
+input int Session1StartHour = 7;              // Perth session 1 start hour
+input int Session1StartMinute = 30;           // Perth session 1 start minute
+input int Session1EndHour = 11;               // Perth session 1 end hour
+input int Session1EndMinute = 0;              // Perth session 1 end minute
+input int Session2StartHour = 14;             // Perth session 2 start hour
+input int Session2StartMinute = 0;            // Perth session 2 start minute
+input int Session2EndHour = 18;               // Perth session 2 end hour
+input int Session2EndMinute = 0;              // Perth session 2 end minute
+input int Session3StartHour = 19;             // Perth session 3 start hour
+input int Session3StartMinute = 30;           // Perth session 3 start minute
+input int Session3EndHour = 2;                // Perth session 3 end hour
+input int Session3EndMinute = 0;              // Perth session 3 end minute
 input bool MultipleEntries = true;           // Allow multiple entries
 input int MaxEntries = 4;                    // Maximum entries per direction
 input bool AllowLayeredEntries = true;       // Allow multiple entries in SAME zone (layered entries)
@@ -269,6 +287,7 @@ double accountBalance;
 double dayStartEquity = 0.0;
 int    dayKey = 0;
 bool   dailyLossTripped = false;
+bool   dailyProfitTargetTripped = false;
 datetime lastBarTime = 0;
 datetime lastBarTime_M1 = 0;
 datetime lastBarTime_M3 = 0;
@@ -334,6 +353,26 @@ int GetTicketIndex(ulong ticket) {
     originalVolume[newIndex] = 0;
 
     return newIndex;
+}
+
+double NormalizeRiskPercentStep(double rawPercent) {
+    double clamped = MathMax(5.0, MathMin(100.0, rawPercent));
+    return MathRound(clamped / 5.0) * 5.0;
+}
+
+void RefreshDailyRiskState() {
+    datetime now = TimeCurrent();
+    if(now <= 0) return;
+    MqlDateTime dt;
+    TimeToStruct(now, dt);
+    int key = dt.year * 10000 + dt.mon * 100 + dt.day;
+    if(key != dayKey) {
+        dayKey = key;
+        dayStartEquity = account.Equity();
+        dailyLossTripped = false;
+        dailyProfitTargetTripped = false;
+        Print("Blueprint Silver: Daily equity reset. StartEquity=", DoubleToString(dayStartEquity, 2));
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -747,23 +786,32 @@ void OnDeinit(const int reason) {
 //+------------------------------------------------------------------+
 bool DailyLossExceeded() {
     if(!UseDailyLossGuard || DailyLossPctFromStart <= 0) return false;
-    datetime now = TimeCurrent();
-    MqlDateTime dt;
-    TimeToStruct(now, dt);
-    int key = dt.year * 10000 + dt.mon * 100 + dt.day;
-    if(key != dayKey) {
-        dayKey = key;
-        dayStartEquity = account.Equity();
-        dailyLossTripped = false;
-        Print("Blueprint Silver: Daily equity reset. StartEquity=", DoubleToString(dayStartEquity, 2));
-    }
+    RefreshDailyRiskState();
     if(dayStartEquity <= 0) return false;
+    double maxLossPct = NormalizeRiskPercentStep(DailyLossPctFromStart);
     double lossPct = (dayStartEquity - account.Equity()) / dayStartEquity * 100.0;
-    if(!dailyLossTripped && lossPct >= DailyLossPctFromStart) {
+    if(!dailyLossTripped && lossPct >= maxLossPct) {
         dailyLossTripped = true;
-        Print("Blueprint Silver: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(DailyLossPctFromStart, 2), "%). New entries blocked.");
+        Print("Blueprint Silver: DAILY LOSS GUARD TRIPPED. Loss=", DoubleToString(lossPct, 2), "% (cap ", DoubleToString(maxLossPct, 2), "%). New entries blocked.");
     }
     return dailyLossTripped;
+}
+
+bool DailyProfitTargetReached() {
+    if(!UseDailyProfitTarget || DailyProfitTargetPctFromStart <= 0) return false;
+    RefreshDailyRiskState();
+    if(dayStartEquity <= 0) return false;
+    double targetPct = NormalizeRiskPercentStep(DailyProfitTargetPctFromStart);
+    double profitPct = (account.Equity() - dayStartEquity) / dayStartEquity * 100.0;
+    if(!dailyProfitTargetTripped && profitPct >= targetPct) {
+        dailyProfitTargetTripped = true;
+        Print("Blueprint Silver: DAILY PROFIT TARGET REACHED. Profit=", DoubleToString(profitPct, 2), "% (target ", DoubleToString(targetPct, 2), "%). New entries blocked.");
+    }
+    return dailyProfitTargetTripped;
+}
+
+bool DailyEntryGuardTriggered() {
+    return DailyLossExceeded() || DailyProfitTargetReached();
 }
 
 //+------------------------------------------------------------------+
@@ -795,7 +843,7 @@ void OnTick() {
     ManagePositions();
 
     // Block new entries after daily loss threshold
-    if(DailyLossExceeded()) return;
+    if(DailyEntryGuardTriggered()) return;
     
     // Re-entry after BE: check if tracked position closed at BE; expire reentry flag after N bars
     CheckBEClosedAndAllowReentry();
@@ -1711,6 +1759,24 @@ void CheckEntrySignals() {
     datetime currentTick = TimeCurrent();
     if(currentTick != lastTradeOpenTime) {
         tradeOpenedThisTick = false;
+    }
+
+    if(!IsWithinTradingSession()) {
+        static datetime lastSessionLog = 0;
+        if(TimeCurrent() - lastSessionLog >= 60) {
+            Print("*** SESSION FILTER: Outside Perth windows 07:30-11:00, 14:00-18:00, 19:30-02:00 - entries blocked ***");
+            lastSessionLog = TimeCurrent();
+        }
+        return;
+    }
+
+    if(UseHighVolumeEntryBlock && IsHighVolumeEntryBlocked()) {
+        static datetime lastHighVolumeLog = 0;
+        if(TimeCurrent() - lastHighVolumeLog >= 60) {
+            Print("*** HIGH VOLUME FILTER: Extreme tick-volume spike detected - entries blocked ***");
+            lastHighVolumeLog = TimeCurrent();
+        }
+        return;
     }
     
     // Check for news events - block all entries during news
@@ -3180,6 +3246,66 @@ bool IsVolatilitySpikeDetected() {
         return (atrRatio >= 1.3); // 30% increase = spike
     }
     
+    return false;
+}
+
+double GetVolumeSpikeRatio() {
+    int baselineBars = MathMax(3, VolatilitySpike_Bars + 3);
+    double recentVolume = 0.0;
+    double baselineVolume = 0.0;
+    int recentCount = 0;
+    int baselineCount = 0;
+
+    for(int i = 1; i <= VolatilitySpike_Bars; i++) {
+        long v = iVolume(_Symbol, PERIOD_CURRENT, i);
+        if(v <= 0) continue;
+        recentVolume += (double)v;
+        recentCount++;
+    }
+    for(int i = VolatilitySpike_Bars + 1; i <= VolatilitySpike_Bars + baselineBars; i++) {
+        long v = iVolume(_Symbol, PERIOD_CURRENT, i);
+        if(v <= 0) continue;
+        baselineVolume += (double)v;
+        baselineCount++;
+    }
+
+    if(recentCount == 0 || baselineCount == 0) return 0.0;
+    double recentAvg = recentVolume / recentCount;
+    double baselineAvg = baselineVolume / baselineCount;
+    if(baselineAvg <= 0.0) return 0.0;
+    return recentAvg / baselineAvg;
+}
+
+bool IsHighVolumeEntryBlocked() {
+    if(!UseHighVolumeEntryBlock) return false;
+    if(HighVolumeEntryBlockMultiplier <= 1.0) return false;
+    return GetVolumeSpikeRatio() >= HighVolumeEntryBlockMultiplier;
+}
+
+bool IsMinuteWithinWindow(int currentMinutes, int startHour, int startMinute, int endHour, int endMinute) {
+    int startMinutes = startHour * 60 + startMinute;
+    int endMinutes = endHour * 60 + endMinute;
+    if(startMinutes == endMinutes) return true;
+    if(startMinutes < endMinutes) return (currentMinutes >= startMinutes && currentMinutes < endMinutes);
+    return (currentMinutes >= startMinutes || currentMinutes < endMinutes);
+}
+
+int GetSessionClockMinutes() {
+    datetime sessionNow = TimeCurrent();
+    if(SessionWindowsUsePerthTime) {
+        sessionNow += ((8 * 60) - (int)((TimeCurrent() - TimeGMT()) / 60)) * 60;
+    }
+    MqlDateTime nowStruct;
+    TimeToStruct(sessionNow, nowStruct);
+    return nowStruct.hour * 60 + nowStruct.min;
+}
+
+bool IsWithinTradingSession() {
+    if(!UseSessionFilter) return true;
+    int currentMinutes = GetSessionClockMinutes();
+    if(IsMinuteWithinWindow(currentMinutes, Session1StartHour, Session1StartMinute, Session1EndHour, Session1EndMinute)) return true;
+    if(IsMinuteWithinWindow(currentMinutes, Session2StartHour, Session2StartMinute, Session2EndHour, Session2EndMinute)) return true;
+    if(IsMinuteWithinWindow(currentMinutes, Session3StartHour, Session3StartMinute, Session3EndHour, Session3EndMinute)) return true;
     return false;
 }
 
