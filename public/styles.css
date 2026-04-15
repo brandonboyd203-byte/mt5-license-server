@@ -261,6 +261,88 @@ h3 {
   color: var(--muted);
 }
 
+.botlab-panel {
+  margin-top: 22px;
+}
+
+.botlab-status-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.botlab-stat-card,
+.botlab-hero-card,
+.botlab-chip {
+  border: 1px solid #294264;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: rgba(13, 24, 47, 0.78);
+}
+
+.botlab-stat-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.botlab-stat-value {
+  margin-top: 6px;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+.botlab-hero-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.botlab-spotlight {
+  border: 1px solid rgba(247, 183, 51, 0.35);
+  border-radius: 16px;
+  padding: 18px 20px;
+  background:
+    linear-gradient(145deg, rgba(247, 183, 51, 0.10), rgba(107, 182, 255, 0.08)),
+    rgba(13, 24, 47, 0.92);
+}
+
+.botlab-spotlight-eyebrow {
+  color: var(--gold);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.botlab-chip-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.botlab-chip-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+.botlab-chip-copy {
+  margin-top: 6px;
+  font-size: 0.86rem;
+  color: #cfdcf2;
+  line-height: 1.45;
+}
+
+.botlab-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .feed-labels {
   margin-top: 12px;
   display: flex;
@@ -295,6 +377,121 @@ h3 {
   color: #ffd0d0;
   background: rgba(255, 122, 122, 0.16);
   border-color: rgba(255, 122, 122, 0.45);
+}
+
+.botlab-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.botlab-filter-btn {
+  background: rgba(13, 24, 47, 0.92);
+  border: 1px solid #31476e;
+  color: #d6e2f1;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.botlab-filter-btn.active {
+  color: #08121f;
+  background: linear-gradient(145deg, #6fe1d1, #6bb6ff);
+  border-color: transparent;
+}
+
+.botlab-filter-chip {
+  background: rgba(13, 24, 47, 0.92);
+  border: 1px solid #31476e;
+  color: #d6e2f1;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.botlab-filter-chip.active {
+  color: #08121f;
+  background: linear-gradient(145deg, #6fe1d1, #6bb6ff);
+  border-color: transparent;
+}
+
+.botlab-account-panel {
+  margin-top: 18px;
+  border: 1px solid rgba(99, 212, 195, 0.24);
+  border-radius: 16px;
+  padding: 16px 18px;
+  background: rgba(13, 24, 47, 0.62);
+}
+
+.botlab-account-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.botlab-account-eyebrow {
+  color: var(--accent);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.botlab-account-title {
+  margin-top: 4px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+.botlab-account-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.botlab-account-input {
+  width: min(280px, 100%);
+  background: #0f1a31;
+  border: 1px solid #2a3f68;
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 11px 12px;
+}
+
+.fact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.fact-item {
+  border: 1px solid #294264;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(13, 24, 47, 0.72);
+}
+
+.fact-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fact-value {
+  margin-top: 4px;
+  color: #eef5ff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .table-wrap {
@@ -425,5 +622,13 @@ footer p {
 
   main {
     padding-top: 20px;
+  }
+
+  .botlab-account-form {
+    align-items: stretch;
+  }
+
+  .botlab-account-input {
+    width: 100%;
   }
 }

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GOLDMINE | Bot Lab</title>
+    <link rel="stylesheet" href="/site/styles.css?v=20260416a" />
+  </head>
+  <body data-page="bot-lab">
+    <header>
+      <div class="container nav-wrap">
+        <a class="logo" href="/"><img src="/logo" alt="GOLDMINE" /></a>
+        <div class="nav-actions">
+          <div class="menu" data-menu>
+            <button class="menu-btn" type="button" data-menu-btn aria-expanded="false">Navigate</button>
+            <nav class="menu-list">
+              <a class="menu-link" href="/" data-page="home">Home</a>
+              <a class="menu-link" href="/bots" data-page="bots">Bots</a>
+              <a class="menu-link" href="/live-feed" data-page="live-feed">Live Feed</a>
+              <a class="menu-link" href="/bot-lab" data-page="bot-lab">Bot Lab</a>
+              <a class="menu-link" href="/copy-trading" data-page="copy-trading">Copy Trading</a>
+              <a class="menu-link" href="/setup-guide" data-page="setup-guide">Setup Guide</a>
+              <a class="menu-link" href="/pricing" data-page="pricing">Pricing</a>
+              <a class="menu-link" href="/checkout" data-page="checkout">Checkout</a>
+              <a class="menu-link" href="/faq" data-page="faq">FAQ</a>
+              <a class="menu-link" href="/contact" data-page="contact">Contact</a>
+            </nav>
+          </div>
+          <a class="btn btn-outline consult" href="/contact">Book a consultation</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="kicker">Optimization Intelligence</span>
+          <h1>Bot Lab</h1>
+          <p class="section-intro">Dedicated optimizer page for testing history, winners, promotion candidates, setup facts, and validation coverage.</p>
+          <div class="live-kpis">
+            <div class="live-kpi"><b id="botLabBestFamily">-</b><span>Best Family</span></div>
+            <div class="live-kpi"><b id="botLabBestRisk">-</b><span>Best Risk Profile</span></div>
+            <div class="live-kpi"><b id="botLabBestTrail">-</b><span>Best Trail Profile</span></div>
+            <div class="live-kpi"><b id="botLabBestTp">-</b><span>Best TP Profile</span></div>
+            <div class="live-kpi"><b id="botLabWorstDd">-</b><span>Worst Drawdown</span></div>
+            <div class="live-kpi"><b id="botLabCoverage">-</b><span>Coverage</span></div>
+          </div>
+          <div class="feed-labels">
+            <span id="botLabHealthLabel" class="feed-label feed-label-warn">BOT LAB: CHECKING</span>
+          </div>
+          <div id="botLabStatusCards" class="botlab-status-grid" style="margin-top:16px;">
+            <div class="botlab-stat-card"><div class="botlab-stat-label">Tracked Bots</div><div id="botLabTrackedBots" class="botlab-stat-value">-</div></div>
+            <div class="botlab-stat-card"><div class="botlab-stat-label">Tested Bots</div><div id="botLabTestedBots" class="botlab-stat-value">-</div></div>
+            <div class="botlab-stat-card"><div class="botlab-stat-label">Pending Bots</div><div id="botLabPendingBots" class="botlab-stat-value">-</div></div>
+            <div class="botlab-stat-card"><div class="botlab-stat-label">Promotion Ready</div><div id="botLabPromotionReady" class="botlab-stat-value">-</div></div>
+            <div class="botlab-stat-card"><div class="botlab-stat-label">Data Updated</div><div id="botLabDataUpdated" class="botlab-stat-value">-</div></div>
+            <div class="botlab-stat-card"><div class="botlab-stat-label">Feed Freshness</div><div id="botLabDataFreshness" class="botlab-stat-value">-</div></div>
+          </div>
+          <p id="botLabScheduleLine" class="muted" style="margin:12px 0 0;">Checking schedule...</p>
+          <p id="botLabSweepLine" class="muted" style="margin:6px 0 0;">Checking sweep state...</p>
+          <div class="botlab-account-panel">
+            <div class="botlab-account-head">
+              <div>
+                <div class="botlab-account-eyebrow">Account Sizing</div>
+                <div class="botlab-account-title">Show results for a specific starting balance</div>
+              </div>
+              <p id="botLabAccountSummary" class="muted">Showing all starting balances.</p>
+            </div>
+            <div class="botlab-account-form">
+              <input id="botLabAccountSizeInput" class="botlab-account-input" type="number" min="0" step="100" inputmode="numeric" placeholder="e.g. 1000 or 5000" />
+              <button id="botLabAccountSizeApply" class="botlab-filter-chip active" type="button">Apply balance</button>
+              <button id="botLabAccountSizeReset" class="botlab-filter-chip" type="button">Show all</button>
+            </div>
+            <div id="botLabAccountPresets" class="botlab-filters" style="margin-top:10px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container panel">
+          <div class="botlab-panel">
+            <div class="botlab-summary">
+              <div>
+                <h2>Bot Lab</h2>
+                <p class="muted">Full optimizer board: latest runs, per-bot winners, promotion candidates, validation windows, and historical testing facts.</p>
+              </div>
+            </div>
+            <div class="botlab-spotlight" style="margin:16px 0 10px;">
+              <div class="botlab-spotlight-eyebrow">Promotion Spotlight</div>
+              <h3 id="botLabPromotionName" style="margin:6px 0 8px;">Checking promotion candidate...</h3>
+              <p id="botLabPromotionSummary" class="muted" style="margin:0;">Waiting for promotion analysis...</p>
+            </div>
+            <div class="botlab-hero-grid" style="margin:16px 0 10px;">
+              <div class="botlab-hero-card">
+                <h3 style="margin:0 0 10px;">Current Champions</h3>
+                <div id="botLabChampionCards" class="botlab-chip-grid">
+                  <div class="muted">Loading champion cards...</div>
+                </div>
+              </div>
+              <div class="botlab-hero-card">
+                <h3 style="margin:0 0 10px;">Failure Audit</h3>
+                <div id="botLabFailureCards" class="botlab-chip-grid">
+                  <div class="muted">Loading failure audit...</div>
+                </div>
+              </div>
+            </div>
+            <div class="botlab-hero-card" style="margin:12px 0 10px;">
+              <h3 style="margin:0 0 10px;">Pending / Blocked Bots</h3>
+              <div id="botLabBlockedCards" class="botlab-chip-grid">
+                <div class="muted">Loading blocked bots...</div>
+              </div>
+            </div>
+            <p id="botLabFactsLine" class="muted" style="margin:12px 0 4px;">Waiting for optimizer facts...</p>
+            <p id="botLabSettingsLine" class="muted" style="margin:4px 0 10px;">Waiting for selected settings...</p>
+            <div id="botLabDetailGrid" class="fact-grid" style="margin:10px 0 10px;"></div>
+            <div id="botLabCategoryFilters" class="botlab-filters" style="margin:10px 0 6px;"></div>
+            <p id="botLabCategorySummary" class="muted" style="margin:4px 0 10px;">Waiting for category coverage...</p>
+            <h3 style="margin:16px 0 8px;">Category Summary</h3>
+            <div class="table-wrap">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Bots</th>
+                    <th>Ready</th>
+                    <th>Tested</th>
+                    <th>Promotion Ready</th>
+                    <th>Best Return %</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabCategoryRows">
+                  <tr><td colspan="6">Loading category summary...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:16px 0 8px;">Bot Progress</h3>
+            <p id="botLabProgressSummary" class="muted" style="margin:6px 0 10px;">Checking bot progress...</p>
+            <div class="table-wrap">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th>Category</th>
+                    <th>Ready</th>
+                    <th>Result</th>
+                    <th>Result Note</th>
+                    <th>Starting Balance</th>
+                    <th>Final Balance</th>
+                    <th>Best Return %</th>
+                    <th>Trades</th>
+                    <th>DD %</th>
+                    <th>PF</th>
+                    <th>Best Window</th>
+                    <th>Setup Facts</th>
+                    <th>Validation Runs</th>
+                    <th>Best Validation %</th>
+                    <th>Promotion</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabProgressRows">
+                  <tr><td colspan="15">Loading bot progress...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:16px 0 8px;">Bot Catalog</h3>
+            <p id="botLabCatalogSummary" class="muted" style="margin:6px 0 10px;">Checking bot readiness...</p>
+            <div class="table-wrap">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th>Category</th>
+                    <th>Profile</th>
+                    <th>Status</th>
+                    <th>Expert</th>
+                    <th>Preset</th>
+                    <th>Ready</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabCatalogRows">
+                  <tr><td colspan="7">Loading bot catalog...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:10px 0 8px;">Latest Bot Test</h3>
+            <div class="table-wrap">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th>Category</th>
+                    <th>Variant</th>
+                    <th>Status</th>
+                    <th>Net</th>
+                    <th>Return %</th>
+                    <th>Trades</th>
+                    <th>Win %</th>
+                    <th>PF</th>
+                    <th>DD %</th>
+                    <th>Window</th>
+                    <th>Starting</th>
+                    <th>Final</th>
+                    <th>Setup Facts</th>
+                    <th>Reason</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabRows">
+                  <tr><td colspan="15">Loading bot-lab data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:16px 0 8px;">Family Summary</h3>
+            <div class="table-wrap" style="margin-top:12px;">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Family</th>
+                    <th>Runs</th>
+                    <th>Pass</th>
+                    <th>Best Return %</th>
+                    <th>Avg Return %</th>
+                    <th>Best Score</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabFamilySummaryRows">
+                  <tr><td colspan="6">Loading family summary...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:16px 0 8px;">Per-Bot Winners</h3>
+            <div class="table-wrap" style="margin-top:12px;">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th>Category</th>
+                    <th>Best Family</th>
+                    <th>Return %</th>
+                    <th>DD %</th>
+                    <th>Trades</th>
+                    <th>PF</th>
+                    <th>Window</th>
+                    <th>Setup Facts</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabBestByBotRows">
+                  <tr><td colspan="9">Loading per-bot winners...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:16px 0 8px;">Promotion Candidates</h3>
+            <div class="table-wrap" style="margin-top:12px;">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th>Promote</th>
+                    <th>Family</th>
+                    <th>Return %</th>
+                    <th>DD %</th>
+                    <th>Trades</th>
+                    <th>PF</th>
+                    <th>Window</th>
+                    <th>Setup Facts</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabPromotionRows">
+                  <tr><td colspan="10">Loading promotion candidates...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:16px 0 8px;">Validation Windows</h3>
+            <div class="table-wrap" style="margin-top:12px;">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th>Window</th>
+                    <th>Start</th>
+                    <th>Best Family</th>
+                    <th>Runs</th>
+                    <th>Pass</th>
+                    <th>Best Return %</th>
+                    <th>Avg Return %</th>
+                    <th>Best Score</th>
+                    <th>Setup Facts</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabValidationRows">
+                  <tr><td colspan="9">Loading validation windows...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 style="margin:16px 0 8px;">Recent Bot Tests</h3>
+            <div class="table-wrap" style="margin-top:12px;">
+              <table class="live-table">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th>Category</th>
+                    <th>Variant</th>
+                    <th>Status</th>
+                    <th>Net</th>
+                    <th>Return %</th>
+                    <th>Trades</th>
+                    <th>Win %</th>
+                    <th>PF</th>
+                    <th>DD %</th>
+                    <th>Window</th>
+                    <th>Starting</th>
+                    <th>Final</th>
+                    <th>Setup Facts</th>
+                    <th>Reason</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody id="botLabHistoryRows">
+                  <tr><td colspan="15">Loading recent bot-lab history...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>Bot Lab refreshes automatically every 10 seconds.</p>
+      </div>
+    </footer>
+
+    <script src="/site/bot-lab-runtime.js?v=20260416a"></script>
+  </body>
+</html>
