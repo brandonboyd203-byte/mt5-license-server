@@ -43,6 +43,21 @@ const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
 const MOTHERBOARD_VDS_TELEMETRY_URL = process.env.MOTHERBOARD_VDS_TELEMETRY_URL || 'http://46.250.244.188:8788/api/telemetry';
 const MOTHERBOARD_VDS_DASHBOARD_URL = process.env.MOTHERBOARD_VDS_DASHBOARD_URL || 'http://46.250.244.188:8788/';
 const MOTHERBOARD_VDS_CHARTS_URL = process.env.MOTHERBOARD_VDS_CHARTS_URL || MOTHERBOARD_VDS_TELEMETRY_URL.replace(/\/api\/telemetry$/i, '/api/charts/live');
+const BOT_LAB_API_URL = process.env.BOT_LAB_API_URL || 'http://46.250.244.188:8788/api/bot-lab/latest';
+const BOT_LAB_HISTORY_URL = process.env.BOT_LAB_HISTORY_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/history');
+const BOT_LAB_ANALYSIS_URL = process.env.BOT_LAB_ANALYSIS_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/analysis');
+const BOT_LAB_CATALOG_URL = process.env.BOT_LAB_CATALOG_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/catalog');
+const BOT_LAB_PROGRESS_URL = process.env.BOT_LAB_PROGRESS_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/progress');
+const BOT_LAB_DISCORD_SUMMARY_URL = process.env.BOT_LAB_DISCORD_SUMMARY_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/discord-summary');
+const BOT_LAB_SCHEDULE_URL = process.env.BOT_LAB_SCHEDULE_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/schedule');
+const BOT_LAB_SWEEP_STATUS_URL = process.env.BOT_LAB_SWEEP_STATUS_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/param-sweep/status');
 
 // One license in a group = valid for any EA name in that group (dash/hyphen normalized in code)
 // Include both ASCII hyphen (-) and en-dash (–) so EAs work regardless of encoding
@@ -160,6 +175,14 @@ function withCacheBust(url) {
     }
 }
 
+function normalizeBotLabPayload(payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    const next = { ...payload };
+    if (!Array.isArray(next.results) && Array.isArray(next.rows)) next.results = next.rows;
+    if (!Array.isArray(next.rows) && Array.isArray(next.results)) next.rows = next.results;
+    return next;
+}
+
 function n(v, fallback = 0) {
     const x = Number(v);
     return Number.isFinite(x) ? x : fallback;
@@ -196,6 +219,7 @@ function shapeLiveBotPayload(raw, cfg) {
         .map((p) => {
             const dayMetrics = p?.metrics?.day || {};
             const weekMetrics = p?.metrics?.week || {};
+            const lifetimeMetrics = p?.metrics?.lifetime || {};
             const totalMetrics = p?.metrics?.total || {};
             const status = p?.metrics?.status || {};
             const balance = Number.isFinite(Number(p.currentBalance)) ? Number(p.currentBalance) : null;
@@ -269,6 +293,11 @@ function shapeLiveBotPayload(raw, cfg) {
                 dayReturnPct: Number.isFinite(Number(dayRet)) ? Number(dayRet) : null,
                 weekNetUsd: n(weekMetrics.netUsd, 0),
                 weekReturnPct: Number.isFinite(Number(weekMetrics.returnPct)) ? Number(weekMetrics.returnPct) : null,
+                lifetimeNetUsd: Number.isFinite(Number(lifetimeMetrics.netUsd)) ? Number(lifetimeMetrics.netUsd) : null,
+                lifetimeReturnPct: Number.isFinite(Number(lifetimeMetrics.returnPct)) ? Number(lifetimeMetrics.returnPct) : null,
+                lifetimeMatchedCloses: Number.isFinite(Number(lifetimeMetrics.matchedCloses)) ? Number(lifetimeMetrics.matchedCloses) : 0,
+                lifetimeWinRatePct: Number.isFinite(Number(lifetimeMetrics.winRatePct)) ? Number(lifetimeMetrics.winRatePct) : null,
+                lifetimeProfitFactor: Number.isFinite(Number(lifetimeMetrics.profitFactor)) ? Number(lifetimeMetrics.profitFactor) : null,
                 totalNetUsd: Number.isFinite(totalNetCashflow)
                     ? totalNetCashflow
                     : (Number.isFinite(Number(p.totalNetUsd))
@@ -297,6 +326,36 @@ function shapeLiveBotPayload(raw, cfg) {
 
     const summaryDayNetUsd = rows.reduce((a, r) => a + n(r.dayNetUsd, 0), 0);
     const summaryOpenProfitUsd = rows.reduce((a, r) => a + n(r.openProfit, 0), 0);
+    const summaryLifetimeNetUsd = rows.reduce((a, r) => a + n(r.lifetimeNetUsd, 0), 0);
+    const summaryLifetimeMatched = rows.reduce((a, r) => a + n(r.lifetimeMatchedCloses, 0), 0);
+    const summaryLifetimeWinsApprox = rows.reduce((a, r) => {
+        const matched = n(r.lifetimeMatchedCloses, 0);
+        const winRate = Number(r.lifetimeWinRatePct);
+        if (matched <= 0 || !Number.isFinite(winRate)) return a;
+        return a + ((matched * winRate) / 100);
+    }, 0);
+    const summaryLifetimeGrossProfit = rows.reduce((a, r) => {
+        const pf = Number(r.lifetimeProfitFactor);
+        const net = Number(r.lifetimeNetUsd);
+        if (!Number.isFinite(pf) || !Number.isFinite(net) || pf <= 0) return a;
+        if (net >= 0) {
+            const grossLoss = pf > 1 ? net / (pf - 1) : 0;
+            return a + Math.max(0, net + grossLoss);
+        }
+        return a;
+    }, 0);
+    const summaryLifetimeGrossLoss = rows.reduce((a, r) => {
+        const pf = Number(r.lifetimeProfitFactor);
+        const net = Number(r.lifetimeNetUsd);
+        if (!Number.isFinite(pf) || !Number.isFinite(net) || pf <= 0) return a;
+        if (net >= 0 && pf > 1) return a + Math.max(0, net / (pf - 1));
+        if (net < 0) return a + Math.abs(net);
+        return a;
+    }, 0);
+    const summaryLifetimeBaseline = rows.reduce((a, r) => {
+        const b = Number(r.accountStartEquity ?? r.depositAmount);
+        return a + (Number.isFinite(b) && b > 0 ? b : 0);
+    }, 0);
     const summaryDayBaseline = rows.reduce((a, r) => {
         const b = Number(r.dayStartEquity ?? r.dayStartBalance ?? r.accountStartEquity);
         return a + (Number.isFinite(b) && b > 0 ? b : 0);
@@ -321,7 +380,12 @@ function shapeLiveBotPayload(raw, cfg) {
             dayReturnPct: summaryDayReturnPct,
             weekNetUsd: n(week.netUsd, 0),
             weekReturnPct: Number.isFinite(Number(week.returnPct)) ? Number(week.returnPct) : null,
-            openProfitUsd: Number(summaryOpenProfitUsd.toFixed(2))
+            openProfitUsd: Number(summaryOpenProfitUsd.toFixed(2)),
+            lifetimeNetUsd: Number(summaryLifetimeNetUsd.toFixed(2)),
+            lifetimeReturnPct: summaryLifetimeBaseline > 0 ? Number(((100 * summaryLifetimeNetUsd) / summaryLifetimeBaseline).toFixed(2)) : null,
+            lifetimeMatchedCloses: summaryLifetimeMatched,
+            lifetimeWinRatePct: summaryLifetimeMatched > 0 ? Number(((100 * summaryLifetimeWinsApprox) / summaryLifetimeMatched).toFixed(2)) : null,
+            lifetimeProfitFactor: summaryLifetimeGrossLoss > 0 ? Number((summaryLifetimeGrossProfit / summaryLifetimeGrossLoss).toFixed(3)) : null
         },
         profiles: rows,
         copierFeed: {
@@ -379,19 +443,32 @@ app.get('/admin.html', (req, res) => {
 
 const publicDir = path.join(__dirname, 'public');
 const servePublicPage = (fileName) => (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(publicDir, fileName));
 };
 
+function registerPublicPage(route, fileName) {
+    const handler = servePublicPage(fileName);
+    const normalized = String(route || '/').replace(/\/+$/, '') || '/';
+    const routes = normalized === '/'
+        ? ['/', '/index.html']
+        : [normalized, `${normalized}/`, `${normalized}.html`];
+    app.get(routes, handler);
+}
+
 // Serve marketing site pages
-app.get('/', servePublicPage('index.html'));
-app.get('/bots', servePublicPage('bots.html'));
-app.get('/live-feed', servePublicPage('live-feed.html'));
-app.get('/copy-trading', servePublicPage('copy-trading.html'));
-app.get('/setup-guide', servePublicPage('setup-guide.html'));
-app.get('/pricing', servePublicPage('pricing.html'));
-app.get('/checkout', servePublicPage('checkout.html'));
-app.get('/faq', servePublicPage('faq.html'));
-app.get('/contact', servePublicPage('contact.html'));
+registerPublicPage('/', 'index.html');
+registerPublicPage('/bots', 'bots.html');
+registerPublicPage('/live-feed', 'live-feed.html');
+registerPublicPage('/bot-lab', 'bot-lab.html');
+registerPublicPage('/copy-trading', 'copy-trading.html');
+registerPublicPage('/setup-guide', 'setup-guide.html');
+registerPublicPage('/pricing', 'pricing.html');
+registerPublicPage('/checkout', 'checkout.html');
+registerPublicPage('/faq', 'faq.html');
+registerPublicPage('/contact', 'contact.html');
 
 // Serve V2 preview page (safe sandbox for edits)
 app.get('/v2', (req, res) => {
@@ -1041,7 +1118,7 @@ app.get('/api/bots/live', async (req, res) => {
         if (cached?.payload && (now - cached.ts) < 5000) {
             return res.json(cached.payload);
         }
-        const raw = await fetchJsonWithTimeout(withCacheBust(cfg.telemetryUrl), 4500);
+        const raw = await fetchJsonWithTimeout(withCacheBust(cfg.telemetryUrl), 15000);
         const payload = shapeLiveBotPayload(raw, cfg);
         botFeedCache.bySource.set(cacheKey, { ts: now, payload });
         res.json(payload);
@@ -1063,6 +1140,81 @@ app.get('/api/bots/live', async (req, res) => {
     }
 });
 
+app.get('/api/bot-lab/latest', async (req, res) => {
+    try {
+        const payload = normalizeBotLabPayload(await fetchJsonWithTimeout(withCacheBust(BOT_LAB_API_URL), 15000));
+        res.json({ ok: true, source: BOT_LAB_API_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab unavailable', source: BOT_LAB_API_URL });
+    }
+});
+
+app.get('/api/bot-lab/history', async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(50, Number(req.query.limit || 12)));
+        const joiner = BOT_LAB_HISTORY_URL.includes('?') ? '&' : '?';
+        const url = `${BOT_LAB_HISTORY_URL}${joiner}limit=${limit}`;
+        const payload = normalizeBotLabPayload(await fetchJsonWithTimeout(withCacheBust(url), 15000));
+        res.json({ ok: true, source: BOT_LAB_HISTORY_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab history unavailable', source: BOT_LAB_HISTORY_URL });
+    }
+});
+
+app.get('/api/bot-lab/analysis', async (req, res) => {
+    try {
+        const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_ANALYSIS_URL), 20000);
+        res.json({ ok: true, source: BOT_LAB_ANALYSIS_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab analysis unavailable', source: BOT_LAB_ANALYSIS_URL });
+    }
+});
+
+app.get('/api/bot-lab/catalog', async (req, res) => {
+    try {
+        const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_CATALOG_URL), 15000);
+        res.json({ ok: true, source: BOT_LAB_CATALOG_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab catalog unavailable', source: BOT_LAB_CATALOG_URL });
+    }
+});
+
+app.get('/api/bot-lab/progress', async (req, res) => {
+    try {
+        const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_PROGRESS_URL), 20000);
+        res.json({ ok: true, source: BOT_LAB_PROGRESS_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab progress unavailable', source: BOT_LAB_PROGRESS_URL });
+    }
+});
+
+app.get('/api/bot-lab/discord-summary', async (req, res) => {
+    try {
+        const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_DISCORD_SUMMARY_URL), 20000);
+        res.json({ ok: true, source: BOT_LAB_DISCORD_SUMMARY_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab discord summary unavailable', source: BOT_LAB_DISCORD_SUMMARY_URL });
+    }
+});
+
+app.get('/api/bot-lab/schedule', async (req, res) => {
+    try {
+        const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_SCHEDULE_URL), 20000);
+        res.json({ ok: true, source: BOT_LAB_SCHEDULE_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab schedule unavailable', source: BOT_LAB_SCHEDULE_URL });
+    }
+});
+
+app.get('/api/param-sweep/status', async (req, res) => {
+    try {
+        const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_SWEEP_STATUS_URL), 20000);
+        res.json({ ok: true, source: BOT_LAB_SWEEP_STATUS_URL, payload });
+    } catch (error) {
+        res.status(502).json({ ok: false, error: error.message || 'Param sweep status unavailable', source: BOT_LAB_SWEEP_STATUS_URL });
+    }
+});
+
 // Public live charts feed (proxied from motherboard live chart API)
 app.get('/api/bots/charts', async (req, res) => {
     const cfg = getMotherboardConfig(req.query.source || 'vds');
@@ -1078,7 +1230,7 @@ app.get('/api/bots/charts', async (req, res) => {
 
         const q = new URLSearchParams({ symbols: symbolsRaw, limit: String(limit) });
         const url = withCacheBust(`${cfg.chartsUrl}?${q.toString()}`);
-        const raw = await fetchJsonWithTimeout(url, 4500);
+        const raw = await fetchJsonWithTimeout(url, 15000);
         const payload = {
             ok: true,
             generatedAt: raw?.generatedAt || new Date().toISOString(),
@@ -1117,8 +1269,8 @@ app.get('/api/bots/vds-snapshots', async (req, res) => {
     try {
         const base = MOTHERBOARD_VDS_DASHBOARD_URL.replace(/\/+$/,'');
         const [snapRaw, teleRaw] = await Promise.all([
-            fetchJsonWithTimeout(`${base}/api/snapshots/terminal`, 4500),
-            fetchJsonWithTimeout(MOTHERBOARD_VDS_TELEMETRY_URL, 4500)
+            fetchJsonWithTimeout(`${base}/api/snapshots/terminal`, 15000),
+            fetchJsonWithTimeout(MOTHERBOARD_VDS_TELEMETRY_URL, 15000)
         ]);
 
         const snapList = Array.isArray(snapRaw?.snapshots) ? snapRaw.snapshots : [];
