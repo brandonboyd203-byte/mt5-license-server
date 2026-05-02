@@ -1,4 +1,85 @@
 (function () {
+  function initPwaInstall() {
+    const head = document.head;
+    const addMeta = (name, content) => {
+      if (!head || head.querySelector(`meta[name="${name}"]`)) return;
+      const node = document.createElement('meta');
+      node.name = name;
+      node.content = content;
+      head.appendChild(node);
+    };
+    const addLink = (rel, href) => {
+      if (!head || head.querySelector(`link[rel="${rel}"]`)) return;
+      const node = document.createElement('link');
+      node.rel = rel;
+      node.href = href;
+      head.appendChild(node);
+    };
+
+    addMeta('theme-color', '#08101f');
+    addLink('manifest', '/manifest.webmanifest');
+    addLink('apple-touch-icon', '/app-icon.svg');
+    addLink('icon', '/app-icon.svg');
+
+    let deferredPrompt = null;
+    const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
+    const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true;
+    const navActions = document.querySelector('.nav-actions');
+    let installButton = null;
+
+    const ensureInstallButton = () => {
+      if (!navActions) return null;
+      if (installButton) return installButton;
+      installButton = document.createElement('button');
+      installButton.type = 'button';
+      installButton.className = 'btn btn-outline install-btn';
+      installButton.textContent = isIos && !isStandalone ? 'Add to Home Screen' : 'Install App';
+      installButton.addEventListener('click', async () => {
+        if (isIos && !isStandalone) {
+          window.alert('On iPhone or iPad, tap Share in Safari and then choose "Add to Home Screen" to install Goldmine Bots.');
+          return;
+        }
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        try {
+          await deferredPrompt.userChoice;
+        } catch (_) {}
+        deferredPrompt = null;
+        installButton.classList.remove('is-visible');
+      });
+      navActions.insertBefore(installButton, navActions.firstChild);
+      return installButton;
+    };
+
+    const showInstallButton = () => {
+      const button = ensureInstallButton();
+      if (!button) return;
+      button.classList.add('is-visible');
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    }
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredPrompt = event;
+      showInstallButton();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredPrompt = null;
+      if (installButton) installButton.classList.remove('is-visible');
+    });
+
+    if (isIos && !isStandalone) {
+      showInstallButton();
+    }
+  }
+
+  initPwaInstall();
+
   const menu = document.querySelector('[data-menu]');
   const button = document.querySelector('[data-menu-btn]');
 

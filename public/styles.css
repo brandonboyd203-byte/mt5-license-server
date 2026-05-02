@@ -77,6 +77,15 @@ header {
   gap: 14px;
 }
 
+.install-btn {
+  display: none;
+  white-space: nowrap;
+}
+
+.install-btn.is-visible {
+  display: inline-flex;
+}
+
 .menu {
   position: relative;
 }
@@ -606,10 +615,26 @@ footer p {
 @media (max-width: 800px) {
   .nav-wrap {
     min-height: 76px;
+    align-items: flex-start;
+    padding: 12px 0;
+    flex-wrap: wrap;
   }
 
   .logo img {
     height: 44px;
+  }
+
+  .nav-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .install-btn {
+    order: -1;
+    width: 100%;
+    justify-content: center;
   }
 
   .btn.consult {

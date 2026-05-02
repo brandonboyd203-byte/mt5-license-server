@@ -140,6 +140,57 @@ app.get('/assets/logo.png', (req, res) => {
     res.sendFile(p);
 });
 
+app.get('/app-icon.svg', (req, res) => {
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#05070d"/>
+      <stop offset="100%" stop-color="#141a28"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f4d17f"/>
+      <stop offset="55%" stop-color="#c6933f"/>
+      <stop offset="100%" stop-color="#f9e4a1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="44" y="44" width="424" height="424" rx="96" fill="none" stroke="rgba(255,255,255,0.1)"/>
+  <path d="M154 148h112c62 0 98 28 98 76 0 29-14 49-42 60 35 11 54 36 54 72 0 59-44 96-113 96H154V148zm84 62v58h34c29 0 45-10 45-29 0-20-15-29-45-29h-34zm0 119v62h43c31 0 48-11 48-31 0-21-17-31-48-31h-43z" fill="url(#gold)"/>
+  <path d="M104 362h33l38-48 33 28 53-72 48 37 63-88 36 25" fill="none" stroke="url(#gold)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(svg);
+});
+
+app.get('/manifest.webmanifest', (req, res) => {
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(JSON.stringify({
+        name: 'Goldmine Bots',
+        short_name: 'Goldmine',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#08101f',
+        theme_color: '#08101f',
+        description: 'Goldmine trading infrastructure with bots, live feed, pricing, and checkout.',
+        icons: [
+            { src: '/app-icon.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
+            { src: '/app-icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
+        ]
+    }));
+});
+
+app.get('/sw.js', (req, res) => {
+    const swPath = path.join(__dirname, 'public', 'sw.js');
+    if (!fsSync.existsSync(swPath)) return res.status(404).end();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.sendFile(swPath);
+});
+
 // Middleware
 app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
