@@ -140,14 +140,7 @@ app.get('/assets/logo.png', (req, res) => {
     res.sendFile(p);
 });
 
-app.get('/app-icon-v2.png', (req, res) => {
-    const p = path.join(__dirname, 'assets', 'app-icon-v2.png');
-    if (!fsSync.existsSync(p)) return res.status(404).end();
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.sendFile(p);
-});
-
-app.get('/manifest-goldmine-bots.webmanifest', (req, res) => {
+function sendGoldmineBotsManifest(res) {
     res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.send(JSON.stringify({
@@ -160,9 +153,39 @@ app.get('/manifest-goldmine-bots.webmanifest', (req, res) => {
         theme_color: '#08101f',
         description: 'Goldmine trading infrastructure with bots, live feed, pricing, and checkout.',
         icons: [
-            { src: '/app-icon-v2.png', sizes: '1024x1024', type: 'image/png', purpose: 'any maskable' }
+            { src: '/app-icon.svg', sizes: '1024x1024', type: 'image/svg+xml', purpose: 'any maskable' }
         ]
     }));
+}
+
+app.get('/app-icon-v2.png', (req, res) => {
+    const p = path.join(__dirname, 'assets', 'app-icon-v2.png');
+    if (!fsSync.existsSync(p)) return res.status(404).end();
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.sendFile(p);
+});
+
+app.get('/app-icon.svg', async (req, res) => {
+    const p = path.join(__dirname, 'assets', 'app-icon-v2.png');
+    if (!fsSync.existsSync(p)) return res.status(404).end();
+    const raw = await fs.readFile(p);
+    const base64 = raw.toString('base64');
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#000000"/>
+  <image href="data:image/png;base64,${base64}" x="0" y="0" width="1024" height="1024" preserveAspectRatio="xMidYMid meet"/>
+</svg>`;
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(svg);
+});
+
+app.get('/manifest-goldmine-bots.webmanifest', (req, res) => {
+    sendGoldmineBotsManifest(res);
+});
+
+app.get('/manifest.webmanifest', (req, res) => {
+    sendGoldmineBotsManifest(res);
 });
 
 app.get('/sw.js', (req, res) => {

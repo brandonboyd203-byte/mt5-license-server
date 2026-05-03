@@ -17,7 +17,7 @@
     };
 
     addMeta('theme-color', '#08101f');
-    addLink('manifest', '/manifest-goldmine-bots.webmanifest');
+    addLink('manifest', '/manifest.webmanifest');
     addLink('apple-touch-icon', '/app-icon-v2.png');
     addLink('icon', '/app-icon-v2.png');
 
