@@ -17,9 +17,9 @@
     };
 
     addMeta('theme-color', '#08101f');
-    addLink('manifest', '/manifest.webmanifest');
-    addLink('apple-touch-icon', '/app-icon.png');
-    addLink('icon', '/app-icon.png');
+    addLink('manifest', '/manifest-goldmine-bots.webmanifest');
+    addLink('apple-touch-icon', '/app-icon-v2.png');
+    addLink('icon', '/app-icon-v2.png');
 
     let deferredPrompt = null;
     const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');

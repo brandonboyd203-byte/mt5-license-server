@@ -140,14 +140,14 @@ app.get('/assets/logo.png', (req, res) => {
     res.sendFile(p);
 });
 
-app.get('/app-icon.png', (req, res) => {
-    const p = path.join(__dirname, 'assets', 'app-icon.png');
+app.get('/app-icon-v2.png', (req, res) => {
+    const p = path.join(__dirname, 'assets', 'app-icon-v2.png');
     if (!fsSync.existsSync(p)) return res.status(404).end();
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.sendFile(p);
 });
 
-app.get('/manifest.webmanifest', (req, res) => {
+app.get('/manifest-goldmine-bots.webmanifest', (req, res) => {
     res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.send(JSON.stringify({
@@ -160,7 +160,7 @@ app.get('/manifest.webmanifest', (req, res) => {
         theme_color: '#08101f',
         description: 'Goldmine trading infrastructure with bots, live feed, pricing, and checkout.',
         icons: [
-            { src: '/app-icon.png', sizes: '1024x1024', type: 'image/png', purpose: 'any maskable' }
+            { src: '/app-icon-v2.png', sizes: '1024x1024', type: 'image/png', purpose: 'any maskable' }
         ]
     }));
 });
