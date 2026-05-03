@@ -18,8 +18,8 @@
 
     addMeta('theme-color', '#08101f');
     addLink('manifest', '/manifest.webmanifest');
-    addLink('apple-touch-icon', '/app-icon.svg');
-    addLink('icon', '/app-icon.svg');
+    addLink('apple-touch-icon', '/app-icon.png');
+    addLink('icon', '/app-icon.png');
 
     let deferredPrompt = null;
     const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');

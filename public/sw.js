@@ -2,7 +2,7 @@ const CACHE_NAME = 'goldmine-bots-shell-v1';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
-  '/app-icon.svg',
+  '/app-icon.png',
   '/site/styles.css',
   '/site/main.js'
 ];
