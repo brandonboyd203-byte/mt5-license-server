@@ -40,10 +40,16 @@ const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || 'GOLDMINE';
 const INVOICE_CRON = process.env.INVOICE_CRON || '0 9 1 * *';
 const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || 'UTC';
-const MOTHERBOARD_VDS_TELEMETRY_URL = process.env.MOTHERBOARD_VDS_TELEMETRY_URL || 'http://46.250.244.188:8788/api/telemetry';
-const MOTHERBOARD_VDS_DASHBOARD_URL = process.env.MOTHERBOARD_VDS_DASHBOARD_URL || 'http://46.250.244.188:8788/';
+const DEFAULT_IONOS_LAB_TELEMETRY_URL = 'http://93.90.193.150/api/telemetry';
+const DEFAULT_IONOS_PROD_TELEMETRY_URL = 'http://212.227.201.75/api/telemetry';
+const MOTHERBOARD_VDS_TELEMETRY_URL = process.env.MOTHERBOARD_VDS_TELEMETRY_URL || DEFAULT_IONOS_LAB_TELEMETRY_URL;
+const MOTHERBOARD_VDS_TELEMETRY_URLS = String(
+    process.env.MOTHERBOARD_VDS_TELEMETRY_URLS
+    || `${DEFAULT_IONOS_LAB_TELEMETRY_URL},${DEFAULT_IONOS_PROD_TELEMETRY_URL}`
+).split(',').map((url) => url.trim()).filter(Boolean);
+const MOTHERBOARD_VDS_DASHBOARD_URL = process.env.MOTHERBOARD_VDS_DASHBOARD_URL || 'http://93.90.193.150/';
 const MOTHERBOARD_VDS_CHARTS_URL = process.env.MOTHERBOARD_VDS_CHARTS_URL || MOTHERBOARD_VDS_TELEMETRY_URL.replace(/\/api\/telemetry$/i, '/api/charts/live');
-const BOT_LAB_API_URL = process.env.BOT_LAB_API_URL || 'http://46.250.244.188:8788/api/bot-lab/latest';
+const BOT_LAB_API_URL = process.env.BOT_LAB_API_URL || 'http://93.90.193.150/api/bot-lab/latest';
 const BOT_LAB_HISTORY_URL = process.env.BOT_LAB_HISTORY_URL
     || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/history');
 const BOT_LAB_ANALYSIS_URL = process.env.BOT_LAB_ANALYSIS_URL
@@ -54,10 +60,29 @@ const BOT_LAB_PROGRESS_URL = process.env.BOT_LAB_PROGRESS_URL
     || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/progress');
 const BOT_LAB_DISCORD_SUMMARY_URL = process.env.BOT_LAB_DISCORD_SUMMARY_URL
     || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/discord-summary');
+const BOT_LAB_RECOMMENDATIONS_URL = process.env.BOT_LAB_RECOMMENDATIONS_URL
+    || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/recommendations');
 const BOT_LAB_SCHEDULE_URL = process.env.BOT_LAB_SCHEDULE_URL
     || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/bot-lab/schedule');
 const BOT_LAB_SWEEP_STATUS_URL = process.env.BOT_LAB_SWEEP_STATUS_URL
     || BOT_LAB_API_URL.replace(/\/api\/bot-lab\/latest$/i, '/api/param-sweep/status');
+const MOTHERBOARD_TELEMETRY_MAX_AGE_MS = Math.max(
+    60_000,
+    Number(process.env.MOTHERBOARD_TELEMETRY_MAX_AGE_MS || (15 * 60 * 1000))
+);
+const BOT_LAB_CACHE_DIR = path.join(__dirname, 'data', 'bot-lab-cache');
+const BOT_LAB_LATEST_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'latest.json');
+const BOT_LAB_HISTORY_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'history.json');
+const BOT_LAB_PROGRESS_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'progress.json');
+const BOT_LAB_RECOMMENDATIONS_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'recommendations.json');
+const BOT_LAB_CATALOG_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'catalog.json');
+const BOT_LAB_ANALYSIS_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'analysis.json');
+const BOT_LAB_DISCORD_SUMMARY_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'discord-summary.json');
+const BOT_LAB_SCHEDULE_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'schedule.json');
+const BOT_LAB_SWEEP_STATUS_CACHE_FILE = path.join(BOT_LAB_CACHE_DIR, 'param-sweep-status.json');
+const BOT_LAB_CACHE_REFRESH_MS = Math.max(60_000, Number(process.env.BOT_LAB_CACHE_REFRESH_MS || 300_000));
+const VDS_CASHFLOW_LEDGER_FILE = process.env.VDS_CASHFLOW_LEDGER_FILE || (useDataDir ? path.join(DATA_DIR, 'vds_cashflows.csv') : path.resolve(__dirname, '../secure/vds_cashflows.csv'));
+const BUNDLED_VDS_CASHFLOW_SEED_FILE = path.join(__dirname, 'data', 'vds_cashflows.seed.csv');
 
 // One license in a group = valid for any EA name in that group (dash/hyphen normalized in code)
 // Include both ASCII hyphen (-) and en-dash (–) so EAs work regardless of encoding
@@ -95,6 +120,297 @@ function normalizeBaseUrl(value) {
     if (!trimmed) return '';
     const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
     return withProtocol.replace(/\/+$/, '');
+}
+
+function readJsonCache(filePath) {
+    try {
+        if (!fsSync.existsSync(filePath)) return null;
+        return JSON.parse(fsSync.readFileSync(filePath, 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+function parseCsvLine(line) {
+    const out = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i += 1;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+        if (ch === ',' && !inQuotes) {
+            out.push(current);
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+    out.push(current);
+    return out;
+}
+
+function toCsvCell(value) {
+    const text = String(value ?? '');
+    if (!/[",\n]/.test(text)) return text;
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
+async function loadVdsCashflowLedger() {
+    const seedIntoLedger = async () => {
+        const seedRaw = await fs.readFile(BUNDLED_VDS_CASHFLOW_SEED_FILE, 'utf8');
+        await fs.mkdir(path.dirname(VDS_CASHFLOW_LEDGER_FILE), { recursive: true });
+        await fs.writeFile(VDS_CASHFLOW_LEDGER_FILE, seedRaw, 'utf8');
+    };
+    try {
+        const raw = await fs.readFile(VDS_CASHFLOW_LEDGER_FILE, 'utf8');
+        const lines = raw.split(/\r?\n/).filter(Boolean);
+        if (!lines.length) {
+            try {
+                await seedIntoLedger();
+                return loadVdsCashflowLedger();
+            } catch {
+                return { header: ['profile', 'account', 'deposit_usd', 'withdraw_usd', 'source', 'note'], rows: [] };
+            }
+        }
+        const header = parseCsvLine(lines[0]).map((x) => String(x || '').trim());
+        const rows = lines.slice(1).map((line) => {
+            const values = parseCsvLine(line);
+            const row = {};
+            header.forEach((key, idx) => {
+                row[key] = values[idx] ?? '';
+            });
+            return {
+                profile: String(row.profile || '').trim(),
+                account: String(row.account || '').trim(),
+                depositUsd: Number.isFinite(Number(row.deposit_usd)) ? Number(row.deposit_usd) : null,
+                withdrawUsd: Number.isFinite(Number(row.withdraw_usd)) ? Number(row.withdraw_usd) : null,
+                source: String(row.source || '').trim() || 'ledger',
+                note: String(row.note || '').trim(),
+            };
+        }).filter((row) => row.profile);
+        if (!rows.length) {
+            try {
+                await seedIntoLedger();
+                return loadVdsCashflowLedger();
+            } catch {}
+        }
+        return { header, rows };
+    } catch (error) {
+        if (error && error.code === 'ENOENT') {
+            try {
+                await seedIntoLedger();
+                return loadVdsCashflowLedger();
+            } catch {
+                return { header: ['profile', 'account', 'deposit_usd', 'withdraw_usd', 'source', 'note'], rows: [] };
+            }
+        }
+        throw error;
+    }
+}
+
+async function saveVdsCashflowLedger(payload) {
+    const header = Array.isArray(payload?.header) && payload.header.length
+        ? payload.header
+        : ['profile', 'account', 'deposit_usd', 'withdraw_usd', 'source', 'note'];
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const lines = [
+        header.join(','),
+        ...rows.map((row) => [
+            toCsvCell(row.profile || ''),
+            toCsvCell(row.account || ''),
+            toCsvCell(Number.isFinite(Number(row.depositUsd)) ? Number(row.depositUsd).toFixed(2) : ''),
+            toCsvCell(Number.isFinite(Number(row.withdrawUsd)) ? Number(row.withdrawUsd).toFixed(2) : ''),
+            toCsvCell(row.source || 'ledger'),
+            toCsvCell(row.note || ''),
+        ].join(',')),
+    ];
+    await fs.writeFile(VDS_CASHFLOW_LEDGER_FILE, `${lines.join('\n')}\n`, 'utf8');
+}
+
+async function upsertVdsCashflowLedgerEntry(input) {
+    const profile = String(input?.profile || '').trim();
+    if (!profile) throw new Error('profile is required');
+    const account = String(input?.account || '').trim();
+    const source = String(input?.source || 'ledger').trim() || 'ledger';
+    const note = String(input?.note || '').trim();
+    const depositUsd = Number.isFinite(Number(input?.depositUsd)) ? Number(input.depositUsd) : null;
+    const withdrawUsd = Number.isFinite(Number(input?.withdrawUsd)) ? Number(input.withdrawUsd) : null;
+    const payload = await loadVdsCashflowLedger();
+    const idx = payload.rows.findIndex((row) => String(row.profile || '').trim() === profile);
+    const next = { profile, account, depositUsd, withdrawUsd, source, note };
+    if (idx >= 0) payload.rows[idx] = next;
+    else payload.rows.push(next);
+    payload.rows.sort((a, b) => String(a.profile).localeCompare(String(b.profile)));
+    await saveVdsCashflowLedger(payload);
+    return next;
+}
+
+function writeJsonCache(filePath, value) {
+    try {
+        fsSync.mkdirSync(path.dirname(filePath), { recursive: true });
+        fsSync.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+        return true;
+    } catch (error) {
+        console.error(`Failed to write bot-lab cache ${filePath}:`, error.message);
+        return false;
+    }
+}
+
+function botLabRowsFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    if (Array.isArray(payload.results)) return payload.results;
+    if (Array.isArray(payload.rows)) return payload.rows;
+    if (Array.isArray(payload.runs)) return payload.runs;
+    return [];
+}
+
+function hasUsableBotLabRows(payload) {
+    return botLabRowsFromPayload(payload).length > 0;
+}
+
+function readBotLabAnalysisCache() {
+    return readJsonCache(BOT_LAB_ANALYSIS_CACHE_FILE);
+}
+
+function readBotLabProgressCache() {
+    return readJsonCache(BOT_LAB_PROGRESS_CACHE_FILE);
+}
+
+function deriveBotLabLatestFallback() {
+    const analysis = readBotLabAnalysisCache();
+    const progress = readBotLabProgressCache();
+    const bestRows = Array.isArray(analysis?.best_by_bot) ? analysis.best_by_bot : [];
+    const progressRows = Array.isArray(progress?.bots) ? progress.bots : [];
+    const derivedRows = bestRows
+        .filter((row) => row && (Number.isFinite(Number(row?.ret_pct)) || Number.isFinite(Number(row?.trades)) || Number.isFinite(Number(row?.final_balance))))
+        .map((row) => ({
+            bot: row.bot || '-',
+            category: row.category || row.catalog?.category || 'Unassigned',
+            variant: row.strategy_family || row.family || '-',
+            case_id: row.strategy_family || row.family || row.bot || '-',
+            status: row.status || 'PASS',
+            pnl: Number.isFinite(Number(row?.final_balance)) && Number.isFinite(Number(row?.deposit ?? row?.startingBalance ?? row?.start_balance))
+                ? Number((Number(row.final_balance) - Number(row.deposit ?? row.startingBalance ?? row.start_balance)).toFixed(2))
+                : null,
+            ret_pct: Number.isFinite(Number(row?.ret_pct)) ? Number(row.ret_pct) : null,
+            trades: Number.isFinite(Number(row?.trades)) ? Number(row.trades) : null,
+            win_rate_pct: Number.isFinite(Number(row?.win_rate_pct)) ? Number(row.win_rate_pct) : null,
+            pf: Number.isFinite(Number(row?.pf)) ? Number(row.pf) : null,
+            drawdown_pct: Number.isFinite(Number(row?.drawdown_pct)) ? Number(row.drawdown_pct) : null,
+            window: row?.from_date && row?.to_date ? `${row.from_date} -> ${row.to_date}` : (row?.range || '-'),
+            from_date: row?.from_date || '',
+            to_date: row?.to_date || '',
+            deposit: Number.isFinite(Number(row?.deposit ?? row?.startingBalance ?? row?.start_balance)) ? Number(row.deposit ?? row.startingBalance ?? row.start_balance) : null,
+            final_balance: Number.isFinite(Number(row?.final_balance ?? row?.finalBalance)) ? Number(row.final_balance ?? row.finalBalance) : null,
+            params: row?.params || null,
+            sl_pips: row?.sl_pips ?? null,
+            tp1_pips: row?.tp1_pips ?? null,
+            tp2_pips: row?.tp2_pips ?? null,
+            tp3_pips: row?.tp3_pips ?? null,
+            trail_start_pips: row?.trail_start_pips ?? null,
+            trail_distance_pips: row?.trail_distance_pips ?? null,
+            updated_at: row?.updated_at || analysis?.updatedAt || progress?.updatedAt || null,
+            completed_at: row?.completed_at || row?.updated_at || analysis?.updatedAt || progress?.updatedAt || null
+        }))
+        .sort((a, b) => (Number(b?.ret_pct || -Infinity) - Number(a?.ret_pct || -Infinity)))
+        .slice(0, 20);
+
+    if (!derivedRows.length) return null;
+    return {
+        ok: true,
+        updatedAt: analysis?.updatedAt || progress?.updatedAt || new Date().toISOString(),
+        results: derivedRows
+    };
+}
+
+function deriveBotLabHistoryFallback(limit = 20) {
+    const latest = deriveBotLabLatestFallback();
+    if (!latest) return null;
+    return {
+        ok: true,
+        updatedAt: latest.updatedAt,
+        results: botLabRowsFromPayload(latest).slice(0, Math.max(1, Math.min(50, Number(limit) || 20)))
+    };
+}
+
+function deriveBotLabDiscordSummaryFallback() {
+    const progress = readBotLabProgressCache();
+    const analysis = readBotLabAnalysisCache();
+    if (!progress && !analysis) return null;
+    const progressSummary = progress?.summary || {};
+    const analysisSummary = analysis?.summary || {};
+    const bestRows = Array.isArray(analysis?.best_by_bot) ? analysis.best_by_bot : [];
+    const progressRows = Array.isArray(progress?.bots) ? progress.bots : [];
+    const top = bestRows
+        .filter((row) => Number.isFinite(Number(row?.ret_pct)))
+        .sort((a, b) => Number(b?.ret_pct || -Infinity) - Number(a?.ret_pct || -Infinity))[0] || null;
+    const availableBalances = Array.from(new Set(
+        bestRows
+            .map((row) => row?.aggregate?.balance_values || [])
+            .flat()
+            .concat(
+                bestRows
+                    .map((row) => Number(row?.deposit ?? row?.startingBalance ?? row?.start_balance))
+                    .filter((value) => Number.isFinite(value)),
+            )
+    )).sort((a, b) => a - b);
+    const validationCoveredBots = Number(analysisSummary?.validation_covered_bots)
+        || bestRows.filter((row) => Number(row?.aggregate?.validation_windows || 0) > 0).length;
+    const multiBalanceBots = Number(analysisSummary?.multi_balance_bots)
+        || bestRows.filter((row) => Number(row?.aggregate?.tested_balances || 0) >= 2).length;
+    const trackedBots = Number(progressSummary?.tracked_bots)
+        || Number(analysisSummary?.bots_tracked)
+        || progressRows.length
+        || bestRows.length;
+    const testedBots = Number(progressSummary?.tested_bots)
+        || Number(analysisSummary?.tested_bots)
+        || bestRows.length;
+    const pendingBots = Number(progressSummary?.pending_bots)
+        || Math.max(0, trackedBots - testedBots);
+    return {
+        ok: true,
+        updatedAt: progress?.updatedAt || analysis?.updatedAt || new Date().toISOString(),
+        status: {
+            tracked_bots: trackedBots,
+            tested_bots: testedBots,
+            pending_bots: pendingBots,
+            promotion_ready: Number(progressSummary?.promotion_ready || analysisSummary?.promotion_ready || 0),
+            validation_covered_bots: validationCoveredBots,
+            multi_balance_bots: multiBalanceBots,
+            available_balances: Array.isArray(progressSummary?.available_balances) && progressSummary.available_balances.length ? progressSummary.available_balances : availableBalances,
+            top_bot: top?.bot || null,
+            top_return_pct: Number.isFinite(Number(top?.ret_pct)) ? Number(top.ret_pct) : null
+        },
+        summary: 'Bot Lab derived cache fallback active.'
+    };
+}
+
+function resolveBotLabCachedPayload(kind, options = {}) {
+    const limit = options.limit || 20;
+    if (kind === 'latest') {
+        const cached = readJsonCache(BOT_LAB_LATEST_CACHE_FILE);
+        if (hasUsableBotLabRows(cached)) return cached;
+        return deriveBotLabLatestFallback();
+    }
+    if (kind === 'history') {
+        const cached = readJsonCache(BOT_LAB_HISTORY_CACHE_FILE);
+        if (hasUsableBotLabRows(cached)) return cached;
+        return deriveBotLabHistoryFallback(limit);
+    }
+    if (kind === 'discord-summary') {
+        const cached = readJsonCache(BOT_LAB_DISCORD_SUMMARY_CACHE_FILE);
+        if (cached && typeof cached === 'object' && cached.status) return cached;
+        return deriveBotLabDiscordSummaryFallback();
+    }
+    return null;
 }
 
 function getEaNameCandidates(eaName) {
@@ -200,6 +516,7 @@ app.get('/sw.js', (req, res) => {
 app.use(cors());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 app.use('/site', express.static(path.join(__dirname, 'public')));
+app.use('/site/bot-lab-cache', express.static(BOT_LAB_CACHE_DIR));
 
 let botFeedCache = { bySource: new Map() };
 let botChartCache = { bySourceKey: new Map() };
@@ -239,23 +556,208 @@ function normalizeBotLabPayload(payload) {
     return next;
 }
 
+const BOT_LAB_CACHE_TARGETS = [
+    { name: 'latest', url: BOT_LAB_API_URL, file: BOT_LAB_LATEST_CACHE_FILE, normalize: normalizeBotLabPayload, timeoutMs: 15000 },
+    { name: 'history', url: `${BOT_LAB_HISTORY_URL}${BOT_LAB_HISTORY_URL.includes('?') ? '&' : '?'}limit=20`, file: BOT_LAB_HISTORY_CACHE_FILE, normalize: normalizeBotLabPayload, timeoutMs: 20000 },
+    { name: 'analysis', url: BOT_LAB_ANALYSIS_URL, file: BOT_LAB_ANALYSIS_CACHE_FILE, timeoutMs: 20000 },
+    { name: 'catalog', url: BOT_LAB_CATALOG_URL, file: BOT_LAB_CATALOG_CACHE_FILE, timeoutMs: 15000 },
+    { name: 'progress', url: BOT_LAB_PROGRESS_URL, file: BOT_LAB_PROGRESS_CACHE_FILE, timeoutMs: 20000 },
+    { name: 'discord-summary', url: BOT_LAB_DISCORD_SUMMARY_URL, file: BOT_LAB_DISCORD_SUMMARY_CACHE_FILE, timeoutMs: 20000 },
+    { name: 'recommendations', url: BOT_LAB_RECOMMENDATIONS_URL, file: BOT_LAB_RECOMMENDATIONS_CACHE_FILE, timeoutMs: 20000 },
+    { name: 'schedule', url: BOT_LAB_SCHEDULE_URL, file: BOT_LAB_SCHEDULE_CACHE_FILE, timeoutMs: 20000 },
+    { name: 'param-sweep-status', url: BOT_LAB_SWEEP_STATUS_URL, file: BOT_LAB_SWEEP_STATUS_CACHE_FILE, timeoutMs: 20000 }
+];
+
+let botLabCacheRefreshInFlight = null;
+async function refreshBotLabCaches(force = false) {
+    if (botLabCacheRefreshInFlight && !force) return botLabCacheRefreshInFlight;
+    botLabCacheRefreshInFlight = (async () => {
+        const results = [];
+        for (const target of BOT_LAB_CACHE_TARGETS) {
+            try {
+                let payload = await fetchJsonWithTimeout(withCacheBust(target.url), target.timeoutMs || 15000);
+                if (typeof target.normalize === 'function') payload = target.normalize(payload);
+                let payloadToWrite = payload;
+                if (target.name === 'latest' && !hasUsableBotLabRows(payloadToWrite)) {
+                    payloadToWrite = resolveBotLabCachedPayload('latest') || payloadToWrite;
+                } else if (target.name === 'history' && !hasUsableBotLabRows(payloadToWrite)) {
+                    payloadToWrite = resolveBotLabCachedPayload('history', { limit: 20 }) || payloadToWrite;
+                } else if (target.name === 'discord-summary' && (!payloadToWrite || typeof payloadToWrite !== 'object' || !payloadToWrite.status)) {
+                    payloadToWrite = resolveBotLabCachedPayload('discord-summary') || payloadToWrite;
+                }
+                writeJsonCache(target.file, payloadToWrite);
+                results.push({ name: target.name, ok: true });
+            } catch (error) {
+                results.push({ name: target.name, ok: false, error: error.message || 'unavailable' });
+            }
+        }
+        return results;
+    })();
+    try {
+        return await botLabCacheRefreshInFlight;
+    } finally {
+        botLabCacheRefreshInFlight = null;
+    }
+}
+
 function n(v, fallback = 0) {
     const x = Number(v);
     return Number.isFinite(x) ? x : fallback;
+}
+
+function parseIsoMs(value) {
+    if (!value) return null;
+    const ms = Date.parse(String(value));
+    return Number.isFinite(ms) ? ms : null;
+}
+
+function telemetryAgeMs(iso) {
+    const ts = parseIsoMs(iso);
+    if (!Number.isFinite(ts)) return null;
+    return Math.max(0, Date.now() - ts);
+}
+
+function resolveOpenProfitValue(profile, balance, equity) {
+    const reportedOpen = Number(profile?.openProfit);
+    const openPositions = n(profile?.openPositions, 0);
+    const eqDiff = (Number.isFinite(balance) && Number.isFinite(equity))
+        ? Number((equity - balance).toFixed(2))
+        : null;
+    if (openPositions <= 0) return 0;
+    if (!Number.isFinite(eqDiff)) {
+        return Number.isFinite(reportedOpen) ? reportedOpen : 0;
+    }
+    if (!Number.isFinite(reportedOpen)) return eqDiff;
+    if (Math.abs(reportedOpen) < 0.01 && Math.abs(eqDiff) >= 0.01) return eqDiff;
+    if (Math.abs(reportedOpen - eqDiff) > 50) return eqDiff;
+    return reportedOpen;
+}
+
+function recoverSnapshotFunds(profile) {
+    const events = Array.isArray(profile?.recentEvents) ? profile.recentEvents : [];
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+        const text = String(events[i]?.text || '');
+        if (!text.includes('ACCOUNT_SNAPSHOT')) continue;
+        const balanceMatch = text.match(/Balance=([0-9.+-]+)/i);
+        const equityMatch = text.match(/Equity=([0-9.+-]+)/i);
+        const profitMatch = text.match(/Profit=([0-9.+-]+)/i);
+        const balance = balanceMatch ? Number(balanceMatch[1]) : null;
+        const equity = equityMatch ? Number(equityMatch[1]) : null;
+        const profit = profitMatch ? Number(profitMatch[1]) : null;
+        return {
+            balance: Number.isFinite(balance) ? balance : null,
+            equity: Number.isFinite(equity) ? equity : null,
+            profit: Number.isFinite(profit) ? profit : null
+        };
+    }
+    return { balance: null, equity: null, profit: null };
+}
+
+function isTrustedLiveBalanceSource(value) {
+    const source = String(value || '').trim();
+    return source === 'mt5-probe-live' || source === 'mt5-probe-standby-zero';
 }
 
 function getMotherboardConfig(_sourceRaw) {
     return {
         source: 'vds',
         telemetryUrl: MOTHERBOARD_VDS_TELEMETRY_URL,
+        telemetryUrls: MOTHERBOARD_VDS_TELEMETRY_URLS,
         dashboardUrl: MOTHERBOARD_VDS_DASHBOARD_URL,
         chartsUrl: MOTHERBOARD_VDS_CHARTS_URL
+    };
+}
+
+function newestIso(values) {
+    let best = null;
+    for (const value of values) {
+        const ms = Date.parse(value || '');
+        if (!Number.isFinite(ms)) continue;
+        if (!best || ms > best.ms) best = { ms, value };
+    }
+    return best?.value || new Date().toISOString();
+}
+
+function combineLiveBotPayloads(payloads, cfg) {
+    const usable = payloads.filter((payload) => payload && payload.ok);
+    if (usable.length <= 1) return usable[0] || null;
+    const profiles = usable.flatMap((payload) => Array.isArray(payload.profiles) ? payload.profiles : []);
+    const copierRows = usable.flatMap((payload) => Array.isArray(payload.copierFeed?.rows) ? payload.copierFeed.rows : []);
+    const generatedAt = newestIso(usable.map((payload) => payload.generatedAt));
+    const sum = (selector) => Number(usable.reduce((total, payload) => total + Number(selector(payload) || 0), 0).toFixed(2));
+    const baselineFor = (row) => {
+        const raw = row?.accountStartEquity ?? row?.depositAmount ?? row?.dayStartEquity;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const dayBaseline = profiles.reduce((total, row) => total + baselineFor(row), 0);
+    const lifetimeMatched = profiles.reduce((total, row) => total + Number(row?.lifetimeMatchedCloses || 0), 0);
+    const lifetimeWinsApprox = profiles.reduce((total, row) => {
+        const matched = Number(row?.lifetimeMatchedCloses || 0);
+        const wr = Number(row?.lifetimeWinRatePct);
+        return total + (matched > 0 && Number.isFinite(wr) ? (matched * wr / 100) : 0);
+    }, 0);
+    const lifetimeNet = sum((payload) => payload.summary?.lifetimeNetUsd);
+    const dayNet = sum((payload) => payload.summary?.dayNetUsd);
+    const monthNet = sum((payload) => payload.summary?.monthNetUsd);
+    const openProfit = sum((payload) => payload.summary?.openProfitUsd);
+    return {
+        ok: true,
+        generatedAt,
+        stale: usable.some((payload) => payload.stale),
+        staleReason: usable.find((payload) => payload.staleReason)?.staleReason || null,
+        degraded: usable.some((payload) => payload.degraded),
+        degradedReason: usable.find((payload) => payload.degradedReason)?.degradedReason || null,
+        telemetryAgeSec: Math.max(...usable.map((payload) => Number(payload.telemetryAgeSec || 0))),
+        source: {
+            node: cfg?.source || 'vds',
+            telemetryUrl: cfg?.telemetryUrl || null,
+            telemetryUrls: cfg?.telemetryUrls || [],
+            dashboardUrl: cfg?.dashboardUrl || null
+        },
+        diagnostics: {
+            upstreams: usable.map((payload) => ({
+                telemetryUrl: payload?.source?.telemetryUrl || null,
+                generatedAt: payload?.generatedAt || null,
+                profilesTotal: payload?.summary?.profilesTotal || 0,
+                stale: !!payload?.stale
+            })),
+            rawProfilesTotal: profiles.length,
+            visibleProfilesTotal: profiles.length,
+            trustedProfilesTotal: profiles.filter((row) => row.balanceSource === 'mt5-probe-live' || row.balanceSource === 'mt5-probe-standby-zero').length
+        },
+        summary: {
+            profilesTotal: profiles.length,
+            openPositions: sum((payload) => payload.summary?.openPositions),
+            openOrders: sum((payload) => payload.summary?.openOrders),
+            dayNetUsd: dayNet,
+            dayReturnPct: dayBaseline > 0 ? Number(((100 * dayNet) / dayBaseline).toFixed(2)) : null,
+            weekNetUsd: sum((payload) => payload.summary?.weekNetUsd),
+            weekReturnPct: null,
+            monthNetUsd: monthNet,
+            monthReturnPct: dayBaseline > 0 ? Number(((100 * monthNet) / dayBaseline).toFixed(2)) : null,
+            openProfitUsd: openProfit,
+            lifetimeNetUsd: lifetimeNet,
+            lifetimeReturnPct: dayBaseline > 0 ? Number(((100 * lifetimeNet) / dayBaseline).toFixed(2)) : null,
+            lifetimeMatchedCloses: lifetimeMatched,
+            lifetimeWinRatePct: lifetimeMatched > 0 ? Number(((100 * lifetimeWinsApprox) / lifetimeMatched).toFixed(2)) : null,
+            lifetimeProfitFactor: null
+        },
+        profiles: profiles.sort((a, b) => Number(b.dayNetUsd || 0) - Number(a.dayNetUsd || 0)),
+        copierFeed: {
+            generatedAt,
+            columns: usable.find((payload) => Array.isArray(payload.copierFeed?.columns) && payload.copierFeed.columns.length)?.copierFeed.columns || [],
+            rows: copierRows
+        }
     };
 }
 
 function shapeLiveBotPayload(raw, cfg) {
     const telemetry = raw?.telemetry || raw || {};
     const copierFeedRaw = raw?.copierFeed || telemetry?.copierFeed || null;
+    const generatedAt = telemetry.generatedAt || new Date().toISOString();
+    const ageMs = telemetryAgeMs(generatedAt);
+    const isStale = Number.isFinite(ageMs) ? ageMs > MOTHERBOARD_TELEMETRY_MAX_AGE_MS : false;
     const vdsHideNameParts = ['BASE', 'PRESET', 'LAB', 'DOMINION', 'EDGE', 'SURGE', 'FRESH', 'BRAND_NEW', 'COPIER_NEW', 'COPIER_CLEAN', 'TF_SETUP'];
     const shouldHideVdsProfile = (nameRaw) => {
         const name = String(nameRaw || '').trim().toUpperCase();
@@ -264,9 +766,20 @@ function shapeLiveBotPayload(raw, cfg) {
         return vdsHideNameParts.some((part) => name.includes(part));
     };
     const profilesRaw = Array.isArray(telemetry.profiles) ? telemetry.profiles : [];
-    const profiles = cfg?.source === 'vds'
+    const visibleProfiles = cfg?.source === 'vds'
         ? profilesRaw.filter((p) => !shouldHideVdsProfile(p?.profile || p?.profileLabel))
         : profilesRaw;
+    const trustedProfiles = visibleProfiles.filter((profile) => isTrustedLiveBalanceSource(profile?.balanceSource));
+    const useFallbackProfiles = false;
+    const profiles = cfg?.source === 'vds'
+        ? visibleProfiles.map((profile) => {
+            const hasExactFunds = Number.isFinite(Number(profile?.currentBalance)) || Number.isFinite(Number(profile?.currentEquity));
+            const source = String(profile?.balanceSource || '').trim();
+            const keepLiveSource = source === 'mt5-probe-live' || source === 'mt5-probe-standby-zero' || source === 'derived';
+            if (!hasExactFunds || keepLiveSource) return profile;
+            return { ...profile, balanceSource: 'snapshot' };
+        })
+        : visibleProfiles;
     const summary = telemetry.summary || {};
     const day = summary.day || {};
     const week = summary.week || {};
@@ -275,24 +788,96 @@ function shapeLiveBotPayload(raw, cfg) {
         .map((p) => {
             const dayMetrics = p?.metrics?.day || {};
             const weekMetrics = p?.metrics?.week || {};
+            const monthMetrics = p?.metrics?.month || {};
             const lifetimeMetrics = p?.metrics?.lifetime || {};
             const totalMetrics = p?.metrics?.total || {};
             const status = p?.metrics?.status || {};
-            const balance = Number.isFinite(Number(p.currentBalance)) ? Number(p.currentBalance) : null;
-            const equity = Number.isFinite(Number(p.currentEquity)) ? Number(p.currentEquity) : null;
-            const depositAmount = Number.isFinite(Number(p.depositAmount)) ? Number(p.depositAmount) : (Number.isFinite(Number(p.deposit)) ? Number(p.deposit) : null);
-            const withdrawAmount = Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount) : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw) : null);
-            const accountStartEquity = Number.isFinite(Number(p.accountStartEquity)) ? Number(p.accountStartEquity) : null;
+            let balance = Number.isFinite(Number(p.currentBalance)) ? Number(p.currentBalance) : null;
+            let equity = Number.isFinite(Number(p.currentEquity)) ? Number(p.currentEquity) : null;
+            let depositAmount = Number.isFinite(Number(p.depositAmount)) ? Number(p.depositAmount)
+                : (Number.isFinite(Number(p.deposit)) ? Number(p.deposit)
+                    : (Number.isFinite(Number(p.depositStartEq)) ? Number(p.depositStartEq)
+                        : (Number.isFinite(Number(p.depositStartingEq)) ? Number(p.depositStartingEq) : null)));
+            let withdrawAmount = Number.isFinite(Number(p.withdrawAmount)) ? Number(p.withdrawAmount)
+                : (Number.isFinite(Number(p.withdraw)) ? Number(p.withdraw)
+                    : (Number.isFinite(Number(p.withdrawUsd)) ? Number(p.withdrawUsd)
+                        : (Number.isFinite(Number(p.withdrawalUsd)) ? Number(p.withdrawalUsd)
+                            : (Number.isFinite(Number(p.withdrawalsUsd)) ? Number(p.withdrawalsUsd) : null))));
+            const cashflowSource = String(p.cashflowSource || '').trim() || null;
+            const cashflowLedgerChannel = String(p.cashflowLedgerChannel || '').trim() || null;
+            const cashflowLedgerFetchedAt = p.cashflowLedgerFetchedAt || null;
+            const cashflowLedgerNote = String(p.cashflowLedgerNote || '').trim() || null;
+            let accountStartEquity = Number.isFinite(Number(p.accountStartEquity)) ? Number(p.accountStartEquity) : null;
+            if (cashflowSource === 'missing') {
+                depositAmount = null;
+                withdrawAmount = null;
+                accountStartEquity = null;
+            }
+            if (cashflowSource === 'ledger') {
+                if ((!Number.isFinite(depositAmount) || depositAmount <= 0) && Number.isFinite(accountStartEquity) && accountStartEquity > 0) {
+                    depositAmount = accountStartEquity;
+                }
+                if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
+                    depositAmount = null;
+                }
+                if (!Number.isFinite(withdrawAmount) || withdrawAmount <= 0) {
+                    withdrawAmount = null;
+                }
+            }
+            if (cfg?.source !== 'vds' && !Number.isFinite(depositAmount) && Number.isFinite(accountStartEquity) && accountStartEquity > 0) {
+                depositAmount = accountStartEquity;
+            }
+            const balanceSource = String(p.balanceSource || '').trim();
+            if (balanceSource === 'mt5-probe-live' && (!Number.isFinite(balance) || !Number.isFinite(equity) || (balance === 0 && equity === 0))) {
+                const recovered = recoverSnapshotFunds(p);
+                if (Number.isFinite(recovered.balance) && recovered.balance > 0) balance = recovered.balance;
+                if (Number.isFinite(recovered.equity) && recovered.equity > 0) equity = recovered.equity;
+            }
+            const liveFundsAnchor = Math.max(
+                Number.isFinite(balance) ? balance : 0,
+                Number.isFinite(equity) ? equity : 0,
+            );
+            const maxReasonableLiveBaseline = liveFundsAnchor > 0 ? liveFundsAnchor * 5 : 0;
+            if (balanceSource === 'mt5-probe-live' && maxReasonableLiveBaseline > 0) {
+                if (Number.isFinite(depositAmount) && depositAmount > maxReasonableLiveBaseline) depositAmount = null;
+                if (Number.isFinite(accountStartEquity) && accountStartEquity > maxReasonableLiveBaseline) {
+                    accountStartEquity = Number.isFinite(depositAmount) ? depositAmount : null;
+                }
+            }
             let dayStart = Number(p.dayStartEquity ?? p.dayStartBalance ?? dayMetrics.equityBaseline);
             const baselineFallback = Number.isFinite(accountStartEquity) && accountStartEquity > 0
                 ? accountStartEquity
                 : (Number.isFinite(depositAmount) && depositAmount > 0 ? depositAmount : null);
-            if (!Number.isFinite(dayStart) || dayStart <= 0) dayStart = Number(baselineFallback);
+            if (!Number.isFinite(dayStart) || dayStart <= 0) {
+                dayStart = Number.isFinite(baselineFallback)
+                    ? baselineFallback
+                    : (liveFundsAnchor > 0 ? liveFundsAnchor : null);
+            }
             if (Number.isFinite(dayStart) && dayStart > 0) {
                 const cap = Math.max(equity * 1.8, Number.isFinite(baselineFallback) ? Number(baselineFallback) * 1.8 : 0);
-                if (cap > 0 && dayStart > cap) dayStart = Number(baselineFallback ?? equity);
+                if (cap > 0 && dayStart > cap) {
+                    dayStart = Number.isFinite(baselineFallback)
+                        ? baselineFallback
+                        : (liveFundsAnchor > 0 ? liveFundsAnchor : equity);
+                }
             }
-            let liveDayFromEq = (Number.isFinite(dayStart) && dayStart > 0)
+            if (balanceSource === 'mt5-probe-live' && maxReasonableLiveBaseline > 0 && Number.isFinite(dayStart) && dayStart > maxReasonableLiveBaseline) {
+                dayStart = Number.isFinite(baselineFallback) ? baselineFallback : (liveFundsAnchor > 0 ? liveFundsAnchor : null);
+            }
+            if (balanceSource === 'derived') {
+                const sanityBaseline = Math.max(
+                    Number.isFinite(accountStartEquity) ? accountStartEquity : 0,
+                    Number.isFinite(depositAmount) ? depositAmount : 0,
+                    Number.isFinite(dayStart) ? dayStart : 0
+                );
+                const maxReasonable = sanityBaseline > 0 ? sanityBaseline * 5 : 0;
+                if (maxReasonable > 0) {
+                    if (Number.isFinite(balance) && balance > maxReasonable) balance = null;
+                    if (Number.isFinite(equity) && equity > maxReasonable) equity = null;
+                }
+            }
+            const hasEquity = Number.isFinite(equity);
+            let liveDayFromEq = (hasEquity && Number.isFinite(dayStart) && dayStart > 0)
                 ? Number((equity - dayStart).toFixed(2))
                 : null;
             if (Number.isFinite(withdrawAmount) && Number.isFinite(liveDayFromEq) && liveDayFromEq < 0 && Math.abs(liveDayFromEq) <= (withdrawAmount + 75)) {
@@ -312,32 +897,83 @@ function shapeLiveBotPayload(raw, cfg) {
                 : (Number.isFinite(Number(dayMetrics.returnPctLive))
                     ? Number(dayMetrics.returnPctLive)
                     : (Number.isFinite(liveDayPctFromEq) ? liveDayPctFromEq : null));
-            const reportedOpen = Number(p.openProfit);
-            const openPositions = n(p.openPositions, 0);
-            const openProfit = Number.isFinite(reportedOpen)
-                ? (openPositions > 0 ? reportedOpen : 0)
-                : 0;
+            const openProfit = resolveOpenProfitValue(p, balance, equity);
             const totalBaseline = Number.isFinite(accountStartEquity) && accountStartEquity > 0
                 ? accountStartEquity
-                : (Number.isFinite(depositAmount) && depositAmount > 0 ? depositAmount : null);
-            const totalNetCashflow = (Number.isFinite(totalBaseline) && totalBaseline > 0)
+                : (Number.isFinite(depositAmount) && depositAmount > 0 ? depositAmount : (balanceSource === 'mt5-probe-live' && liveFundsAnchor > 0 ? liveFundsAnchor : null));
+            const totalNetCashflow = (hasEquity && Number.isFinite(totalBaseline) && totalBaseline > 0)
                 ? Number((equity + n(withdrawAmount, 0) - totalBaseline).toFixed(2))
                 : null;
             const totalPctCashflow = (Number.isFinite(totalBaseline) && totalBaseline > 0 && Number.isFinite(totalNetCashflow))
                 ? Number(((100 * totalNetCashflow) / totalBaseline).toFixed(2))
                 : null;
+            const conservativeLiveMetrics = balanceSource !== 'mt5-probe-live';
+            const rawDayNet = Number.isFinite(Number(dayNet)) ? Number(dayNet) : null;
+            const rawDayRet = Number.isFinite(Number(dayRet)) ? Number(dayRet) : null;
+            const rawWeekNet = Number.isFinite(Number(weekMetrics.netUsd)) ? Number(weekMetrics.netUsd) : null;
+            const rawWeekRet = Number.isFinite(Number(weekMetrics.returnPct)) ? Number(weekMetrics.returnPct) : null;
+            const rawMonthNet = Number.isFinite(Number(monthMetrics.netUsd)) ? Number(monthMetrics.netUsd) : null;
+            const rawMonthRet = Number.isFinite(Number(monthMetrics.returnPct)) ? Number(monthMetrics.returnPct) : null;
+            const rawLifetimeNet = Number.isFinite(Number(lifetimeMetrics.netUsd)) ? Number(lifetimeMetrics.netUsd) : null;
+            const rawLifetimeRet = Number.isFinite(Number(lifetimeMetrics.returnPct)) ? Number(lifetimeMetrics.returnPct) : null;
+            const rawStoredTotalNet = Number.isFinite(Number(p.totalNetUsd)) ? Number(p.totalNetUsd) : (Number.isFinite(Number(totalMetrics.netUsd)) ? Number(totalMetrics.netUsd) : null);
+            const rawStoredTotalRet = Number.isFinite(Number(p.totalReturnPct)) ? Number(p.totalReturnPct) : (Number.isFinite(Number(totalMetrics.returnPct)) ? Number(totalMetrics.returnPct) : null);
+            const liveMetricSanityCap = liveFundsAnchor > 0 ? liveFundsAnchor * 5 : 0;
+            const mt5RawDayLooksBroken = (
+                balanceSource === 'mt5-probe-live'
+                && liveMetricSanityCap > 0
+                && Number.isFinite(rawDayNet)
+                && Math.abs(rawDayNet) > liveMetricSanityCap
+            );
+            const mt5RawTotalLooksBroken = (
+                balanceSource === 'mt5-probe-live'
+                && liveMetricSanityCap > 0
+                && (
+                    (Number.isFinite(rawLifetimeNet) && Math.abs(rawLifetimeNet) > liveMetricSanityCap)
+                    || (Number.isFinite(rawStoredTotalNet) && Math.abs(rawStoredTotalNet) > liveMetricSanityCap)
+                )
+            );
+            const safeDayNet = (conservativeLiveMetrics || mt5RawDayLooksBroken)
+                ? (Number.isFinite(liveDayFromEq) ? liveDayFromEq : rawDayNet)
+                : rawDayNet;
+            const safeDayRet = (conservativeLiveMetrics || mt5RawDayLooksBroken)
+                ? (Number.isFinite(liveDayPctFromEq) ? liveDayPctFromEq : rawDayRet)
+                : rawDayRet;
+            const safeWeekNet = conservativeLiveMetrics
+                ? (Number.isFinite(totalNetCashflow) ? totalNetCashflow : rawWeekNet)
+                : rawWeekNet;
+            const safeWeekRet = conservativeLiveMetrics
+                ? (Number.isFinite(totalPctCashflow) ? totalPctCashflow : rawWeekRet)
+                : rawWeekRet;
+            const safeMonthNet = conservativeLiveMetrics
+                ? (Number.isFinite(totalNetCashflow) ? totalNetCashflow : rawMonthNet)
+                : rawMonthNet;
+            const safeMonthRet = conservativeLiveMetrics
+                ? (Number.isFinite(totalPctCashflow) ? totalPctCashflow : rawMonthRet)
+                : rawMonthRet;
+            const safeLifetimeNet = conservativeLiveMetrics
+                ? (Number.isFinite(totalNetCashflow) ? totalNetCashflow : rawLifetimeNet)
+                : rawLifetimeNet;
+            const safeLifetimeRet = conservativeLiveMetrics
+                ? (Number.isFinite(totalPctCashflow) ? totalPctCashflow : rawLifetimeRet)
+                : rawLifetimeRet;
             return {
                 profile: p.profile,
                 profileLabel: p.profileLabel || p.profile,
                 accountName: p.accountName || null,
                 account: p.account || null,
-                balanceSource: p.balanceSource || null,
+                balanceSource: balanceSource || null,
                 riskPct: p.riskPct ?? null,
                 leverage: p.leverage || null,
                 leverageSource: p.leverageSource || null,
                 depositAmount,
                 withdrawAmount,
+                cashflowSource,
+                cashflowLedgerChannel,
+                cashflowLedgerFetchedAt,
+                cashflowLedgerNote,
                 accountStartEquity,
+                dayStartAt: p.dayStartAt || p.dayOpeningAt || null,
                 dayStartBalance: Number.isFinite(Number(p.dayStartBalance)) ? Number(p.dayStartBalance) : null,
                 dayStartEquity: Number.isFinite(Number(p.dayStartEquity)) ? Number(p.dayStartEquity) : null,
                 balance,
@@ -345,35 +981,49 @@ function shapeLiveBotPayload(raw, cfg) {
                 openProfit,
                 currentPnlGross: Number.isFinite(Number(p.currentPnlGross)) ? Number(p.currentPnlGross) : null,
                 currentPnlWithOpen: Number.isFinite(Number(p.currentPnlWithOpen)) ? Number(p.currentPnlWithOpen) : null,
-                dayNetUsd: n(dayNet, 0),
-                dayReturnPct: Number.isFinite(Number(dayRet)) ? Number(dayRet) : null,
-                weekNetUsd: n(weekMetrics.netUsd, 0),
-                weekReturnPct: Number.isFinite(Number(weekMetrics.returnPct)) ? Number(weekMetrics.returnPct) : null,
-                lifetimeNetUsd: Number.isFinite(Number(lifetimeMetrics.netUsd)) ? Number(lifetimeMetrics.netUsd) : null,
-                lifetimeReturnPct: Number.isFinite(Number(lifetimeMetrics.returnPct)) ? Number(lifetimeMetrics.returnPct) : null,
+                dayNetUsd: safeDayNet,
+                dayReturnPct: safeDayRet,
+                weekNetUsd: safeWeekNet,
+                weekReturnPct: safeWeekRet,
+                monthNetUsd: safeMonthNet,
+                monthReturnPct: safeMonthRet,
+                lifetimeNetUsd: safeLifetimeNet,
+                lifetimeReturnPct: safeLifetimeRet,
                 lifetimeMatchedCloses: Number.isFinite(Number(lifetimeMetrics.matchedCloses)) ? Number(lifetimeMetrics.matchedCloses) : 0,
                 lifetimeWinRatePct: Number.isFinite(Number(lifetimeMetrics.winRatePct)) ? Number(lifetimeMetrics.winRatePct) : null,
                 lifetimeProfitFactor: Number.isFinite(Number(lifetimeMetrics.profitFactor)) ? Number(lifetimeMetrics.profitFactor) : null,
                 totalNetUsd: Number.isFinite(totalNetCashflow)
                     ? totalNetCashflow
-                    : (Number.isFinite(Number(p.totalNetUsd))
-                    ? Number(p.totalNetUsd)
+                    : (mt5RawTotalLooksBroken
+                        ? 0
+                        : (Number.isFinite(rawStoredTotalNet)
+                    ? rawStoredTotalNet
                     : (Number.isFinite(Number(totalMetrics.netUsd))
                         ? Number(totalMetrics.netUsd)
                         : (Number.isFinite(Number(p.currentEquity)) && Number.isFinite(Number(p.accountStartEquity))
                             ? Number((Number(p.currentEquity) - Number(p.accountStartEquity)).toFixed(2))
-                            : null))),
+                            : null)))),
                 totalReturnPct: Number.isFinite(totalPctCashflow)
                     ? totalPctCashflow
-                    : (Number.isFinite(Number(p.totalReturnPct))
-                    ? Number(p.totalReturnPct)
+                    : (mt5RawTotalLooksBroken
+                        ? 0
+                        : (Number.isFinite(rawStoredTotalRet)
+                    ? rawStoredTotalRet
                     : (Number.isFinite(Number(totalMetrics.returnPct))
                         ? Number(totalMetrics.returnPct)
                         : (Number.isFinite(Number(p.currentEquity)) && Number.isFinite(Number(p.accountStartEquity)) && Number(p.accountStartEquity) > 0
                             ? Number(((100 * (Number(p.currentEquity) - Number(p.accountStartEquity))) / Number(p.accountStartEquity)).toFixed(2))
-                            : null))),
+                            : null)))),
                 status: status.label || 'UNKNOWN',
                 statusReason: status.reason || '',
+                recentEvents: Array.isArray(p.recentEvents) ? p.recentEvents.slice(-40) : [],
+                dailyBuckets: Array.isArray(p.dailyBuckets) ? p.dailyBuckets : [],
+                recentClosedDeals: Array.isArray(p.recentClosedDeals) ? p.recentClosedDeals.slice(0, 600) : [],
+                journal: Array.isArray(p.journal) ? p.journal.slice(0, 120) : [],
+                history: Array.isArray(p.history) ? p.history.slice(-160) : [],
+                executorVersion: p.executorVersion || null,
+                journalTelemetry: typeof p.journalTelemetry === 'boolean' ? p.journalTelemetry : null,
+                exposureSwitches: typeof p.exposureSwitches === 'boolean' ? p.exposureSwitches : null,
                 updatedAt: p.lastActivityAt || p.snapshotAt || p.lastSyncAt || telemetry.generatedAt || null
             };
         })
@@ -382,6 +1032,11 @@ function shapeLiveBotPayload(raw, cfg) {
 
     const summaryDayNetUsd = rows.reduce((a, r) => a + n(r.dayNetUsd, 0), 0);
     const summaryOpenProfitUsd = rows.reduce((a, r) => a + n(r.openProfit, 0), 0);
+    const summaryMonthNetUsd = rows.reduce((a, r) => a + n(r.monthNetUsd, 0), 0);
+    const summaryMonthBaseline = rows.reduce((a, r) => {
+        const b = Number(r.accountStartEquity ?? r.depositAmount);
+        return a + (Number.isFinite(b) && b > 0 ? b : 0);
+    }, 0);
     const summaryLifetimeNetUsd = rows.reduce((a, r) => a + n(r.lifetimeNetUsd, 0), 0);
     const summaryLifetimeMatched = rows.reduce((a, r) => a + n(r.lifetimeMatchedCloses, 0), 0);
     const summaryLifetimeWinsApprox = rows.reduce((a, r) => {
@@ -422,11 +1077,23 @@ function shapeLiveBotPayload(raw, cfg) {
 
     return {
         ok: true,
-        generatedAt: telemetry.generatedAt || new Date().toISOString(),
+        generatedAt,
+        stale: isStale,
+        staleReason: isStale ? 'telemetry_stale' : null,
+        degraded: useFallbackProfiles,
+        degradedReason: useFallbackProfiles ? 'no_trusted_live_balance_profiles' : null,
+        telemetryAgeSec: Number.isFinite(ageMs) ? Math.round(ageMs / 1000) : null,
         source: {
             node: cfg?.source || 'vds',
             telemetryUrl: cfg?.telemetryUrl || null,
             dashboardUrl: cfg?.dashboardUrl || null
+        },
+        diagnostics: {
+            rawProfilesTotal: profilesRaw.length,
+            visibleProfilesTotal: visibleProfiles.length,
+            trustedProfilesTotal: trustedProfiles.length,
+            runtimeDriftProfiles: n(summary.runtimeDriftProfiles, 0),
+            profilesWithSync: n(summary.profilesWithSync, 0)
         },
         summary: {
             profilesTotal: rows.length,
@@ -436,6 +1103,8 @@ function shapeLiveBotPayload(raw, cfg) {
             dayReturnPct: summaryDayReturnPct,
             weekNetUsd: n(week.netUsd, 0),
             weekReturnPct: Number.isFinite(Number(week.returnPct)) ? Number(week.returnPct) : null,
+            monthNetUsd: Number(summaryMonthNetUsd.toFixed(2)),
+            monthReturnPct: summaryMonthBaseline > 0 ? Number(((100 * summaryMonthNetUsd) / summaryMonthBaseline).toFixed(2)) : null,
             openProfitUsd: Number(summaryOpenProfitUsd.toFixed(2)),
             lifetimeNetUsd: Number(summaryLifetimeNetUsd.toFixed(2)),
             lifetimeReturnPct: summaryLifetimeBaseline > 0 ? Number(((100 * summaryLifetimeNetUsd) / summaryLifetimeBaseline).toFixed(2)) : null,
@@ -882,15 +1551,27 @@ const CHECKOUT_PLANS = {
     goldmine_dominion: { name: 'Legacy Dominion', amount: 5000, description: 'Legacy mapped: Dominion one-version full pay' },
     // Copier subscriptions (monthly)
     copier_option_a: {
-        name: 'Copier Option A',
-        amount: 262,
-        description: 'Copier Option A (small accounts) - monthly',
+        name: 'Copytrading $1k-$3k - excluding VDS',
+        amount: 250,
+        description: 'Copytrading service for $1k-$3k balances, excluding VDS - monthly',
         recurring: true
     },
     copier_option_b: {
-        name: 'Copier Option B',
+        name: 'Copytrading $1k-$3k - including VDS',
+        amount: 280,
+        description: 'Copytrading service for $1k-$3k balances, including VDS - monthly',
+        recurring: true
+    },
+    copier_3k_10k_no_vds: {
+        name: 'Copytrading $3k-$10k - excluding VDS',
         amount: 500,
-        description: 'Copier Option B (large accounts) - monthly',
+        description: 'Copytrading service for $3k-$10k balances, excluding VDS - monthly',
+        recurring: true
+    },
+    copier_3k_10k_with_vds: {
+        name: 'Copytrading $3k-$10k - including VDS',
+        amount: 530,
+        description: 'Copytrading service for $3k-$10k balances, including VDS - monthly',
         recurring: true
     },
     // Legacy
@@ -1174,8 +1855,12 @@ app.get('/api/bots/live', async (req, res) => {
         if (cached?.payload && (now - cached.ts) < 5000) {
             return res.json(cached.payload);
         }
-        const raw = await fetchJsonWithTimeout(withCacheBust(cfg.telemetryUrl), 15000);
-        const payload = shapeLiveBotPayload(raw, cfg);
+        const urls = Array.isArray(cfg.telemetryUrls) && cfg.telemetryUrls.length ? cfg.telemetryUrls : [cfg.telemetryUrl];
+        const shaped = await Promise.all(urls.map(async (telemetryUrl) => {
+            const raw = await fetchJsonWithTimeout(withCacheBust(telemetryUrl), 15000);
+            return shapeLiveBotPayload(raw, { ...cfg, telemetryUrl });
+        }));
+        const payload = combineLiveBotPayloads(shaped, cfg) || shaped[0];
         botFeedCache.bySource.set(cacheKey, { ts: now, payload });
         res.json(payload);
     } catch (error) {
@@ -1196,11 +1881,35 @@ app.get('/api/bots/live', async (req, res) => {
     }
 });
 
+app.get('/api/fxg/client-dashboard-public', async (req, res) => {
+    try {
+        const upstream = await fetch('https://fxg-client-dashboard-production.up.railway.app/api/dashboard', {
+            headers: { Accept: 'application/json' }
+        });
+        const text = await upstream.text();
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(upstream.status).send(text);
+    } catch (error) {
+        res.status(502).json({
+            ok: false,
+            error: 'fxg_dashboard_unavailable',
+            message: error.message || 'Could not reach FXG client dashboard'
+        });
+    }
+});
+
 app.get('/api/bot-lab/latest', async (req, res) => {
     try {
         const payload = normalizeBotLabPayload(await fetchJsonWithTimeout(withCacheBust(BOT_LAB_API_URL), 15000));
-        res.json({ ok: true, source: BOT_LAB_API_URL, payload });
+        const payloadToWrite = hasUsableBotLabRows(payload) ? payload : (resolveBotLabCachedPayload('latest') || payload);
+        writeJsonCache(BOT_LAB_LATEST_CACHE_FILE, payloadToWrite);
+        res.json({ ok: true, source: BOT_LAB_API_URL, payload: payloadToWrite });
     } catch (error) {
+        const cached = resolveBotLabCachedPayload('latest');
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Bot Lab unavailable', source: BOT_LAB_API_URL });
     }
 });
@@ -1211,8 +1920,14 @@ app.get('/api/bot-lab/history', async (req, res) => {
         const joiner = BOT_LAB_HISTORY_URL.includes('?') ? '&' : '?';
         const url = `${BOT_LAB_HISTORY_URL}${joiner}limit=${limit}`;
         const payload = normalizeBotLabPayload(await fetchJsonWithTimeout(withCacheBust(url), 15000));
-        res.json({ ok: true, source: BOT_LAB_HISTORY_URL, payload });
+        const payloadToWrite = hasUsableBotLabRows(payload) ? payload : (resolveBotLabCachedPayload('history', { limit }) || payload);
+        writeJsonCache(BOT_LAB_HISTORY_CACHE_FILE, payloadToWrite);
+        res.json({ ok: true, source: BOT_LAB_HISTORY_URL, payload: payloadToWrite });
     } catch (error) {
+        const cached = resolveBotLabCachedPayload('history', { limit: Math.max(1, Math.min(50, Number(req.query.limit || 12))) });
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_history_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Bot Lab history unavailable', source: BOT_LAB_HISTORY_URL });
     }
 });
@@ -1220,8 +1935,13 @@ app.get('/api/bot-lab/history', async (req, res) => {
 app.get('/api/bot-lab/analysis', async (req, res) => {
     try {
         const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_ANALYSIS_URL), 20000);
+        writeJsonCache(BOT_LAB_ANALYSIS_CACHE_FILE, payload);
         res.json({ ok: true, source: BOT_LAB_ANALYSIS_URL, payload });
     } catch (error) {
+        const cached = readJsonCache(BOT_LAB_ANALYSIS_CACHE_FILE);
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_analysis_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Bot Lab analysis unavailable', source: BOT_LAB_ANALYSIS_URL });
     }
 });
@@ -1229,8 +1949,13 @@ app.get('/api/bot-lab/analysis', async (req, res) => {
 app.get('/api/bot-lab/catalog', async (req, res) => {
     try {
         const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_CATALOG_URL), 15000);
+        writeJsonCache(BOT_LAB_CATALOG_CACHE_FILE, payload);
         res.json({ ok: true, source: BOT_LAB_CATALOG_URL, payload });
     } catch (error) {
+        const cached = readJsonCache(BOT_LAB_CATALOG_CACHE_FILE);
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_catalog_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Bot Lab catalog unavailable', source: BOT_LAB_CATALOG_URL });
     }
 });
@@ -1238,8 +1963,13 @@ app.get('/api/bot-lab/catalog', async (req, res) => {
 app.get('/api/bot-lab/progress', async (req, res) => {
     try {
         const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_PROGRESS_URL), 20000);
+        writeJsonCache(BOT_LAB_PROGRESS_CACHE_FILE, payload);
         res.json({ ok: true, source: BOT_LAB_PROGRESS_URL, payload });
     } catch (error) {
+        const cached = readJsonCache(BOT_LAB_PROGRESS_CACHE_FILE);
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_progress_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Bot Lab progress unavailable', source: BOT_LAB_PROGRESS_URL });
     }
 });
@@ -1247,17 +1977,42 @@ app.get('/api/bot-lab/progress', async (req, res) => {
 app.get('/api/bot-lab/discord-summary', async (req, res) => {
     try {
         const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_DISCORD_SUMMARY_URL), 20000);
-        res.json({ ok: true, source: BOT_LAB_DISCORD_SUMMARY_URL, payload });
+        const payloadToWrite = (payload && typeof payload === 'object' && payload.status) ? payload : (resolveBotLabCachedPayload('discord-summary') || payload);
+        writeJsonCache(BOT_LAB_DISCORD_SUMMARY_CACHE_FILE, payloadToWrite);
+        res.json({ ok: true, source: BOT_LAB_DISCORD_SUMMARY_URL, payload: payloadToWrite });
     } catch (error) {
+        const cached = resolveBotLabCachedPayload('discord-summary');
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_discord_summary_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Bot Lab discord summary unavailable', source: BOT_LAB_DISCORD_SUMMARY_URL });
+    }
+});
+
+app.get('/api/bot-lab/recommendations', async (req, res) => {
+    try {
+        const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_RECOMMENDATIONS_URL), 20000);
+        writeJsonCache(BOT_LAB_RECOMMENDATIONS_CACHE_FILE, payload);
+        res.json({ ok: true, source: BOT_LAB_RECOMMENDATIONS_URL, payload });
+    } catch (error) {
+        const cached = readJsonCache(BOT_LAB_RECOMMENDATIONS_CACHE_FILE);
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_recommendations_unavailable', payload: cached });
+        }
+        res.status(502).json({ ok: false, error: error.message || 'Bot Lab recommendations unavailable', source: BOT_LAB_RECOMMENDATIONS_URL });
     }
 });
 
 app.get('/api/bot-lab/schedule', async (req, res) => {
     try {
         const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_SCHEDULE_URL), 20000);
+        writeJsonCache(BOT_LAB_SCHEDULE_CACHE_FILE, payload);
         res.json({ ok: true, source: BOT_LAB_SCHEDULE_URL, payload });
     } catch (error) {
+        const cached = readJsonCache(BOT_LAB_SCHEDULE_CACHE_FILE);
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'bot_lab_schedule_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Bot Lab schedule unavailable', source: BOT_LAB_SCHEDULE_URL });
     }
 });
@@ -1265,8 +2020,13 @@ app.get('/api/bot-lab/schedule', async (req, res) => {
 app.get('/api/param-sweep/status', async (req, res) => {
     try {
         const payload = await fetchJsonWithTimeout(withCacheBust(BOT_LAB_SWEEP_STATUS_URL), 20000);
+        writeJsonCache(BOT_LAB_SWEEP_STATUS_CACHE_FILE, payload);
         res.json({ ok: true, source: BOT_LAB_SWEEP_STATUS_URL, payload });
     } catch (error) {
+        const cached = readJsonCache(BOT_LAB_SWEEP_STATUS_CACHE_FILE);
+        if (cached) {
+            return res.status(200).json({ ok: true, source: 'cache', stale: true, staleReason: error.message || 'param_sweep_status_unavailable', payload: cached });
+        }
         res.status(502).json({ ok: false, error: error.message || 'Param sweep status unavailable', source: BOT_LAB_SWEEP_STATUS_URL });
     }
 });
@@ -1324,12 +2084,19 @@ app.get('/api/bots/charts', async (req, res) => {
 app.get('/api/bots/vds-snapshots', async (req, res) => {
     try {
         const base = MOTHERBOARD_VDS_DASHBOARD_URL.replace(/\/+$/,'');
+        const maxSnapshotAgeMs = 15 * 60 * 1000;
+        const nowMs = Date.now();
         const [snapRaw, teleRaw] = await Promise.all([
             fetchJsonWithTimeout(`${base}/api/snapshots/terminal`, 15000),
             fetchJsonWithTimeout(MOTHERBOARD_VDS_TELEMETRY_URL, 15000)
         ]);
 
-        const snapList = Array.isArray(snapRaw?.snapshots) ? snapRaw.snapshots : [];
+        const isFreshSnapshot = (snapshot) => {
+            const updatedMs = Date.parse(snapshot?.updatedAt || '');
+            return Number.isFinite(updatedMs) && ((nowMs - updatedMs) <= maxSnapshotAgeMs);
+        };
+        const snapList = (Array.isArray(snapRaw?.snapshots) ? snapRaw.snapshots : [])
+            .filter((snapshot) => snapshot?.account && isFreshSnapshot(snapshot));
         const snapByAcct = new Map(snapList.map((s) => [String(s?.account || ''), s]));
 
         const telemetry = teleRaw?.telemetry || teleRaw || {};
@@ -1349,23 +2116,20 @@ app.get('/api/bots/vds-snapshots', async (req, res) => {
                 };
             })
             .filter((r) => r.account)
-            .sort((a, b) => b.dayNetUsd - a.dayNetUsd);
+            .sort((a, b) => {
+                const labelA = String(a.profileLabel || a.profile || a.account || '');
+                const labelB = String(b.profileLabel || b.profile || b.account || '');
+                return labelA.localeCompare(labelB) || String(a.account).localeCompare(String(b.account));
+            });
 
-        const picked = [];
-        for (const r of ranked) {
-            const s = snapByAcct.get(r.account);
-            if (!s) continue;
-            picked.push({ s, r });
-            if (picked.length >= 2) break;
-        }
-
-        if (picked.length < 2) {
-            for (const s of snapList) {
-                if (picked.find((x) => String(x?.s?.account) === String(s?.account))) continue;
-                picked.push({ s, r: null });
-                if (picked.length >= 2) break;
-            }
-        }
+        const matched = ranked
+            .map((r) => ({ s: snapByAcct.get(r.account), r }))
+            .filter(({ s }) => Boolean(s));
+        const rotationWindowMs = 30 * 1000;
+        const offset = matched.length > 0 ? Math.floor(Date.now() / rotationWindowMs) % matched.length : 0;
+        const picked = matched.length <= 2
+            ? matched
+            : [matched[offset], matched[(offset + 1) % matched.length]];
 
         const snapshots = picked.slice(0, 2).map(({ s, r }, i) => ({
             index: i,
@@ -1827,6 +2591,43 @@ app.get('/admin/stats', async (req, res) => {
     }
 });
 
+app.get('/admin/vds-cashflows', async (req, res) => {
+    try {
+        const payload = await loadVdsCashflowLedger();
+        res.json({
+            success: true,
+            file: VDS_CASHFLOW_LEDGER_FILE,
+            rows: payload.rows,
+        });
+    } catch (error) {
+        console.error('Load VDS cashflows error:', error);
+        res.status(500).json({ success: false, error: 'Failed to load VDS cashflow ledger' });
+    }
+});
+
+app.post('/admin/vds-cashflows', async (req, res) => {
+    try {
+        const entry = await upsertVdsCashflowLedgerEntry(req.body || {});
+        res.json({ success: true, row: entry });
+    } catch (error) {
+        console.error('Upsert VDS cashflow error:', error);
+        res.status(400).json({ success: false, error: error.message || 'Failed to save VDS cashflow entry' });
+    }
+});
+
+app.put('/admin/vds-cashflows/:profile', async (req, res) => {
+    try {
+        const entry = await upsertVdsCashflowLedgerEntry({
+            ...(req.body || {}),
+            profile: req.params.profile,
+        });
+        res.json({ success: true, row: entry });
+    } catch (error) {
+        console.error('Update VDS cashflow error:', error);
+        res.status(400).json({ success: false, error: error.message || 'Failed to update VDS cashflow entry' });
+    }
+});
+
 // Copier subscribers (admin only - add authentication in production)
 app.get('/admin/copier-subscribers', async (req, res) => {
     try {
@@ -1975,6 +2776,19 @@ if (INVOICE_CRON && INVOICE_CRON !== 'off') {
 } else {
     console.log('Copier invoice schedule disabled.');
 }
+
+refreshBotLabCaches().then((results) => {
+    const ok = results.filter((row) => row.ok).length;
+    console.log(`Bot Lab cache warmup complete: ${ok}/${results.length} sources refreshed`);
+}).catch((error) => {
+    console.error('Bot Lab cache warmup failed:', error.message);
+});
+
+setInterval(() => {
+    refreshBotLabCaches().catch((error) => {
+        console.error('Bot Lab cache refresh failed:', error.message);
+    });
+}, BOT_LAB_CACHE_REFRESH_MS);
 
 app.listen(PORT, () => {
     const envLicense = process.env.LICENSE_FILE;
