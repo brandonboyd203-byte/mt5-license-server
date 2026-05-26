@@ -962,6 +962,7 @@ function shapeLiveBotPayload(raw, cfg) {
                 profileLabel: p.profileLabel || p.profile,
                 accountName: p.accountName || null,
                 account: p.account || null,
+                onlineHint: Boolean(p.onlineHint),
                 balanceSource: balanceSource || null,
                 riskPct: p.riskPct ?? null,
                 leverage: p.leverage || null,
